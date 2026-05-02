@@ -3,6 +3,7 @@ package main
 import (
 	"crypto/sha256"
 	"database/sql"
+	"encoding/csv"
 	"encoding/json"
 	"fmt"
 	"io"
@@ -19,15 +20,27 @@ import (
 )
 
 type TimelineEvent struct {
-	ID           int    `json:"id"`
-	Title        string `json:"title"`
-	Description string `json:"description"`
-	Date        string `json:"date"`
-	Location    string `json:"location"`
-	MediaType   string `json:"media_type"` // "image", "video", "audio"
-	MediaURL    string `json:"media_url"`
-	Thumbnail  string `json:"thumbnail"`
-	CreatedAt   string `json:"created_at"`
+	ID           int      `json:"id"`
+	Title        string   `json:"title"`
+	Description string   `json:"description"`
+	Date        string   `json:"date"`
+	Location    string   `json:"location"`
+	MediaType   string   `json:"media_type"`
+	MediaURL    string   `json:"media_url"`
+	Thumbnail   string   `json:"thumbnail"`
+	MediaCaption string  `json:"media_caption"`
+	Tags        string   `json:"tags"`
+	SortOrder   int      `json:"sort_order"`
+	IsPublic   bool     `json:"is_public"`
+	CreatedAt   string   `json:"created_at"`
+}
+
+type EventStats struct {
+	Total      int            `json:"total"`
+	ByMonth    map[string]int `json:"by_month"`
+	ByTag     map[string]int `json:"by_tag"`
+	ByMedia   map[string]int `json:"by_media"`
+	Locations int           `json:"locations"`
 }
 
 type AdminUser struct {
@@ -36,8 +49,19 @@ type AdminUser struct {
 	Password string `json:"-"`
 }
 
-const currentSchemaVersion = 1
-const currentVersion = "1.0.0"
+type ShareToken struct {
+	Token     string    `json:"token"`
+	EventIDs []int     `json:"event_ids"`
+	Year      string    `json:"year"`
+	Expires   time.Time `json:"expires"`
+}
+
+const currentSchemaVersion = 2
+const currentVersion = "1.1.0"
+
+var (
+	publicMode bool = false
+)
 
 var (
 	db           *sql.DB
@@ -111,6 +135,20 @@ func main() {
 	http.HandleFunc("/api/contributions", getContributions)
 
 	http.HandleFunc("/api/upload", authMiddleware(handleUpload))
+
+	http.HandleFunc("/api/events/search", searchEvents)
+	http.HandleFunc("/api/events/clone", authMiddleware(cloneEvent))
+	http.HandleFunc("/api/events/import", authMiddleware(importEvents))
+	http.HandleFunc("/api/events/export", exportEvents)
+
+	http.HandleFunc("/api/stats", getEventStats)
+
+	http.HandleFunc("/api/share/create", authMiddleware(createShareLink))
+	http.HandleFunc("/api/share", getShareLink)
+
+	http.HandleFunc("/api/public", getPublicEvents)
+
+	http.HandleFunc("/api/tags", getTags)
 
 	http.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
@@ -223,6 +261,10 @@ func initDB() {
 		media_type TEXT,
 		media_url TEXT,
 		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP
 	);`
 
@@ -231,6 +273,15 @@ func initDB() {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		username TEXT UNIQUE,
 		password TEXT
+	);`
+
+	createShareTable := `
+	CREATE TABLE IF NOT EXISTS share_tokens (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		token TEXT UNIQUE,
+		event_ids TEXT,
+		year TEXT,
+		expires_at TEXT
 	);`
 
 	_, err = db.Exec(createEventsTable)
@@ -242,6 +293,13 @@ func initDB() {
 	if err != nil {
 		log.Fatal(err)
 	}
+
+	_, err = db.Exec(createShareTable)
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	publicMode = os.Getenv("PUBLIC_MODE") == "true"
 
 	seedEvents()
 }
@@ -259,6 +317,18 @@ func runMigration(fromVersion int) {
 			media_url TEXT,
 			thumbnail TEXT,
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		)`)
+	case 1:
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN media_caption TEXT`)
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN tags TEXT`)
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN sort_order INTEGER DEFAULT 0`)
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN is_public INTEGER DEFAULT 0`)
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS share_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			token TEXT UNIQUE,
+			event_ids TEXT,
+			year TEXT,
+			expires_at TEXT
 		)`)
 	}
 }
@@ -482,12 +552,14 @@ func saveEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[EVENT] Saving event: ID=%d, Title=%s, Date=%s, MediaType=%s",
-		e.ID, e.Title, e.Date, e.MediaType)
+	log.Printf("[EVENT] Saving event: ID=%d, Title=%s, Date=%s, MediaType=%s, Tags=%s",
+		e.ID, e.Title, e.Date, e.MediaType, e.Tags)
 
 	if e.ID == 0 {
-		_, err := db.Exec("INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail)
+		_, err := db.Exec(`INSERT INTO timeline_events 
+			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic)
 		if err != nil {
 			log.Printf("[EVENT] Insert failed: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -495,8 +567,10 @@ func saveEvent(w http.ResponseWriter, r *http.Request) {
 		}
 		log.Printf("[EVENT] Created new event")
 	} else {
-		_, err := db.Exec("UPDATE timeline_events SET title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=? WHERE id=?",
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.ID)
+		_, err := db.Exec(`UPDATE timeline_events SET 
+			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=? 
+			WHERE id=?`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.ID)
 		if err != nil {
 			log.Printf("[EVENT] Update failed: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -597,4 +671,413 @@ func handleUpload(w http.ResponseWriter, r *http.Request) {
 		"url":       "/static/media/" + filename,
 		"media_type": mediaType,
 	})
+}
+
+func EscapeHtml(text string) string {
+	if text == "" {
+		return ""
+	}
+	text = strings.ReplaceAll(text, "&", "&amp;")
+	text = strings.ReplaceAll(text, "<", "&lt;")
+	text = strings.ReplaceAll(text, ">", "&gt;")
+	text = strings.ReplaceAll(text, `"`, "&quot;")
+	text = strings.ReplaceAll(text, "'", "&#039;")
+	return text
+}
+
+func GetMediaIcon(mediaType string) string {
+	switch mediaType {
+	case "video":
+		return "fa-solid fa-video"
+	case "audio":
+		return "fa-solid fa-music"
+	default:
+		return "fa-solid fa-image"
+	}
+}
+
+func FormatDate(dateStr string) string {
+	date, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return dateStr
+	}
+	return date.Format("Jan 2")
+}
+
+func searchEvents(w http.ResponseWriter, r *http.Request) {
+	query := r.URL.Query().Get("q")
+	year := r.URL.Query().Get("year")
+	tag := r.URL.Query().Get("tag")
+
+	sql := "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, created_at FROM timeline_events WHERE 1=1"
+	args := []interface{}{}
+
+	if query != "" {
+		sql += " AND (title LIKE ? OR description LIKE ? OR location LIKE ?)"
+		like := "%" + query + "%"
+		args = append(args, like, like, like)
+	}
+	if year != "" {
+		sql += " AND strftime('%Y', event_date) = ?"
+		args = append(args, year)
+	}
+	if tag != "" {
+		sql += " AND tags LIKE ?"
+		args = append(args, "%"+tag+"%")
+	}
+
+	sql += " ORDER BY event_date ASC"
+
+	rows, err := db.Query(sql, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var events []TimelineEvent
+	for rows.Next() {
+		var e TimelineEvent
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
+		if err != nil {
+			continue
+		}
+		events = append(events, e)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(events)
+}
+
+func cloneEvent(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		ID   int    `json:"id"`
+		Date string `json:"date"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	var e TimelineEvent
+	err := db.QueryRow("SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order FROM timeline_events WHERE id = ?", input.ID).
+		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.Tags, &e.SortOrder)
+	if err != nil {
+		http.Error(w, "Event not found", http.StatusNotFound)
+		return
+	}
+
+	e.Date = input.Date
+	e.ID = 0
+
+	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
+}
+
+func importEvents(w http.ResponseWriter, r *http.Request) {
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+
+	var events []TimelineEvent
+	if format == "csv" {
+		file, _, err := r.FormFile("file")
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		defer file.Close()
+
+		reader := csv.NewReader(file)
+		records, err := reader.ReadAll()
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+
+		for i, record := range records {
+			if i == 0 {
+				continue
+			}
+			if len(record) < 4 {
+				continue
+			}
+			e := TimelineEvent{
+				Title:        record[0],
+				Description: record[1],
+				Date:        record[2],
+				Location:    record[3],
+				MediaType:   "image",
+			}
+			if len(record) > 4 {
+				e.Tags = record[4]
+			}
+			events = append(events, e)
+		}
+	} else {
+		if err := json.NewDecoder(r.Body).Decode(&events); err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+	}
+
+	count := 0
+	for _, e := range events {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder)
+		if err == nil {
+			count++
+		}
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]int{"imported": count})
+}
+
+func exportEvents(w http.ResponseWriter, r *http.Request) {
+	year := r.URL.Query().Get("year")
+	format := r.URL.Query().Get("format")
+	if format == "" {
+		format = "json"
+	}
+
+	sql := "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, created_at FROM timeline_events"
+	args := []interface{}{}
+
+	if year != "" {
+		sql += " WHERE strftime('%Y', event_date) = ?"
+		args = append(args, year)
+	}
+	sql += " ORDER BY event_date ASC"
+
+	rows, err := db.Query(sql, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var events []TimelineEvent
+	for rows.Next() {
+		var e TimelineEvent
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
+		if err != nil {
+			continue
+		}
+		events = append(events, e)
+	}
+
+	if format == "csv" {
+		w.Header().Set("Content-Type", "text/csv")
+		w.Header().Set("Content-Disposition", "attachment; filename=events.csv")
+		fmt.Fprint(w, "Title,Description,Date,Location,MediaType,Tags\n")
+		for _, e := range events {
+			fmt.Fprintf(w, "%q,%q,%s,%q,%s,%s\n", e.Title, e.Description, e.Date, e.Location, e.MediaType, e.Tags)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(events)
+}
+
+func getEventStats(w http.ResponseWriter, r *http.Request) {
+	year := r.URL.Query().Get("year")
+	if year == "" {
+		year = fmt.Sprintf("%d", time.Now().Year())
+	}
+
+	var stats EventStats
+	stats.ByMonth = make(map[string]int)
+	stats.ByTag = make(map[string]int)
+	stats.ByMedia = make(map[string]int)
+
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&stats.Total)
+	db.QueryRow("SELECT COUNT(DISTINCT location) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&stats.Locations)
+
+	monthRows, _ := db.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events 
+		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%m', event_date)`, year)
+	for monthRows.Next() {
+		var month string
+		var count int
+		monthRows.Scan(&month, &count)
+		stats.ByMonth[month] = count
+	}
+
+	tagRows, _ := db.Query(`SELECT tags, COUNT(*) FROM timeline_events 
+		WHERE strftime('%Y', event_date) = ? AND tags != '' GROUP BY tags`, year)
+	for tagRows.Next() {
+		var tags string
+		var count int
+		tagRows.Scan(&tags, &count)
+		stats.ByTag[tags] = count
+	}
+
+	mediaRows, _ := db.Query(`SELECT media_type, COUNT(*) FROM timeline_events 
+		WHERE strftime('%Y', event_date) = ? GROUP BY media_type`, year)
+	for mediaRows.Next() {
+		var media string
+		var count int
+		mediaRows.Scan(&media, &count)
+		stats.ByMedia[media] = count
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(stats)
+}
+
+func createShareLink(w http.ResponseWriter, r *http.Request) {
+	var input struct {
+		EventIDs []int `json:"event_ids"`
+		Year    string `json:"year"`
+		Days    int   `json:"days"`
+	}
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
+	if input.Days == 0 {
+		input.Days = 7
+	}
+
+	nowStr := time.Now().Format("2006-01-02T15:04:05")
+	token := fmt.Sprintf("%x", sha256.Sum256([]byte(nowStr)))
+
+	eventIDsStr := ""
+	for idx, idVal := range input.EventIDs {
+		if idx > 0 {
+			eventIDsStr += ","
+		}
+		eventIDsStr += strconv.Itoa(idVal)
+	}
+
+	expires := time.Now().Add(time.Duration(input.Days) * 24 * time.Hour)
+
+	_, err := db.Exec(`INSERT INTO share_tokens (token, event_ids, year, expires_at) VALUES (?, ?, ?, ?)`,
+		token, eventIDsStr, input.Year, expires.Format("2006-01-02"))
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{
+		"token":   token,
+		"expires": expires.Format("2006-01-02"),
+	})
+}
+
+func getShareLink(w http.ResponseWriter, r *http.Request) {
+	token := r.URL.Query().Get("token")
+	if token == "" {
+		http.Error(w, "Token required", http.StatusBadRequest)
+		return
+	}
+
+	var eventIDs, year string
+	var expires string
+	err := db.QueryRow("SELECT event_ids, year, expires_at FROM share_tokens WHERE token = ?", token).Scan(&eventIDs, &year, &expires)
+	if err != nil {
+		http.Error(w, "Invalid token", http.StatusNotFound)
+		return
+	}
+
+	expTime, _ := time.Parse("2006-01-02", expires)
+	if time.Now().After(expTime) {
+		http.Error(w, "Token expired", http.StatusGone)
+		return
+	}
+
+	http.Redirect(w, r, "/?share="+token, http.StatusFound)
+}
+
+func getPublicEvents(w http.ResponseWriter, r *http.Request) {
+	shareToken := r.URL.Query().Get("share")
+	if shareToken == "" && !publicMode {
+		http.Error(w, "Not found", http.StatusNotFound)
+		return
+	}
+
+	var eventIDs string
+	var year string
+
+	if shareToken != "" {
+		db.QueryRow("SELECT event_ids, year FROM share_tokens WHERE token = ?", shareToken).Scan(&eventIDs, &year)
+	} else {
+		year = r.URL.Query().Get("year")
+		if year == "" {
+			year = fmt.Sprintf("%d", time.Now().Year())
+		}
+	}
+
+	var query string
+	var args []interface{}
+
+	if eventIDs != "" {
+		query = "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, created_at FROM timeline_events WHERE id IN (" + eventIDs + ") ORDER BY event_date ASC"
+	} else {
+		query = "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, created_at FROM timeline_events WHERE is_public = 1"
+		if year != "" {
+			query += " AND strftime('%Y', event_date) = ?"
+			args = append(args, year)
+		}
+		query += " ORDER BY event_date ASC"
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var events []TimelineEvent
+	for rows.Next() {
+		var e TimelineEvent
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
+		if err != nil {
+			continue
+		}
+		events = append(events, e)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(events)
+}
+
+func getTags(w http.ResponseWriter, r *http.Request) {
+	year := r.URL.Query().Get("year")
+	query := "SELECT DISTINCT tags FROM timeline_events WHERE tags != ''"
+	args := []interface{}{}
+
+	if year != "" {
+		query += " AND strftime('%Y', event_date) = ?"
+		args = append(args, year)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	defer rows.Close()
+
+	var tags []string
+	for rows.Next() {
+		var t string
+		rows.Scan(&t)
+		tags = append(tags, t)
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(tags)
 }

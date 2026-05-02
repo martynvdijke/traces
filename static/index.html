@@ -24,10 +24,17 @@
             </div>
             <div class="racing-stripes"></div>
             <nav class="mt-3 mt-md-0 d-flex align-items-center gap-4">
+                <div class="search-box">
+                    <input type="text" placeholder="Search events..." id="search-input" class="form-control form-control-sm">
+                    <button class="btn btn-sm btn-outline-secondary" onclick="searchEvents()">
+                        <i class="fa-solid fa-search"></i>
+                    </button>
+                </div>
                 <ul class="mb-0 d-flex gap-3 list-unstyled">
                     <li><a href="#timeline" class="active text-uppercase"><i class="fa-solid fa-clock me-2"></i>Timeline</a></li>
                     <li><a href="#contributions" class="text-uppercase"><i class="fa-solid fa-chart-pie me-2"></i>Activity</a></li>
                     <li><a href="#gallery" class="text-uppercase"><i class="fa-solid fa-images me-2"></i>Gallery</a></li>
+                    <li><a href="#compare" class="text-uppercase"><i class="fa-solid fa-arrow-right-arrow-left me-2"></i>Compare</a></li>
                     <li><a href="/docs" class="text-uppercase" target="_blank"><i class="fa-solid fa-book me-2"></i>API Docs</a></li>
                     <li><a href="/login.html" class="text-uppercase"><i class="fa-solid fa-lock me-2"></i>Admin</a></li>
                 </ul>
@@ -180,6 +187,19 @@
 
         function changeYear(year) {
             currentYear = year;
+            document.getElementById('current-year').textContent = year;
+            loadData();
+        }
+
+        function searchEvents() {
+            const query = document.getElementById('search-input').value;
+            if (query) {
+                window.location.href = '?q=' + encodeURIComponent(query);
+            }
+        }
+
+        function filterMonth(month) {
+            currentMonth = month;
             document.getElementById('current-year').textContent = year;
             loadData();
         }
