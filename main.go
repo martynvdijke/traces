@@ -568,7 +568,7 @@ func handleUpload(c *gin.Context) {
 		return
 	}
 
-	url := "/static/media/" + filename
+	url := "/media/" + filename
 	sendGotifyNotification(fmt.Sprintf("New media uploaded: %s (%s)", filename, mediaType), url)
 
 	c.JSON(http.StatusOK, gin.H{
@@ -932,7 +932,7 @@ func getPersons(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var persons []Person
+	persons := make([]Person, 0)
 	for rows.Next() {
 		var p Person
 		err := rows.Scan(&p.ID, &p.Name, &p.AvatarURL, &p.Bio, &p.BirthDate, &p.Color, &p.CreatedAt, &p.EventCount)
@@ -1116,7 +1116,7 @@ func testGotify(c *gin.Context) {
 }
 
 func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
-	var events []TimelineEvent
+	events := make([]TimelineEvent, 0)
 	for rows.Next() {
 		var e TimelineEvent
 		var p Person
@@ -1313,7 +1313,7 @@ func seedEvents() {
 			Date:        "2026-01-01",
 			Location:    "Times Square, NYC",
 			MediaType:   "image",
-			MediaURL:    "/static/media/newyear.jpg",
+			MediaURL:    "/media/newyear.jpg",
 			Latitude:    &nyLat,
 			Longitude:   &nyLng,
 		},
@@ -1323,7 +1323,7 @@ func seedEvents() {
 			Date:        "2026-07-15",
 			Location:    "Central Park",
 			MediaType:   "video",
-			MediaURL:    "/static/media/festival.mp4",
+			MediaURL:    "/media/festival.mp4",
 			Latitude:    &cpLat,
 			Longitude:   &cpLng,
 		},
