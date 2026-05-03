@@ -1,3 +1,10 @@
+# [1.2.0](https://github.com/martynvdijke/traces/compare/v1.1.1...v1.2.0) (2026-05-03)
+
+
+### Features
+
+* hash-based file storage with image resizing and thumbnail generation ([17c9538](https://github.com/martynvdijke/traces/commit/17c9538076f04fc062cffe4f01c528e724530c90))
+
 ## [1.1.1](https://github.com/martynvdijke/traces/compare/v1.1.0...v1.1.1) (2026-05-03)
 
 
