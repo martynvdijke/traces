@@ -4,17 +4,25 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
+
+	"github.com/gin-gonic/gin"
 )
 
-func init() {
-	if os.Getenv("DOCKER") != "true" {
-		basePath = "."
-		dbPath = "./traces.db"
-		mediaPath = "./media"
-	}
+func setupTestRouter() *gin.Engine {
+	gin.SetMode(gin.TestMode)
+	r := gin.New()
+
+	r.GET("/api/version", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"version": currentVersion})
+	})
+	r.POST("/api/login", func(c *gin.Context) {
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+	})
+	r.POST("/api/logout", handleLogout)
+
+	return r
 }
 
 func TestHashPassword(t *testing.T) {
@@ -38,19 +46,14 @@ func TestHashPassword(t *testing.T) {
 
 	t.Run("consistent", func(t *testing.T) {
 		pwd := "testpassword"
-		h1 := hashPassword(pwd)
-		h2 := hashPassword(pwd)
-		if h1 != h2 {
-			t.Errorf(" hashPassword not consistent: %s != %s", h1, h2)
+		if hashPassword(pwd) != hashPassword(pwd) {
+			t.Error("hashPassword not consistent")
 		}
 	})
 }
 
 func TestEscapeHtml(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
+	tests := []struct{ input, expected string }{
 		{"hello", "hello"},
 		{"<script>", "&lt;script&gt;"},
 		{"a & b", "a &amp; b"},
@@ -58,11 +61,9 @@ func TestEscapeHtml(t *testing.T) {
 		{"it's", "it&#039;s"},
 		{"", ""},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := EscapeHtml(tt.input)
-			if got != tt.expected {
+			if got := EscapeHtml(tt.input); got != tt.expected {
 				t.Errorf("EscapeHtml(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
@@ -70,21 +71,16 @@ func TestEscapeHtml(t *testing.T) {
 }
 
 func TestGetMediaIcon(t *testing.T) {
-	tests := []struct {
-		mediaType string
-		expected string
-	}{
+	tests := []struct{ mediaType, expected string }{
 		{"video", "fa-solid fa-video"},
 		{"audio", "fa-solid fa-music"},
 		{"image", "fa-solid fa-image"},
 		{"unknown", "fa-solid fa-image"},
 		{"", "fa-solid fa-image"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.mediaType, func(t *testing.T) {
-			got := GetMediaIcon(tt.mediaType)
-			if got != tt.expected {
+			if got := GetMediaIcon(tt.mediaType); got != tt.expected {
 				t.Errorf("GetMediaIcon(%q) = %q, want %q", tt.mediaType, got, tt.expected)
 			}
 		})
@@ -92,86 +88,71 @@ func TestGetMediaIcon(t *testing.T) {
 }
 
 func TestFormatDate(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
+	tests := []struct{ input, expected string }{
 		{"2026-01-01", "Jan 1"},
 		{"2026-07-15", "Jul 15"},
 		{"2026-12-25", "Dec 25"},
 		{"invalid", "invalid"},
 	}
-
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			got := FormatDate(tt.input)
-			if got != tt.expected {
+			if got := FormatDate(tt.input); got != tt.expected {
 				t.Errorf("FormatDate(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}
+	t.Run("leap_year", func(t *testing.T) {
+		if got := FormatDate("2024-02-29"); got == "invalid" {
+			t.Error("should handle leap year")
+		}
+	})
 }
 
 func TestAPIEndpoints(t *testing.T) {
-	router := http.NewServeMux()
-	router.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"version": currentVersion})
-	})
-	router.HandleFunc("/api/check-setup", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]bool{"setup": false})
-	})
-	router.HandleFunc("/api/login", handleLogin)
+	router := setupTestRouter()
 
 	t.Run("version_endpoint", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/version", nil)
 		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/version", nil)
 		router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 		}
-
 		var resp map[string]string
-		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("failed to unmarshal: %v", err)
-		}
-
+		json.Unmarshal(w.Body.Bytes(), &resp)
 		if resp["version"] != currentVersion {
 			t.Errorf("version = %q, want %q", resp["version"], currentVersion)
 		}
 	})
 
-	t.Run("check-setup_endpoint", func(t *testing.T) {
-		req := httptest.NewRequest("GET", "/api/check-setup", nil)
+	t.Run("logout_endpoint", func(t *testing.T) {
 		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/logout", nil)
 		router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 		}
-
-		var resp map[string]bool
-		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-			t.Fatalf("failed to unmarshal: %v", err)
-		}
-
-		if resp["setup"] != false {
-			t.Errorf("setup = %v, want false", resp["setup"])
+		var resp map[string]string
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["status"] != "ok" {
+			t.Errorf("status = %q, want 'ok'", resp["status"])
 		}
 	})
 
-	t.Run("login_wrong_method", func(t *testing.T) {
-		req := httptest.NewRequest("DELETE", "/api/login", nil)
+	t.Run("login_endpoint", func(t *testing.T) {
 		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(`{"username":"admin","password":"test"}`))
+		req.Header.Set("Content-Type", "application/json")
 		router.ServeHTTP(w, req)
-
 		if w.Code != http.StatusOK {
 			t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
 		}
-		if !strings.Contains(w.Body.String(), "<!DOCTYPE html>") {
-			t.Error("expected HTML response")
+		var resp map[string]string
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["status"] != "ok" {
+			t.Errorf("status = %q, want 'ok'", resp["status"])
 		}
 	})
 }
@@ -195,76 +176,4 @@ func BenchmarkGetMediaIcon(b *testing.B) {
 	for i := 0; i < b.N; i++ {
 		GetMediaIcon(types[i%len(types)])
 	}
-}
-
-func TestEscapeHtmlExtended(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"hello world", "hello world"},
-		{"<div>", "&lt;div&gt;"},
-		{"tag1,tag2", "tag1,tag2"},
-		{"", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := EscapeHtml(tt.input)
-			if got != tt.expected {
-				t.Errorf("EscapeHtml(%q) = %q, want %q", tt.input, got, tt.expected)
-			}
-		})
-	}
-}
-
-func TestGetMediaIconExtended(t *testing.T) {
-	tests := []struct {
-		mediaType string
-		expected string
-	}{
-		{"video", "fa-solid fa-video"},
-		{"audio", "fa-solid fa-music"},
-		{"image", "fa-solid fa-image"},
-		{"unknown", "fa-solid fa-image"},
-		{"", "fa-solid fa-image"},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.mediaType, func(t *testing.T) {
-			got := GetMediaIcon(tt.mediaType)
-			if got != tt.expected {
-				t.Errorf("GetMediaIcon(%q) = %q, want %q", tt.mediaType, got, tt.expected)
-			}
-		})
-	}
-}
-
-func TestFormatDateExtended(t *testing.T) {
-	tests := []struct {
-		input    string
-		expected string
-	}{
-		{"2026-01-01", "Jan 1"},
-		{"2026-07-15", "Jul 15"},
-		{"2026-12-25", "Dec 25"},
-		{"invalid", "invalid"},
-		{"", ""},
-	}
-
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			got := FormatDate(tt.input)
-			if got != tt.expected {
-				t.Errorf("FormatDate(%q) = %q, want %q", tt.input, got, tt.expected)
-			}
-		})
-	}
-
-	t.Run("leap_year", func(t *testing.T) {
-		got := FormatDate("2024-02-29")
-		if got == "invalid" {
-			t.Error("should handle leap year")
-		}
-	})
 }

@@ -1,48 +1,59 @@
 package main
 
 import (
+	"bytes"
 	"crypto/sha256"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
 	"fmt"
-	"io"
 	"log"
 	"net/http"
 	"os"
-	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
 
-	"github.com/gorilla/websocket"
+	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 )
 
 type TimelineEvent struct {
 	ID           int      `json:"id"`
 	Title        string   `json:"title"`
-	Description string   `json:"description"`
-	Date        string   `json:"date"`
-	Location    string   `json:"location"`
-	MediaType   string   `json:"media_type"`
-	MediaURL    string   `json:"media_url"`
-	Thumbnail   string   `json:"thumbnail"`
-	MediaCaption string  `json:"media_caption"`
-	Tags        string   `json:"tags"`
-	People     string   `json:"people"`
-	SortOrder   int      `json:"sort_order"`
-	IsPublic   bool     `json:"is_public"`
-	CreatedAt   string   `json:"created_at"`
+	Description  string   `json:"description"`
+	Date         string   `json:"date"`
+	Location     string   `json:"location"`
+	MediaType    string   `json:"media_type"`
+	MediaURL     string   `json:"media_url"`
+	Thumbnail    string   `json:"thumbnail"`
+	MediaCaption string   `json:"media_caption"`
+	Tags         string   `json:"tags"`
+	SortOrder    int      `json:"sort_order"`
+	IsPublic     bool     `json:"is_public"`
+	CreatedAt    string   `json:"created_at"`
+	PersonID     *int     `json:"person_id"`
+	Latitude     *float64 `json:"latitude"`
+	Longitude    *float64 `json:"longitude"`
+	Person       *Person  `json:"person,omitempty"`
 }
 
 type EventStats struct {
-	Total      int            `json:"total"`
-	ByMonth    map[string]int `json:"by_month"`
-	ByTag     map[string]int `json:"by_tag"`
-	ByMedia   map[string]int `json:"by_media"`
-	Locations int           `json:"locations"`
+	Total        int            `json:"total"`
+	ByMonth      map[string]int `json:"by_month"`
+	ByTag        map[string]int `json:"by_tag"`
+	ByMedia      map[string]int `json:"by_media"`
+	Locations    int            `json:"locations"`
+	Persons      int            `json:"persons"`
+	YearOverYear map[string]int `json:"year_over_year"`
+	MediaTotal   int            `json:"media_total"`
+	WithLocation int            `json:"with_location"`
+	PersonCount  int            `json:"person_count"`
+	TotalYears   int            `json:"total_years"`
+	WithMedia    int            `json:"with_media"`
+	WithGeo      int            `json:"with_geo"`
+	ByYear       map[string]int `json:"by_year"`
 }
 
 type AdminUser struct {
@@ -51,30 +62,39 @@ type AdminUser struct {
 	Password string `json:"-"`
 }
 
-type ShareToken struct {
-	Token     string    `json:"token"`
-	EventIDs []int     `json:"event_ids"`
-	Year      string    `json:"year"`
-	Expires   time.Time `json:"expires"`
+type Person struct {
+	ID         int    `json:"id"`
+	Name       string `json:"name"`
+	AvatarURL  string `json:"avatar_url"`
+	Bio        string `json:"bio"`
+	BirthDate  string `json:"birth_date"`
+	Color      string `json:"color"`
+	EventCount int    `json:"event_count,omitempty"`
+	CreatedAt  string `json:"created_at"`
+}
+
+type GotifyConfig struct {
+	URL     string `json:"url"`
+	Token   string `json:"token"`
+	Enabled bool   `json:"enabled"`
 }
 
 const currentSchemaVersion = 3
-const currentVersion = "1.0.0"
+const currentVersion = "1.2.0"
 
 var (
-	publicMode bool = false
+	publicMode    bool = false
+	gotifyEnabled bool
 )
 
 var (
 	db           *sql.DB
 	sessionStore = make(map[string]int64)
-	staticCache = make(map[string][]byte)
-	upgrader    = websocket.Upgrader{
-		CheckOrigin: func(r *http.Request) bool { return true },
-	}
-	basePath   = "/app"
-	dbPath    = "/db/traces.db"
-	mediaPath = "/app/media"
+	basePath     = "/app"
+	dbPath       = "/db/traces.db"
+	mediaPath    = "/app/media"
+	gotifyURL    = ""
+	gotifyToken  = ""
 )
 
 func main() {
@@ -84,14 +104,18 @@ func main() {
 		mediaPath = filepath.Join(basePath, "media")
 	}
 
+	gotifyURL = os.Getenv("GOTIFY_URL")
+	gotifyToken = os.Getenv("GOTIFY_TOKEN")
+	if os.Getenv("GOTIFY_ENABLED") == "true" {
+		gotifyEnabled = true
+	}
+
 	if err := os.MkdirAll(mediaPath, 0755); err != nil {
 		log.Printf("Warning: could not create media directory: %v", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		log.Printf("Warning: could not create database directory: %v", err)
 	}
-
-	compileTypeScript()
 
 	var err error
 	db, err = sql.Open("sqlite3", dbPath)
@@ -102,70 +126,89 @@ func main() {
 
 	initDB()
 
-	http.HandleFunc("/api/login", handleLogin)
-	http.HandleFunc("/api/logout", handleLogout)
-	http.HandleFunc("/api/check-setup", handleCheckSetup)
+	r := gin.Default()
+	r.MaxMultipartMemory = 32 << 20
 
-	http.HandleFunc("/admin.html", func(w http.ResponseWriter, r *http.Request) {
-		var validSession string
-		for _, c := range r.Cookies() {
-			if c.Name == "session" {
-				if _, ok := sessionStore[c.Value]; ok {
-					validSession = c.Value
-					break
-				}
+	api := r.Group("/api")
+	{
+		api.GET("/version", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"version": currentVersion})
+		})
+		api.GET("/check-setup", handleCheckSetup)
+		api.POST("/login", handleLogin)
+		api.POST("/logout", handleLogout)
+		api.GET("/events", getEvents)
+		api.GET("/events/full", getEventsFull)
+		api.GET("/events/search", searchEvents)
+		api.GET("/events/export", exportEvents)
+		api.GET("/contributions", getContributions)
+		api.GET("/stats", getEventStats)
+		api.GET("/tags", getTags)
+		api.GET("/public", getPublicEvents)
+		api.GET("/share", getShareLink)
+		api.GET("/map", getMapData)
+		api.GET("/persons", getPersons)
+
+		auth := api.Group("")
+		auth.Use(authMiddlewareGin())
+		{
+			auth.POST("/events", saveEvent)
+			auth.DELETE("/events", deleteEvent)
+			auth.POST("/upload", handleUpload)
+			auth.POST("/events/clone", cloneEvent)
+			auth.POST("/events/import", importEvents)
+			auth.POST("/share/create", createShareLink)
+			auth.POST("/persons", savePerson)
+			auth.DELETE("/persons", deletePerson)
+			auth.GET("/gotify/config", getGotifyConfig)
+			auth.POST("/gotify/config", saveGotifyConfig)
+			auth.POST("/gotify/test", testGotify)
+		}
+	}
+
+	r.GET("/admin.html", func(c *gin.Context) {
+		cookie, err := c.Cookie("session")
+		if err == nil {
+			expiry, ok := sessionStore[cookie]
+			if ok && time.Now().Unix() <= expiry {
+				c.File(filepath.Join(basePath, "static/admin.html"))
+				return
 			}
 		}
+		c.Redirect(http.StatusFound, "/login.html")
+	})
 
-		if validSession == "" {
-			http.Redirect(w, r, "/login.html", http.StatusFound)
+	r.GET("/login.html", func(c *gin.Context) {
+		cookie, err := c.Cookie("session")
+		if err == nil {
+			expiry, ok := sessionStore[cookie]
+			if ok && time.Now().Unix() <= expiry {
+				c.Redirect(http.StatusFound, "/admin.html")
+				return
+			}
+		}
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
+		if count == 0 {
+			c.Redirect(http.StatusFound, "/setup.html")
 			return
 		}
-
-		http.ServeFile(w, r, filepath.Join(basePath, "static/admin.html"))
+		c.File(filepath.Join(basePath, "static/login.html"))
 	})
 
-	http.HandleFunc("/api/events", func(w http.ResponseWriter, r *http.Request) {
-		switch r.Method {
-		case "GET":
-			getEvents(w, r)
-		case "POST":
-			authMiddleware(saveEvent)(w, r)
-		case "DELETE":
-			authMiddleware(deleteEvent)(w, r)
+	r.GET("/setup.html", func(c *gin.Context) {
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
+		if count > 0 {
+			c.Redirect(http.StatusFound, "/login.html")
+			return
 		}
+		c.File(filepath.Join(basePath, "static/setup.html"))
 	})
 
-	http.HandleFunc("/api/contributions", getContributions)
-
-	http.HandleFunc("/api/upload", authMiddleware(handleUpload))
-
-	http.HandleFunc("/api/events/search", searchEvents)
-	http.HandleFunc("/api/events/clone", authMiddleware(cloneEvent))
-	http.HandleFunc("/api/events/import", authMiddleware(importEvents))
-	http.HandleFunc("/api/events/export", exportEvents)
-
-	http.HandleFunc("/api/stats", getEventStats)
-
-	http.HandleFunc("/api/share/create", authMiddleware(createShareLink))
-	http.HandleFunc("/api/share", getShareLink)
-
-	http.HandleFunc("/api/public", getPublicEvents)
-
-	http.HandleFunc("/api/tags", getTags)
-
-	http.HandleFunc("/api/version", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]string{"version": currentVersion})
-	})
-
-	http.HandleFunc("/api-docs", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(basePath, "static/swagger.json"))
-	})
-
-	http.HandleFunc("/docs", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/html")
-		fmt.Fprint(w, `<!DOCTYPE html>
+	r.GET("/docs", func(c *gin.Context) {
+		c.Header("Content-Type", "text/html")
+		c.String(http.StatusOK, `<!DOCTYPE html>
 <html>
 <head>
     <title>TRACES API Documentation</title>
@@ -188,51 +231,933 @@ func main() {
 </html>`)
 	})
 
-	http.HandleFunc("/login.html", func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("session")
-		if err == nil {
-			expiry, ok := sessionStore[cookie.Value]
-			if ok && time.Now().Unix() <= expiry {
-				http.Redirect(w, r, "/admin.html", http.StatusFound)
-				return
-			}
-		}
-		var count int
-		db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
-		if count == 0 {
-			http.Redirect(w, r, "/setup.html", http.StatusFound)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(basePath, "static/login.html"))
+	r.GET("/api-docs", func(c *gin.Context) {
+		c.File(filepath.Join(basePath, "static/swagger.json"))
 	})
 
-	http.HandleFunc("/setup.html", func(w http.ResponseWriter, r *http.Request) {
-		var count int
-		db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
-		if count > 0 {
-			http.Redirect(w, r, "/login.html", http.StatusFound)
-			return
-		}
-		http.ServeFile(w, r, filepath.Join(basePath, "static/setup.html"))
+	r.Static("/static", filepath.Join(basePath, "static"))
+	r.Static("/media", mediaPath)
+
+	r.GET("/map.html", func(c *gin.Context) {
+		c.File(filepath.Join(basePath, "static/map.html"))
 	})
 
-	fs := http.FileServer(http.Dir(filepath.Join(basePath, "static")))
-	http.Handle("/static/", http.StripPrefix("/static/", fs))
-
-	mediaFs := http.FileServer(http.Dir(mediaPath))
-	http.Handle("/static/media/", http.StripPrefix("/static/media/", mediaFs))
-
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		http.ServeFile(w, r, filepath.Join(basePath, "static/index.html"))
+	r.GET("/", func(c *gin.Context) {
+		c.File(filepath.Join(basePath, "static/index.html"))
 	})
 
 	port := os.Getenv("PORT")
 	if port == "" {
-		port = "8080"
+		port = "6270"
 	}
 
 	log.Printf("Server starting on port %s...", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Fatal(r.Run(":" + port))
+}
+
+func authMiddlewareGin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		cookie, err := c.Cookie("session")
+		if err != nil {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		expiry, ok := sessionStore[cookie]
+		if !ok {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
+			return
+		}
+		if time.Now().Unix() > expiry {
+			delete(sessionStore, cookie)
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
+			return
+		}
+		c.Next()
+	}
+}
+
+func handleCheckSetup(c *gin.Context) {
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
+	c.JSON(http.StatusOK, gin.H{"setup": count > 0})
+}
+
+func handleLogin(c *gin.Context) {
+	var input struct {
+		Username string `json:"username"`
+		Password string `json:"password"`
+		Setup    bool   `json:"setup"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
+
+	if input.Setup && count > 0 {
+		c.JSON(http.StatusForbidden, gin.H{"error": "Setup already completed"})
+		return
+	}
+
+	if count == 0 {
+		hashed := hashPassword(input.Password)
+		_, err := db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", input.Username, hashed)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		sessionID := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%s-%d", 1, input.Username, time.Now().Unix()))))
+		sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+		c.SetCookie("session", sessionID, 86400, "/", "", false, true)
+		c.JSON(http.StatusOK, gin.H{"status": "ok"})
+		return
+	}
+
+	var user AdminUser
+	err := db.QueryRow("SELECT id, username, password FROM admin_users WHERE username = ?", input.Username).Scan(&user.ID, &user.Username, &user.Password)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	if hashPassword(input.Password) != user.Password {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+
+	sessionID := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%s-%d", user.ID, input.Username, time.Now().Unix()))))
+	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+	c.SetCookie("session", sessionID, 86400, "/", "", false, true)
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func handleLogout(c *gin.Context) {
+	cookie, err := c.Cookie("session")
+	if err == nil {
+		delete(sessionStore, cookie)
+	}
+	c.SetCookie("session", "", -1, "/", "", false, true)
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func getEvents(c *gin.Context) {
+	year := c.Query("year")
+	month := c.Query("month")
+	tag := c.Query("tag")
+
+	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
+	args := []interface{}{}
+
+	if year != "" {
+		query += " AND strftime('%Y', e.event_date) = ?"
+		args = append(args, year)
+	}
+	if month != "" {
+		query += " AND strftime('%m', e.event_date) = ?"
+		args = append(args, month)
+	}
+	if tag != "" {
+		query += " AND e.tags LIKE ?"
+		args = append(args, "%"+tag+"%")
+	}
+	query += " ORDER BY e.event_date ASC"
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	events := scanEventsWithPerson(rows)
+	c.JSON(http.StatusOK, events)
+}
+
+func getEventsFull(c *gin.Context) {
+	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id ORDER BY e.event_date ASC`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	events := scanEventsWithPerson(rows)
+	c.JSON(http.StatusOK, events)
+}
+
+func getPublicEvents(c *gin.Context) {
+	shareToken := c.Query("share")
+	if shareToken == "" && !publicMode {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
+		return
+	}
+
+	var eventIDs string
+	var year string
+
+	if shareToken != "" {
+		db.QueryRow("SELECT event_ids, year FROM share_tokens WHERE token = ?", shareToken).Scan(&eventIDs, &year)
+	} else {
+		year = c.Query("year")
+		if year == "" {
+			year = fmt.Sprintf("%d", time.Now().Year())
+		}
+	}
+
+	var query string
+	var args []interface{}
+
+	if eventIDs != "" {
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.id IN (` + eventIDs + `) ORDER BY e.event_date ASC`
+	} else {
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.is_public = 1`
+		if year != "" {
+			query += " AND strftime('%Y', e.event_date) = ?"
+			args = append(args, year)
+		}
+		query += " ORDER BY e.event_date ASC"
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	events := scanEventsWithPerson(rows)
+	c.JSON(http.StatusOK, events)
+}
+
+func getContributions(c *gin.Context) {
+	year := c.Query("year")
+	if year == "" {
+		year = fmt.Sprintf("%d", time.Now().Year())
+	}
+
+	rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE strftime('%Y', event_date) = ?`, year)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	contributions := make(map[string]int)
+	for rows.Next() {
+		var date string
+		if err := rows.Scan(&date); err == nil {
+			contributions[date]++
+		}
+	}
+
+	c.JSON(http.StatusOK, contributions)
+}
+
+func saveEvent(c *gin.Context) {
+	var e TimelineEvent
+	if err := c.ShouldBindJSON(&e); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	log.Printf("[EVENT] Saving event: ID=%d, Title=%s, Date=%s", e.ID, e.Title, e.Date)
+
+	action := "created"
+	if e.ID == 0 {
+		result, err := db.Exec(`INSERT INTO timeline_events 
+			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, person_id, latitude, longitude) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		id, _ := result.LastInsertId()
+		e.ID = int(id)
+	} else {
+		_, err := db.Exec(`UPDATE timeline_events SET 
+			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, person_id=?, latitude=?, longitude=? 
+			WHERE id=?`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		action = "updated"
+	}
+
+	sendGotifyNotification(fmt.Sprintf("Event %s: %s (%s)", action, e.Title, e.Date), e.Description)
+	c.JSON(http.StatusOK, e)
+}
+
+func deleteEvent(c *gin.Context) {
+	idStr := c.Query("id")
+	id, _ := strconv.Atoi(idStr)
+
+	var title string
+	db.QueryRow("SELECT title FROM timeline_events WHERE id=?", id).Scan(&title)
+
+	_, err := db.Exec("DELETE FROM timeline_events WHERE id=?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	sendGotifyNotification(fmt.Sprintf("Event deleted: %s", title), "")
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func handleUpload(c *gin.Context) {
+	mediaType := c.PostForm("media_type")
+	if mediaType == "" {
+		mediaType = "image"
+	}
+
+	var formKey string
+	switch mediaType {
+	case "video":
+		formKey = "video"
+	case "audio":
+		formKey = "audio"
+	default:
+		formKey = "image"
+	}
+
+	file, err := c.FormFile(formKey)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	ext := strings.ToLower(filepath.Ext(file.Filename))
+	allowedExts := map[string][]string{
+		"image": {".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg", ".bmp", ".tiff", ".tif"},
+		"video": {".mp4", ".webm", ".mov", ".avi", ".mkv", ".flv", ".wmv", ".m4v", ".3gp", ".ogv"},
+		"audio": {".mp3", ".wav", ".ogg", ".flac", ".aac", ".m4a", ".wma", ".opus", ".oga", ".mid", ".midi"},
+	}
+
+	validExt := false
+	for _, e := range allowedExts[mediaType] {
+		if ext == e {
+			validExt = true
+			break
+		}
+	}
+	if !validExt {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid file type"})
+		return
+	}
+
+	filename := fmt.Sprintf("%d%s", time.Now().Unix(), ext)
+	uploadPath := filepath.Join(mediaPath, filename)
+
+	if err := c.SaveUploadedFile(file, uploadPath); err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	url := "/media/" + filename
+	sendGotifyNotification(fmt.Sprintf("New media uploaded: %s (%s)", filename, mediaType), url)
+
+	c.JSON(http.StatusOK, gin.H{
+		"url":        url,
+		"media_type": mediaType,
+	})
+}
+
+func searchEvents(c *gin.Context) {
+	query := c.Query("q")
+	year := c.Query("year")
+	tag := c.Query("tag")
+
+	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
+	args := []interface{}{}
+
+	if query != "" {
+		sqlStr += " AND (e.title LIKE ? OR e.description LIKE ? OR e.location LIKE ?)"
+		like := "%" + query + "%"
+		args = append(args, like, like, like)
+	}
+	if year != "" {
+		sqlStr += " AND strftime('%Y', e.event_date) = ?"
+		args = append(args, year)
+	}
+	if tag != "" {
+		sqlStr += " AND e.tags LIKE ?"
+		args = append(args, "%"+tag+"%")
+	}
+
+	sqlStr += " ORDER BY e.event_date ASC"
+
+	rows, err := db.Query(sqlStr, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	events := scanEventsWithPerson(rows)
+	c.JSON(http.StatusOK, events)
+}
+
+func cloneEvent(c *gin.Context) {
+	var input struct {
+		ID   int    `json:"id"`
+		Date string `json:"date"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	var e TimelineEvent
+	err := db.QueryRow(`SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order FROM timeline_events WHERE id = ?`, input.ID).
+		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.Tags, &e.SortOrder)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
+	}
+
+	e.Date = input.Date
+	e.ID = 0
+
+	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	sendGotifyNotification(fmt.Sprintf("Event cloned: %s", e.Title), "")
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func importEvents(c *gin.Context) {
+	format := c.Query("format")
+	if format == "" {
+		format = "json"
+	}
+
+	var events []TimelineEvent
+	if format == "csv" {
+		file, _, err := c.Request.FormFile("file")
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+		defer file.Close()
+
+		reader := csv.NewReader(file)
+		records, err := reader.ReadAll()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+
+		for i, record := range records {
+			if i == 0 {
+				continue
+			}
+			if len(record) < 4 {
+				continue
+			}
+			e := TimelineEvent{
+				Title:       record[0],
+				Description: record[1],
+				Date:        record[2],
+				Location:    record[3],
+				MediaType:   "image",
+			}
+			if len(record) > 4 {
+				e.Tags = record[4]
+			}
+			if len(record) > 5 {
+				if lat, err := strconv.ParseFloat(record[5], 64); err == nil {
+					e.Latitude = &lat
+				}
+			}
+			if len(record) > 6 {
+				if lng, err := strconv.ParseFloat(record[6], 64); err == nil {
+					e.Longitude = &lng
+				}
+			}
+			events = append(events, e)
+		}
+	} else {
+		if err := c.ShouldBindJSON(&events); err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+			return
+		}
+	}
+
+	count := 0
+	for _, e := range events {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Latitude, e.Longitude)
+		if err == nil {
+			count++
+		}
+	}
+
+	sendGotifyNotification(fmt.Sprintf("Imported %d events", count), "")
+	c.JSON(http.StatusOK, gin.H{"imported": count})
+}
+
+func exportEvents(c *gin.Context) {
+	year := c.Query("year")
+	format := c.Query("format")
+	if format == "" {
+		format = "json"
+	}
+
+	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id`
+	args := []interface{}{}
+
+	if year != "" {
+		sqlStr += " WHERE strftime('%Y', e.event_date) = ?"
+		args = append(args, year)
+	}
+	sqlStr += " ORDER BY e.event_date ASC"
+
+	rows, err := db.Query(sqlStr, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	events := scanEventsWithPerson(rows)
+
+	if format == "csv" {
+		c.Header("Content-Type", "text/csv")
+		c.Header("Content-Disposition", "attachment; filename=events.csv")
+		c.String(http.StatusOK, "Title,Description,Date,Location,MediaType,Tags,Latitude,Longitude\n")
+		for _, e := range events {
+			lat, lng := "", ""
+			if e.Latitude != nil {
+				lat = fmt.Sprintf("%f", *e.Latitude)
+			}
+			if e.Longitude != nil {
+				lng = fmt.Sprintf("%f", *e.Longitude)
+			}
+			c.Writer.WriteString(fmt.Sprintf("%q,%q,%s,%q,%s,%s,%s,%s\n", e.Title, e.Description, e.Date, e.Location, e.MediaType, e.Tags, lat, lng))
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, events)
+}
+
+func getEventStats(c *gin.Context) {
+	year := c.Query("year")
+	if year == "" {
+		year = fmt.Sprintf("%d", time.Now().Year())
+	}
+
+	var stats EventStats
+	stats.ByMonth = make(map[string]int)
+	stats.ByTag = make(map[string]int)
+	stats.ByMedia = make(map[string]int)
+	stats.YearOverYear = make(map[string]int)
+	stats.ByYear = make(map[string]int)
+
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&stats.Total)
+	db.QueryRow("SELECT COUNT(DISTINCT location) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&stats.Locations)
+	db.QueryRow("SELECT COUNT(DISTINCT person_id) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND person_id IS NOT NULL", year).Scan(&stats.Persons)
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND media_url != ''", year).Scan(&stats.MediaTotal)
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&stats.WithLocation)
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND latitude != 0 AND longitude != 0", year).Scan(&stats.WithGeo)
+	db.QueryRow("SELECT COUNT(*) FROM persons").Scan(&stats.PersonCount)
+	stats.WithMedia = stats.MediaTotal
+
+	monthRows, _ := db.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events 
+		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%m', event_date)`, year)
+	for monthRows.Next() {
+		var month string
+		var count int
+		monthRows.Scan(&month, &count)
+		stats.ByMonth[month] = count
+	}
+	monthRows.Close()
+
+	tagRows, _ := db.Query(`SELECT tags, COUNT(*) FROM timeline_events 
+		WHERE strftime('%Y', event_date) = ? AND tags != '' GROUP BY tags`, year)
+	for tagRows.Next() {
+		var tags string
+		var count int
+		tagRows.Scan(&tags, &count)
+		stats.ByTag[tags] = count
+	}
+	tagRows.Close()
+
+	mediaRows, _ := db.Query(`SELECT media_type, COUNT(*) FROM timeline_events 
+		WHERE strftime('%Y', event_date) = ? GROUP BY media_type`, year)
+	for mediaRows.Next() {
+		var media string
+		var count int
+		mediaRows.Scan(&media, &count)
+		stats.ByMedia[media] = count
+	}
+	mediaRows.Close()
+
+	yoyRows, _ := db.Query(`SELECT strftime('%Y', event_date), COUNT(*) FROM timeline_events GROUP BY strftime('%Y', event_date) ORDER BY strftime('%Y', event_date) DESC LIMIT 5`)
+	for yoyRows.Next() {
+		var y string
+		var count int
+		yoyRows.Scan(&y, &count)
+		stats.YearOverYear[y] = count
+		stats.ByYear[y] = count
+	}
+	yoyRows.Close()
+	stats.TotalYears = len(stats.ByYear)
+
+	c.JSON(http.StatusOK, stats)
+}
+
+func createShareLink(c *gin.Context) {
+	var input struct {
+		EventIDs []int  `json:"event_ids"`
+		Year     string `json:"year"`
+		Days     int    `json:"days"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if input.Days == 0 {
+		input.Days = 7
+	}
+
+	nowStr := time.Now().Format("2006-01-02T15:04:05")
+	token := fmt.Sprintf("%x", sha256.Sum256([]byte(nowStr)))
+
+	eventIDsStr := ""
+	for idx, idVal := range input.EventIDs {
+		if idx > 0 {
+			eventIDsStr += ","
+		}
+		eventIDsStr += strconv.Itoa(idVal)
+	}
+
+	expires := time.Now().Add(time.Duration(input.Days) * 24 * time.Hour)
+
+	_, err := db.Exec(`INSERT INTO share_tokens (token, event_ids, year, expires_at) VALUES (?, ?, ?, ?)`,
+		token, eventIDsStr, input.Year, expires.Format("2006-01-02"))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	sendGotifyNotification("New share link created", fmt.Sprintf("Expires: %s", expires.Format("2006-01-02")))
+	c.JSON(http.StatusOK, gin.H{"token": token, "expires": expires.Format("2006-01-02")})
+}
+
+func getShareLink(c *gin.Context) {
+	token := c.Query("token")
+	if token == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Token required"})
+		return
+	}
+
+	var eventIDs, year string
+	var expires string
+	err := db.QueryRow("SELECT event_ids, year, expires_at FROM share_tokens WHERE token = ?", token).Scan(&eventIDs, &year, &expires)
+	if err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Invalid token"})
+		return
+	}
+
+	expTime, _ := time.Parse("2006-01-02", expires)
+	if time.Now().After(expTime) {
+		c.JSON(http.StatusGone, gin.H{"error": "Token expired"})
+		return
+	}
+
+	c.Redirect(http.StatusFound, "/?share="+token)
+}
+
+func getTags(c *gin.Context) {
+	year := c.Query("year")
+	query := "SELECT DISTINCT tags FROM timeline_events WHERE tags != ''"
+	args := []interface{}{}
+
+	if year != "" {
+		query += " AND strftime('%Y', event_date) = ?"
+		args = append(args, year)
+	}
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var tags []string
+	for rows.Next() {
+		var t string
+		rows.Scan(&t)
+		tags = append(tags, t)
+	}
+
+	c.JSON(http.StatusOK, tags)
+}
+
+func getPersons(c *gin.Context) {
+	query := `SELECT p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at,
+		(SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count
+		FROM persons p ORDER BY p.name ASC`
+
+	rows, err := db.Query(query)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	persons := make([]Person, 0)
+	for rows.Next() {
+		var p Person
+		err := rows.Scan(&p.ID, &p.Name, &p.AvatarURL, &p.Bio, &p.BirthDate, &p.Color, &p.CreatedAt, &p.EventCount)
+		if err != nil {
+			continue
+		}
+		persons = append(persons, p)
+	}
+
+	c.JSON(http.StatusOK, persons)
+}
+
+func savePerson(c *gin.Context) {
+	var p Person
+	if err := c.ShouldBindJSON(&p); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if p.ID == 0 {
+		result, err := db.Exec("INSERT INTO persons (name, avatar_url, bio, birth_date, color) VALUES (?, ?, ?, ?, ?)",
+			p.Name, p.AvatarURL, p.Bio, p.BirthDate, p.Color)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		id, _ := result.LastInsertId()
+		p.ID = int(id)
+		sendGotifyNotification(fmt.Sprintf("Person created: %s", p.Name), p.Bio)
+	} else {
+		_, err := db.Exec("UPDATE persons SET name=?, avatar_url=?, bio=?, birth_date=?, color=? WHERE id=?",
+			p.Name, p.AvatarURL, p.Bio, p.BirthDate, p.Color, p.ID)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		sendGotifyNotification(fmt.Sprintf("Person updated: %s", p.Name), p.Bio)
+	}
+
+	c.JSON(http.StatusOK, p)
+}
+
+func deletePerson(c *gin.Context) {
+	idStr := c.Query("id")
+	id, _ := strconv.Atoi(idStr)
+
+	var name string
+	db.QueryRow("SELECT name FROM persons WHERE id=?", id).Scan(&name)
+
+	db.Exec("UPDATE timeline_events SET person_id = NULL WHERE person_id = ?", id)
+	_, err := db.Exec("DELETE FROM persons WHERE id=?", id)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	sendGotifyNotification(fmt.Sprintf("Person deleted: %s", name), "")
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func getMapData(c *gin.Context) {
+	year := c.Query("year")
+	query := `SELECT id, title, description, event_date, location, media_type, media_url, latitude, longitude 
+		FROM timeline_events WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0 AND longitude != 0`
+	args := []interface{}{}
+
+	if year != "" {
+		query += " AND strftime('%Y', event_date) = ?"
+		args = append(args, year)
+	}
+	query += " ORDER BY event_date ASC"
+
+	rows, err := db.Query(query, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type MapFeature struct {
+		ID          int     `json:"id"`
+		Title       string  `json:"title"`
+		Description string  `json:"description"`
+		Date        string  `json:"date"`
+		Location    string  `json:"location"`
+		MediaType   string  `json:"media_type"`
+		MediaURL    string  `json:"media_url"`
+		Latitude    float64 `json:"latitude"`
+		Longitude   float64 `json:"longitude"`
+	}
+
+	var features []MapFeature
+	for rows.Next() {
+		var f MapFeature
+		var lat, lng sql.NullFloat64
+		var mediaURL, mediaType sql.NullString
+		err := rows.Scan(&f.ID, &f.Title, &f.Description, &f.Date, &f.Location, &mediaType, &mediaURL, &lat, &lng)
+		if err != nil {
+			continue
+		}
+		f.MediaType = mediaType.String
+		f.MediaURL = mediaURL.String
+		if lat.Valid {
+			f.Latitude = lat.Float64
+		}
+		if lng.Valid {
+			f.Longitude = lng.Float64
+		}
+		features = append(features, f)
+	}
+
+	result := gin.H{
+		"type":     "FeatureCollection",
+		"features": features,
+	}
+	c.JSON(http.StatusOK, result)
+}
+
+func getGotifyConfig(c *gin.Context) {
+	var cfg GotifyConfig
+	var enabledInt int
+	err := db.QueryRow("SELECT url, token, enabled FROM gotify_settings WHERE id = 1").Scan(&cfg.URL, &cfg.Token, &enabledInt)
+	if err == nil {
+		cfg.Enabled = enabledInt == 1
+	}
+	c.JSON(http.StatusOK, cfg)
+}
+
+func saveGotifyConfig(c *gin.Context) {
+	var cfg GotifyConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	enabledInt := 0
+	if cfg.Enabled {
+		enabledInt = 1
+	}
+
+	_, err := db.Exec(`UPDATE gotify_settings SET url=?, token=?, enabled=? WHERE id=1`, cfg.URL, cfg.Token, enabledInt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+
+	gotifyURL = cfg.URL
+	gotifyToken = cfg.Token
+	gotifyEnabled = cfg.Enabled
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func testGotify(c *gin.Context) {
+	if gotifyURL == "" || gotifyToken == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Gotify URL and token not configured"})
+		return
+	}
+
+	body := fmt.Sprintf(`{"title":"TRACES Test","message":"This is a test notification from TRACES","priority":5}`)
+	req, err := http.NewRequest("POST", gotifyURL+"/message?token="+gotifyToken, strings.NewReader(body))
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Gotify: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Notification sent successfully"})
+	} else {
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Gotify returned %d", resp.StatusCode)})
+	}
+}
+
+func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
+	events := make([]TimelineEvent, 0)
+	for rows.Next() {
+		var e TimelineEvent
+		var p Person
+		var personID sql.NullInt64
+		var lat, lng sql.NullFloat64
+		var pID sql.NullInt64
+		var pName, pAvatar, pBio, pBirth, pColor, pCreated sql.NullString
+
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt, &personID, &lat, &lng,
+			&pID, &pName, &pAvatar, &pBio, &pBirth, &pColor, &pCreated)
+		if err != nil {
+			continue
+		}
+
+		if personID.Valid {
+			pid := int(personID.Int64)
+			e.PersonID = &pid
+		}
+		if lat.Valid {
+			v := lat.Float64
+			e.Latitude = &v
+		}
+		if lng.Valid {
+			v := lng.Float64
+			e.Longitude = &v
+		}
+
+		if pID.Valid {
+			p.ID = int(pID.Int64)
+			p.Name = pName.String
+			p.AvatarURL = pAvatar.String
+			p.Bio = pBio.String
+			p.BirthDate = pBirth.String
+			p.Color = pColor.String
+			p.CreatedAt = pCreated.String
+			e.Person = &p
+		}
+
+		events = append(events, e)
+	}
+	return events
 }
 
 func initDB() {
@@ -255,58 +1180,72 @@ func initDB() {
 		log.Printf("[DB] Migrated to schema version %d", version)
 	}
 
-	createEventsTable := `
-	CREATE TABLE IF NOT EXISTS timeline_events (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		title TEXT,
-		description TEXT,
-		event_date TEXT,
-		location TEXT,
-		media_type TEXT,
-		media_url TEXT,
-		thumbnail TEXT,
-		media_caption TEXT,
-		tags TEXT,
-		people TEXT,
-		sort_order INTEGER DEFAULT 0,
-		is_public INTEGER DEFAULT 0,
-		created_at TEXT DEFAULT CURRENT_TIMESTAMP
-	);`
-
-	createAdminTable := `
-	CREATE TABLE IF NOT EXISTS admin_users (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		username TEXT UNIQUE,
-		password TEXT
-	);`
-
-	createShareTable := `
-	CREATE TABLE IF NOT EXISTS share_tokens (
-		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		token TEXT UNIQUE,
-		event_ids TEXT,
-		year TEXT,
-		expires_at TEXT
-	);`
-
-	_, err = db.Exec(createEventsTable)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, err = db.Exec(createAdminTable)
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	_, err = db.Exec(createShareTable)
-	if err != nil {
-		log.Fatal(err)
-	}
-
+	createTables()
 	publicMode = os.Getenv("PUBLIC_MODE") == "true"
-
 	seedEvents()
+}
+
+func createTables() {
+	queries := []string{
+		`CREATE TABLE IF NOT EXISTS timeline_events (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT,
+			description TEXT,
+			event_date TEXT,
+			location TEXT,
+			media_type TEXT,
+			media_url TEXT,
+			thumbnail TEXT,
+			media_caption TEXT,
+			tags TEXT,
+			sort_order INTEGER DEFAULT 0,
+			is_public INTEGER DEFAULT 0,
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			person_id INTEGER,
+			latitude REAL,
+			longitude REAL
+		)`,
+		`CREATE TABLE IF NOT EXISTS admin_users (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			username TEXT UNIQUE,
+			password TEXT
+		)`,
+		`CREATE TABLE IF NOT EXISTS share_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			token TEXT UNIQUE,
+			event_ids TEXT,
+			year TEXT,
+			expires_at TEXT
+		)`,
+		`CREATE TABLE IF NOT EXISTS persons (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			avatar_url TEXT DEFAULT '',
+			bio TEXT DEFAULT '',
+			birth_date TEXT DEFAULT '',
+			color TEXT DEFAULT '#7c3aed',
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS gotify_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			url TEXT DEFAULT '',
+			token TEXT DEFAULT '',
+			enabled INTEGER DEFAULT 0
+		)`,
+	}
+
+	for _, q := range queries {
+		_, err := db.Exec(q)
+		if err != nil {
+			log.Fatal(err)
+		}
+	}
+
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM gotify_settings").Scan(&count)
+	if count == 0 {
+		db.Exec("INSERT INTO gotify_settings (id, url, token, enabled) VALUES (1, '', '', 0)")
+	}
 }
 
 func runMigration(fromVersion int) {
@@ -336,66 +1275,63 @@ func runMigration(fromVersion int) {
 			expires_at TEXT
 		)`)
 	case 2:
-		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN people TEXT`)
-		_, _ = db.Exec(`UPDATE timeline_events SET people = '' WHERE people IS NULL`)
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			avatar_url TEXT DEFAULT '',
+			bio TEXT DEFAULT '',
+			birth_date TEXT DEFAULT '',
+			color TEXT DEFAULT '#7c3aed',
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		)`)
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS gotify_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			url TEXT DEFAULT '',
+			token TEXT DEFAULT '',
+			enabled INTEGER DEFAULT 0
+		)`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO gotify_settings (id, url, token, enabled) VALUES (1, '', '', 0)`)
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN person_id INTEGER`)
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN latitude REAL`)
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN longitude REAL`)
 	}
 }
 
 func seedEvents() {
+	var count int
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&count)
+	if count > 0 {
+		return
+	}
+
+	nyLat, nyLng := 40.7580, -73.9855
+	cpLat, cpLng := 40.7829, -73.9654
 	events := []TimelineEvent{
 		{
-			Title:        "New Year Celebration",
+			Title:       "New Year Celebration",
 			Description: "Welcome to the new year with fireworks and festivities!",
 			Date:        "2026-01-01",
-			Location:   "Times Square, NYC",
-			MediaType:  "image",
-			MediaURL:   "/static/media/newyear.jpg",
+			Location:    "Times Square, NYC",
+			MediaType:   "image",
+			MediaURL:    "/media/newyear.jpg",
+			Latitude:    &nyLat,
+			Longitude:   &nyLng,
 		},
 		{
-			Title:        "Summer Music Festival",
+			Title:       "Summer Music Festival",
 			Description: "Amazing performances under the stars",
 			Date:        "2026-07-15",
-			Location:   "Central Park",
-			MediaType:  "video",
-			MediaURL:   "/static/media/festival.mp4",
+			Location:    "Central Park",
+			MediaType:   "video",
+			MediaURL:    "/media/festival.mp4",
+			Latitude:    &cpLat,
+			Longitude:   &cpLng,
 		},
 	}
 
 	for _, e := range events {
-		db.Exec("INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail) VALUES (?, ?, ?, ?, ?, ?, ?)",
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail)
-	}
-}
-
-func authMiddleware(next http.HandlerFunc) http.HandlerFunc {
-	return func(w http.ResponseWriter, r *http.Request) {
-		var sessionCookie *http.Cookie
-		for _, c := range r.Cookies() {
-			if c.Name == "session" {
-				if _, ok := sessionStore[c.Value]; ok {
-					sessionCookie = c
-					break
-				}
-			}
-		}
-
-		if sessionCookie == nil {
-			http.Error(w, "Unauthorized", http.StatusUnauthorized)
-			return
-		}
-
-		expiry, ok := sessionStore[sessionCookie.Value]
-		if !ok {
-			http.Error(w, "Session expired", http.StatusUnauthorized)
-			return
-		}
-		if time.Now().Unix() > expiry {
-			delete(sessionStore, sessionCookie.Value)
-			http.Error(w, "Session expired", http.StatusUnauthorized)
-			return
-		}
-
-		next.ServeHTTP(w, r)
+		db.Exec("INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Latitude, e.Longitude)
 	}
 }
 
@@ -404,311 +1340,37 @@ func hashPassword(password string) string {
 	return fmt.Sprintf("%x", hash)
 }
 
-func handleCheckSetup(w http.ResponseWriter, r *http.Request) {
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
-	json.NewEncoder(w).Encode(map[string]bool{"setup": count > 0})
-}
+func sendGotifyNotification(title, message string) {
+	if !gotifyEnabled && (gotifyURL == "" || gotifyToken == "") {
+		return
+	}
+	if gotifyURL == "" || gotifyToken == "" {
+		return
+	}
 
-func handleLogin(w http.ResponseWriter, r *http.Request) {
-	if r.Method == "POST" {
-		var input struct {
-			Username string `json:"username"`
-			Password string `json:"password"`
-			Setup    bool   `json:"setup"`
-		}
-		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
+	payload := map[string]interface{}{
+		"title":    title,
+		"message":  message,
+		"priority": 5,
+	}
 
-		var count int
-		db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
+	body, _ := json.Marshal(payload)
+	url := strings.TrimSuffix(gotifyURL, "/") + "/message?token=" + gotifyToken
 
-		if input.Setup && count > 0 {
-			http.Error(w, "Setup already completed", http.StatusForbidden)
-			return
-		}
-
-		if count == 0 {
-			hashed := hashPassword(input.Password)
-			_, err := db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", input.Username, hashed)
-			if err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-				return
-			}
-
-			sessionID := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%s-%d", 1, input.Username, time.Now().Unix()))))
-			sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
-
-			cookie := &http.Cookie{Name: "session", Value: sessionID, HttpOnly: true, Path: "/"}
-			http.SetCookie(w, cookie)
-
-			w.WriteHeader(http.StatusOK)
-			json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-			return
-		}
-
-		var user AdminUser
-		err := db.QueryRow("SELECT id, username, password FROM admin_users WHERE username = ?", input.Username).Scan(&user.ID, &user.Username, &user.Password)
+	go func() {
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Post(url, "application/json", bytes.NewReader(body))
 		if err != nil {
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
+			log.Printf("[GOTIFY] Notification failed: %v", err)
 			return
 		}
-
-		inputHash := hashPassword(input.Password)
-		if inputHash != user.Password {
-			http.Error(w, "Invalid credentials", http.StatusUnauthorized)
-			return
+		defer resp.Body.Close()
+		if resp.StatusCode >= 400 {
+			log.Printf("[GOTIFY] Notification failed with status: %d", resp.StatusCode)
+		} else {
+			log.Printf("[GOTIFY] Notification sent: %s", title)
 		}
-
-		sessionID := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%s-%d", user.ID, input.Username, time.Now().Unix()))))
-		sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
-
-		cookie := &http.Cookie{Name: "session", Value: sessionID, HttpOnly: true, Path: "/"}
-		http.SetCookie(w, cookie)
-
-		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-		return
-	}
-
-	http.ServeFile(w, r, filepath.Join(basePath, "static/login.html"))
-}
-
-func handleLogout(w http.ResponseWriter, r *http.Request) {
-	cookie, err := r.Cookie("session")
-	if err == nil {
-		delete(sessionStore, cookie.Value)
-	}
-	http.SetCookie(w, &http.Cookie{Name: "session", Value: "", MaxAge: -1})
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func getEvents(w http.ResponseWriter, r *http.Request) {
-	year := r.URL.Query().Get("year")
-	month := r.URL.Query().Get("month")
-	limit := r.URL.Query().Get("limit")
-	skip := r.URL.Query().Get("skip")
-	sort := r.URL.Query().Get("sort")
-
-	log.Printf("[API] getEvents: year=%s, month=%s, limit=%s, skip=%s, sort=%s", year, month, limit, skip, sort)
-
-	var query string
-	var args []interface{}
-
-	if year != "" && month != "" {
-		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(people,''), created_at 
-				 FROM timeline_events WHERE strftime('%Y', event_date) = ? AND strftime('%m', event_date) = ?`
-		args = []interface{}{year, month}
-	} else if year != "" {
-		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(people,''), created_at 
-				 FROM timeline_events WHERE strftime('%Y', event_date) = ?`
-		args = []interface{}{year}
-	} else {
-		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(people,''), created_at 
-				 FROM timeline_events`
-	}
-
-	if sort == "desc" {
-		query += " ORDER BY event_date DESC"
-	} else if sort == "asc" {
-		query += " ORDER BY event_date ASC"
-	} else {
-		query += " ORDER BY event_date ASC"
-	}
-
-	if limit != "" {
-		query += " LIMIT " + limit
-		if skip != "" {
-			query += " OFFSET " + skip
-		}
-	}
-
-	log.Printf("[API] getEvents query: %s with args: %v", query, args)
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		log.Printf("[API] getEvents query error: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var events []TimelineEvent
-	for rows.Next() {
-		var e TimelineEvent
-		var people string
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &people, &e.CreatedAt)
-		if err != nil {
-			log.Printf("[API] getEvents scan error: %v", err)
-			continue
-		}
-		e.People = people
-		events = append(events, e)
-	}
-
-	log.Printf("[API] getEvents returned %d events", len(events))
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
-}
-
-func getContributions(w http.ResponseWriter, r *http.Request) {
-	year := r.URL.Query().Get("year")
-	if year == "" {
-		year = fmt.Sprintf("%d", time.Now().Year())
-	}
-
-	rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE strftime('%Y', event_date) = ?`, year)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	contributions := make(map[string]int)
-	for rows.Next() {
-		var date string
-		if err := rows.Scan(&date); err == nil {
-			contributions[date]++
-		}
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(contributions)
-}
-
-func saveEvent(w http.ResponseWriter, r *http.Request) {
-	var e TimelineEvent
-	if err := json.NewDecoder(r.Body).Decode(&e); err != nil {
-		log.Printf("[EVENT] Failed to decode: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	log.Printf("[EVENT] Saving event: ID=%d, Title=%q, Date=%q, Location=%q, MediaType=%q, Tags=%q, People=%q",
-		e.ID, e.Title, e.Date, e.Location, e.MediaType, e.Tags, e.People)
-
-	if e.ID == 0 {
-		result, err := db.Exec(`INSERT INTO timeline_events 
-			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, people, sort_order, is_public) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.People, e.SortOrder, e.IsPublic)
-		if err != nil {
-			log.Printf("[EVENT] Insert failed: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		id, _ := result.LastInsertId()
-		e.ID = int(id)
-		log.Printf("[EVENT] Created new event with ID: %d", e.ID)
-	} else {
-		_, err := db.Exec(`UPDATE timeline_events SET 
-			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, people=?, sort_order=?, is_public=? 
-			WHERE id=?`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.People, e.SortOrder, e.IsPublic, e.ID)
-		if err != nil {
-			log.Printf("[EVENT] Update failed: %v", err)
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		log.Printf("[EVENT] Updated event ID=%d", e.ID)
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(e)
-}
-
-func deleteEvent(w http.ResponseWriter, r *http.Request) {
-	idStr := r.URL.Query().Get("id")
-	id, _ := strconv.Atoi(idStr)
-	log.Printf("[EVENT] Deleting event ID=%d", id)
-	_, err := db.Exec("DELETE FROM timeline_events WHERE id=?", id)
-	if err != nil {
-		log.Printf("[EVENT] Delete failed: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	log.Printf("[EVENT] Deleted event ID=%d", id)
-	w.WriteHeader(http.StatusOK)
-}
-
-func handleUpload(w http.ResponseWriter, r *http.Request) {
-	log.Printf("[UPLOAD] Upload request received")
-	if r.Method != "POST" {
-		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
-		return
-	}
-
-	mediaType := r.FormValue("media_type")
-	if mediaType == "" {
-		mediaType = "image"
-	}
-
-	var formKey string
-	switch mediaType {
-	case "video":
-		formKey = "video"
-	case "audio":
-		formKey = "audio"
-	default:
-		formKey = "image"
-	}
-
-	file, header, err := r.FormFile(formKey)
-	if err != nil {
-		log.Printf("[UPLOAD] Failed to get form file: %v", err)
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-	defer file.Close()
-	log.Printf("[UPLOAD] File received: %s, size: %d", header.Filename, header.Size)
-
-	ext := strings.ToLower(filepath.Ext(header.Filename))
-	allowedExts := map[string][]string{
-		"image":  {".jpg", ".jpeg", ".png", ".gif", ".webp"},
-		"video":  {".mp4", ".webm", ".mov"},
-		"audio":  {".mp3", ".wav", ".ogg"},
-	}
-
-	validExt := false
-	for _, e := range allowedExts[mediaType] {
-		if ext == e {
-			validExt = true
-			break
-		}
-	}
-	if !validExt {
-		log.Printf("[UPLOAD] Invalid file type: %s", ext)
-		http.Error(w, "Invalid file type", http.StatusBadRequest)
-		return
-	}
-
-	filename := fmt.Sprintf("%d%s", time.Now().Unix(), ext)
-	uploadPath := filepath.Join(mediaPath, filename)
-	log.Printf("[UPLOAD] Saving to: %s", uploadPath)
-
-	out, err := os.Create(uploadPath)
-	if err != nil {
-		log.Printf("[UPLOAD] Failed to create file: %v", err)
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer out.Close()
-
-	data, _ := io.ReadAll(file)
-	out.Write(data)
-
-	staticCache["/static/media/"+filename] = data
-
-	log.Printf("[UPLOAD] Success! URL: /static/media/%s", filename)
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(map[string]string{
-		"url":       "/static/media/" + filename,
-		"media_type": mediaType,
-	})
+	}()
 }
 
 func EscapeHtml(text string) string {
@@ -740,441 +1402,4 @@ func FormatDate(dateStr string) string {
 		return dateStr
 	}
 	return date.Format("Jan 2")
-}
-
-func searchEvents(w http.ResponseWriter, r *http.Request) {
-	query := r.URL.Query().Get("q")
-	year := r.URL.Query().Get("year")
-	tag := r.URL.Query().Get("tag")
-
-	sql := "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(media_caption,''), COALESCE(tags,''), COALESCE(people,''), sort_order, is_public, created_at FROM timeline_events WHERE 1=1"
-	args := []interface{}{}
-
-	if query != "" {
-		sql += " AND (title LIKE ? OR description LIKE ? OR location LIKE ? OR people LIKE ?)"
-		like := "%" + query + "%"
-		args = append(args, like, like, like, like)
-	}
-	if year != "" {
-		sql += " AND strftime('%Y', event_date) = ?"
-		args = append(args, year)
-	}
-	if tag != "" {
-		sql += " AND tags LIKE ?"
-		args = append(args, "%"+tag+"%")
-	}
-
-	sql += " ORDER BY event_date ASC"
-
-	rows, err := db.Query(sql, args...)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var events []TimelineEvent
-	for rows.Next() {
-		var e TimelineEvent
-		/* scan with nullable strings */
-		var people, mediaCaption, tags string
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &mediaCaption, &tags, &people, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
-		if err != nil {
-			log.Printf("[API] searchEvents scan error: %v", err)
-			continue
-		}
-		e.MediaCaption = mediaCaption
-		e.Tags = tags
-		e.People = people
-		events = append(events, e)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
-}
-
-func cloneEvent(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		ID   int    `json:"id"`
-		Date string `json:"date"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	var e TimelineEvent
-	var people, tags string
-	err := db.QueryRow("SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, people, sort_order FROM timeline_events WHERE id = ?", input.ID).
-		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &tags, &people, &e.SortOrder)
-	if err != nil {
-		http.Error(w, "Event not found", http.StatusNotFound)
-		return
-	}
-	e.Tags = tags
-	e.People = people
-
-	e.Date = input.Date
-	e.ID = 0
-
-	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, people, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.People, e.SortOrder)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
-}
-
-func importEvents(w http.ResponseWriter, r *http.Request) {
-	format := r.URL.Query().Get("format")
-	if format == "" {
-		format = "json"
-	}
-
-	var events []TimelineEvent
-	if format == "csv" {
-		file, _, err := r.FormFile("file")
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-		defer file.Close()
-
-		reader := csv.NewReader(file)
-		records, err := reader.ReadAll()
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-
-		for i, record := range records {
-			if i == 0 {
-				continue
-			}
-			if len(record) < 4 {
-				continue
-			}
-			e := TimelineEvent{
-				Title:        record[0],
-				Description: record[1],
-				Date:        record[2],
-				Location:    record[3],
-				MediaType:   "image",
-			}
-			if len(record) > 4 {
-				e.Tags = record[4]
-			}
-			if len(record) > 5 {
-				e.People = record[5]
-			}
-			events = append(events, e)
-		}
-	} else {
-		if err := json.NewDecoder(r.Body).Decode(&events); err != nil {
-			http.Error(w, err.Error(), http.StatusBadRequest)
-			return
-		}
-	}
-
-	count := 0
-	for _, e := range events {
-		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, people, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.People, e.SortOrder)
-		if err == nil {
-			count++
-		}
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]int{"imported": count})
-}
-
-func exportEvents(w http.ResponseWriter, r *http.Request) {
-	year := r.URL.Query().Get("year")
-	format := r.URL.Query().Get("format")
-	if format == "" {
-		format = "json"
-	}
-
-	sql := "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, people, sort_order, is_public, created_at FROM timeline_events"
-	args := []interface{}{}
-
-	if year != "" {
-		sql += " WHERE strftime('%Y', event_date) = ?"
-		args = append(args, year)
-	}
-	sql += " ORDER BY event_date ASC"
-
-	rows, err := db.Query(sql, args...)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var events []TimelineEvent
-	for rows.Next() {
-		var e TimelineEvent
-		var people, mediaCaption, tags string
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &mediaCaption, &tags, &people, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
-		if err != nil {
-			log.Printf("[API] exportEvents scan error: %v", err)
-			continue
-		}
-		e.MediaCaption = mediaCaption
-		e.Tags = tags
-		e.People = people
-		events = append(events, e)
-	}
-
-	if format == "csv" {
-		w.Header().Set("Content-Type", "text/csv")
-		w.Header().Set("Content-Disposition", "attachment; filename=events.csv")
-		fmt.Fprint(w, "Title,Description,Date,Location,MediaType,Tags,People\n")
-		for _, e := range events {
-			fmt.Fprintf(w, "%q,%q,%s,%q,%s,%s,%s\n", e.Title, e.Description, e.Date, e.Location, e.MediaType, e.Tags, e.People)
-		}
-		return
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
-}
-
-func getEventStats(w http.ResponseWriter, r *http.Request) {
-	year := r.URL.Query().Get("year")
-	if year == "" {
-		year = fmt.Sprintf("%d", time.Now().Year())
-	}
-
-	var stats EventStats
-	stats.ByMonth = make(map[string]int)
-	stats.ByTag = make(map[string]int)
-	stats.ByMedia = make(map[string]int)
-
-	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&stats.Total)
-	db.QueryRow("SELECT COUNT(DISTINCT location) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&stats.Locations)
-
-	monthRows, _ := db.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events 
-		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%m', event_date)`, year)
-	for monthRows.Next() {
-		var month string
-		var count int
-		monthRows.Scan(&month, &count)
-		stats.ByMonth[month] = count
-	}
-
-	tagRows, _ := db.Query(`SELECT tags, COUNT(*) FROM timeline_events 
-		WHERE strftime('%Y', event_date) = ? AND tags != '' GROUP BY tags`, year)
-	for tagRows.Next() {
-		var tags string
-		var count int
-		tagRows.Scan(&tags, &count)
-		stats.ByTag[tags] = count
-	}
-
-	mediaRows, _ := db.Query(`SELECT media_type, COUNT(*) FROM timeline_events 
-		WHERE strftime('%Y', event_date) = ? GROUP BY media_type`, year)
-	for mediaRows.Next() {
-		var media string
-		var count int
-		mediaRows.Scan(&media, &count)
-		stats.ByMedia[media] = count
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(stats)
-}
-
-func createShareLink(w http.ResponseWriter, r *http.Request) {
-	var input struct {
-		EventIDs []int `json:"event_ids"`
-		Year    string `json:"year"`
-		Days    int   `json:"days"`
-	}
-	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
-		http.Error(w, err.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if input.Days == 0 {
-		input.Days = 7
-	}
-
-	nowStr := time.Now().Format("2006-01-02T15:04:05")
-	token := fmt.Sprintf("%x", sha256.Sum256([]byte(nowStr)))
-
-	eventIDsStr := ""
-	for idx, idVal := range input.EventIDs {
-		if idx > 0 {
-			eventIDsStr += ","
-		}
-		eventIDsStr += strconv.Itoa(idVal)
-	}
-
-	expires := time.Now().Add(time.Duration(input.Days) * 24 * time.Hour)
-
-	_, err := db.Exec(`INSERT INTO share_tokens (token, event_ids, year, expires_at) VALUES (?, ?, ?, ?)`,
-		token, eventIDsStr, input.Year, expires.Format("2006-01-02"))
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
-		"token":   token,
-		"expires": expires.Format("2006-01-02"),
-	})
-}
-
-func getShareLink(w http.ResponseWriter, r *http.Request) {
-	token := r.URL.Query().Get("token")
-	if token == "" {
-		http.Error(w, "Token required", http.StatusBadRequest)
-		return
-	}
-
-	var eventIDs, year string
-	var expires string
-	err := db.QueryRow("SELECT event_ids, year, expires_at FROM share_tokens WHERE token = ?", token).Scan(&eventIDs, &year, &expires)
-	if err != nil {
-		http.Error(w, "Invalid token", http.StatusNotFound)
-		return
-	}
-
-	expTime, _ := time.Parse("2006-01-02", expires)
-	if time.Now().After(expTime) {
-		http.Error(w, "Token expired", http.StatusGone)
-		return
-	}
-
-	http.Redirect(w, r, "/?share="+token, http.StatusFound)
-}
-
-func getPublicEvents(w http.ResponseWriter, r *http.Request) {
-	shareToken := r.URL.Query().Get("share")
-	if shareToken == "" && !publicMode {
-		http.Error(w, "Not found", http.StatusNotFound)
-		return
-	}
-
-	var eventIDs string
-	var year string
-
-	if shareToken != "" {
-		db.QueryRow("SELECT event_ids, year FROM share_tokens WHERE token = ?", shareToken).Scan(&eventIDs, &year)
-	} else {
-		year = r.URL.Query().Get("year")
-		if year == "" {
-			year = fmt.Sprintf("%d", time.Now().Year())
-		}
-	}
-
-	var query string
-	var args []interface{}
-
-	if eventIDs != "" {
-		query = "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(media_caption,''), COALESCE(tags,''), COALESCE(people,''), sort_order, is_public, created_at FROM timeline_events WHERE id IN (" + eventIDs + ") ORDER BY event_date ASC"
-	} else {
-		query = "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(media_caption,''), COALESCE(tags,''), COALESCE(people,''), sort_order, is_public, created_at FROM timeline_events WHERE is_public = 1"
-		if year != "" {
-			query += " AND strftime('%Y', event_date) = ?"
-			args = append(args, year)
-		}
-		query += " ORDER BY event_date ASC"
-	}
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var events []TimelineEvent
-	for rows.Next() {
-		var e TimelineEvent
-		var people, mediaCaption, tags string
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &mediaCaption, &tags, &people, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
-		if err != nil {
-			log.Printf("[API] getPublicEvents scan error: %v", err)
-			continue
-		}
-		e.MediaCaption = mediaCaption
-		e.Tags = tags
-		e.People = people
-		events = append(events, e)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(events)
-}
-
-func getTags(w http.ResponseWriter, r *http.Request) {
-	year := r.URL.Query().Get("year")
-	query := "SELECT DISTINCT tags FROM timeline_events WHERE tags != ''"
-	args := []interface{}{}
-
-	if year != "" {
-		query += " AND strftime('%Y', event_date) = ?"
-		args = append(args, year)
-	}
-
-	rows, err := db.Query(query, args...)
-	if err != nil {
-		http.Error(w, err.Error(), http.StatusInternalServerError)
-		return
-	}
-	defer rows.Close()
-
-	var tags []string
-	for rows.Next() {
-		var t string
-		rows.Scan(&t)
-		tags = append(tags, t)
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(tags)
-}
-
-func compileTypeScript() {
-	tsFile := filepath.Join(basePath, "static", "app.ts")
-	jsFile := filepath.Join(basePath, "static", "app.js")
-
-	tsInfo, err := os.Stat(tsFile)
-	if err != nil {
-		log.Printf("[TS] No app.ts found, skipping TypeScript compilation")
-		return
-	}
-
-	jsInfo, err := os.Stat(jsFile)
-	needsCompile := true
-
-	if err == nil && jsInfo.ModTime().After(tsInfo.ModTime()) {
-		needsCompile = false
-	}
-
-	if !needsCompile {
-		log.Printf("[TS] app.js is up to date, skipping TypeScript compilation")
-		return
-	}
-
-	log.Printf("[TS] Compiling TypeScript...")
-
-	cmd := exec.Command("npx", "tsc")
-	cmd.Dir = basePath
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
-
-	if err := cmd.Run(); err != nil {
-		log.Printf("[TS] TypeScript compilation failed: %v", err)
-		return
-	}
-
-	log.Printf("[TS] TypeScript compiled successfully")
 }

@@ -58,9 +58,9 @@ test.describe('TRACES Timeline', () => {
     await expect(page.locator('.month-filter button.btn-dark')).toHaveText('Jan');
   });
 
-  test('should have API docs link', async ({ page }) => {
+  test('should have map section', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('nav >> text=API Docs')).toBeVisible();
+    await expect(page.locator('.map-section')).toBeVisible();
   });
 });
 
@@ -92,6 +92,18 @@ test.describe('TRACES API', () => {
     expect(resp.ok()).toBeTruthy();
     expect(data.setup).toBeDefined();
   });
+
+  test('should return tags', async ({ request }) => {
+    const resp = await request.get('/api/tags?year=2026');
+    expect(resp.ok()).toBeTruthy();
+  });
+
+  test('should return map data', async ({ request }) => {
+    const resp = await request.get('/api/map');
+    expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    expect(data.type).toBe('FeatureCollection');
+  });
 });
 
 test.describe('TRACES Login', () => {
@@ -108,19 +120,14 @@ test.describe('TRACES Login', () => {
 });
 
 test.describe('TRACES JavaScript Loading', () => {
-  test('should load events without JS errors', async ({ page }) => {
+  test('should load without JS errors', async ({ page }) => {
     const errors: string[] = [];
-    page.on('console', msg => {
-      if (msg.type() === 'error') {
-        errors.push(msg.text());
-      }
-    });
+    page.on('pageerror', err => errors.push(err.message));
     
     await page.goto('/');
     await page.waitForTimeout(1000);
     
-    const jsErrors = errors.filter(e => e.includes('ReferenceError') || e.includes('TypeError'));
-    expect(jsErrors).toHaveLength(0);
+    expect(errors).toHaveLength(0);
   });
 
   test('should display events from API', async ({ page }) => {
@@ -129,22 +136,9 @@ test.describe('TRACES JavaScript Loading', () => {
     await expect(page.locator('#timeline-container')).toBeVisible();
   });
 
-  test('should display recent activity section', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(500);
-    await expect(page.locator('.recent-activity')).toBeVisible();
-  });
-
-  test('should have gallery with load more button', async ({ page }) => {
+  test('should have gallery with media', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(500);
     await expect(page.locator('#gallery')).toBeVisible();
-  });
-
-  test('should have compare section', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(500);
-    await expect(page.locator('#compare')).toBeVisible();
-    await expect(page.locator('#compare-year-1')).toBeVisible();
   });
 });

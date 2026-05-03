@@ -10,7 +10,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:8080",
+      "url": "http://localhost:6270",,
       "description": "Local development server"
     }
   ],
@@ -329,6 +329,195 @@
             "type": "string",
             "format": "date-time"
           }
+        }
+      }
+    },
+    "/api/persons": {
+      "get": {
+        "summary": "List all persons",
+        "tags": ["Persons"],
+        "security": [{"SessionCookie": []}],
+        "responses": {
+          "200": {
+            "description": "List of persons",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/Person"}
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create or update a person",
+        "tags": ["Persons"],
+        "security": [{"SessionCookie": []}],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/Person"}
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Person saved"}
+        }
+      },
+      "delete": {
+        "summary": "Delete a person",
+        "tags": ["Persons"],
+        "security": [{"SessionCookie": []}],
+        "parameters": [
+          {"name": "id", "in": "query", "required": true, "schema": {"type": "integer"}}
+        ],
+        "responses": {
+          "200": {"description": "Person deleted"}
+        }
+      }
+    },
+    "/api/gotify/config": {
+      "get": {
+        "summary": "Get Gotify configuration",
+        "tags": ["Notifications"],
+        "security": [{"SessionCookie": []}],
+        "responses": {
+          "200": {
+            "description": "Gotify config",
+            "content": {
+              "application/json": {
+                "schema": {"$ref": "#/components/schemas/GotifyConfig"}
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Save Gotify configuration",
+        "tags": ["Notifications"],
+        "security": [{"SessionCookie": []}],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {"$ref": "#/components/schemas/GotifyConfig"}
+            }
+          }
+        },
+        "responses": {
+          "200": {"description": "Config saved"}
+        }
+      }
+    },
+    "/api/gotify/test": {
+      "post": {
+        "summary": "Send a test Gotify notification",
+        "tags": ["Notifications"],
+        "security": [{"SessionCookie": []}],
+        "responses": {
+          "200": {"description": "Test notification sent"}
+        }
+      }
+    },
+    "/api/events/map": {
+      "get": {
+        "summary": "Get events with map coordinates",
+        "tags": ["Events"],
+        "parameters": [
+          {"name": "year", "in": "query", "schema": {"type": "string"}}
+        ],
+        "responses": {
+          "200": {
+            "description": "Events with latitude/longitude",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/TimelineEvent"}
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/full": {
+      "get": {
+        "summary": "Get all events with full fields",
+        "tags": ["Events"],
+        "responses": {
+          "200": {
+            "description": "All events with all fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": {"$ref": "#/components/schemas/TimelineEvent"}
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "TimelineEvent": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "title": {"type": "string"},
+          "description": {"type": "string"},
+          "date": {"type": "string", "format": "date"},
+          "location": {"type": "string"},
+          "latitude": {"type": "number", "format": "float"},
+          "longitude": {"type": "number", "format": "float"},
+          "media_type": {"type": "string", "enum": ["image", "video", "audio"]},
+          "media_url": {"type": "string"},
+          "thumbnail": {"type": "string"},
+          "media_caption": {"type": "string"},
+          "tags": {"type": "string"},
+          "sort_order": {"type": "integer"},
+          "is_public": {"type": "boolean"},
+          "person_id": {"type": "integer"},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "Person": {
+        "type": "object",
+        "properties": {
+          "id": {"type": "integer"},
+          "name": {"type": "string"},
+          "avatar_url": {"type": "string"},
+          "bio": {"type": "string"},
+          "birth_date": {"type": "string", "format": "date"},
+          "color": {"type": "string"},
+          "created_at": {"type": "string", "format": "date-time"}
+        }
+      },
+      "GotifyConfig": {
+        "type": "object",
+        "properties": {
+          "url": {"type": "string"},
+          "token": {"type": "string"},
+          "enabled": {"type": "boolean"}
+        }
+      },
+      "EventStats": {
+        "type": "object",
+        "properties": {
+          "total": {"type": "integer"},
+          "by_month": {"type": "object"},
+          "by_tag": {"type": "object"},
+          "by_media": {"type": "object"},
+          "locations": {"type": "integer"},
+          "with_media": {"type": "integer"},
+          "with_geo": {"type": "integer"},
+          "by_year": {"type": "object"},
+          "total_years": {"type": "integer"},
+          "person_count": {"type": "integer"}
         }
       }
     },
