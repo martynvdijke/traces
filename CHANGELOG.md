@@ -1,3 +1,10 @@
+# [1.4.0](https://github.com/martynvdijke/traces/compare/v1.3.0...v1.4.0) (2026-05-03)
+
+
+### Features
+
+* enhanced search, autocomplete, person tracking, and modern UI redesign ([2e6efe5](https://github.com/martynvdijke/traces/commit/2e6efe55aaa0d13d259347e72ec6efd85180fc84))
+
 # [1.3.0](https://github.com/martynvdijke/traces/compare/v1.2.0...v1.3.0) (2026-05-03)
 
 
