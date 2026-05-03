@@ -4,7 +4,10 @@ go 1.26.2
 
 require github.com/mattn/go-sqlite3 v1.14.44
 
-require github.com/gin-gonic/gin v1.12.0
+require (
+	github.com/gin-gonic/gin v1.12.0
+	golang.org/x/image v0.39.0
+)
 
 require (
 	github.com/bytedance/gopkg v0.1.3 // indirect
@@ -34,6 +37,6 @@ require (
 	golang.org/x/crypto v0.48.0 // indirect
 	golang.org/x/net v0.51.0 // indirect
 	golang.org/x/sys v0.41.0 // indirect
-	golang.org/x/text v0.34.0 // indirect
+	golang.org/x/text v0.36.0 // indirect
 	google.golang.org/protobuf v1.36.10 // indirect
 )
