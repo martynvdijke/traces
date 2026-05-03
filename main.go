@@ -236,7 +236,7 @@ func main() {
 	})
 
 	r.Static("/static", filepath.Join(basePath, "static"))
-	r.Static("/static/media", mediaPath)
+	r.Static("/media", mediaPath)
 
 	r.GET("/map.html", func(c *gin.Context) {
 		c.File(filepath.Join(basePath, "static/map.html"))
