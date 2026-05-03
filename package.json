@@ -21,7 +21,8 @@
   "homepage": "https://github.com/martynvdijke/traces#readme",
   "devDependencies": {
     "@playwright/test": "^1.59.1",
-    "@types/node": "^25.6.0"
+    "@types/node": "^25.6.0",
+    "typescript": "^6.0.3"
   },
   "dependencies": {
     "playwright": "^1.59.1"

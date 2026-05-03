@@ -122,6 +122,15 @@
             </div>
         </section>
 
+        <section class="recent-activity mb-5" id="recent-activity">
+            <h2 class="mb-4"><i class="fa-solid fa-clock-rotate-left me-2"></i>Recent Activity</h2>
+            <div class="card">
+                <div class="card-body" id="recent-activity-list">
+                    <p class="text-muted text-center py-3">Loading recent activity...</p>
+                </div>
+            </div>
+        </section>
+
         <section class="month-filter mb-4">
             <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-sm btn-dark active" onclick="filterMonth(0)">All Year</button>
@@ -323,7 +332,60 @@
         }
 
         async function loadData() {
-            await Promise.all([loadEvents(), loadContributions()]);
+            await Promise.all([loadEvents(), loadRecentActivity(), loadContributions()]);
+        }
+
+        async function loadRecentActivity() {
+            try {
+                const res = await fetch('/api/events?limit=5&sort=desc');
+                const recentEvents = await res.json();
+                renderRecentActivity(recentEvents);
+            } catch (err) {
+                console.error('Failed to load recent activity:', err);
+            }
+        }
+
+        function renderRecentActivity(recentEvents) {
+            const container = document.getElementById('recent-activity-list');
+            if (!container) return;
+
+            if (!recentEvents || recentEvents.length === 0) {
+                container.innerHTML = '<div class="text-center text-muted py-4"><p>No recent activity</p></div>';
+                return;
+            }
+
+            container.innerHTML = recentEvents.map(e => `
+                <div class="d-flex align-items-center p-2 border-bottom recent-activity-item"
+                     style="cursor: pointer; transition: background 0.15s;"
+                     onmouseover="this.style.background='var(--bs-light, #f8f9fa)'" 
+                     onmouseout="this.style.background=''"
+                     onclick="navigateToActivity(${e.id})"
+                     title="Click to view this activity">
+                    <div class="me-3">
+                        <i class="${getMediaIcon(e.media_type)} fa-2x text-primary"></i>
+                    </div>
+                    <div class="flex-grow-1">
+                        <div class="fw-bold">${escapeHtml(e.title)}</div>
+                        <div class="small text-muted">
+                            <i class="fa-solid fa-calendar me-1"></i>${e.date}
+                            ${e.location ? '<i class="fa-solid fa-location-dot ms-2 me-1"></i>' + escapeHtml(e.location) : ''}
+                        </div>
+                    </div>
+                    <div>
+                        <span class="text-primary"><i class="fa-solid fa-arrow-right"></i></span>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function navigateToActivity(id) {
+            const target = document.getElementById('event-' + id);
+            if (target) {
+                target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                target.style.transition = 'background 0.5s';
+                target.style.background = 'rgba(124, 58, 237, 0.15)';
+                setTimeout(() => { target.style.background = ''; }, 2000);
+            }
         }
 
         function renderTimeline() {
@@ -363,7 +425,7 @@
                 const hasMedia = e.media_url;
 
                 html += `
-                    <div class="timeline-item ${index % 2 === 0 ? 'left' : 'right'}">
+                    <div class="timeline-item ${index % 2 === 0 ? 'left' : 'right'}" id="event-${e.id}">
                         <div class="timeline-content" onclick="${hasMedia ? 'showMedia(' + e.id + ')' : ''}">
                             <div class="timeline-date">${formatDate(e.date)}</div>
                             <div class="timeline-title">${escapeHtml(e.title)}</div>

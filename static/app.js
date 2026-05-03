@@ -5,6 +5,8 @@ let events = [];
 let contributions = {};
 let galleryPage = 1;
 const galleryLimit = 12;
+let map = null;
+let markers = [];
 const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
@@ -49,6 +51,7 @@ function filterMonth(month) {
     });
     renderTimeline();
     renderGallery();
+    renderMap();
 }
 async function loadContributions() {
     try {
@@ -128,6 +131,7 @@ async function loadEvents() {
         events = await res.json();
         renderTimeline();
         renderGallery();
+        renderMap();
     }
     catch (err) {
         console.error('Failed to load events:', err);
@@ -177,14 +181,14 @@ function renderTimeline() {
         }
         const mediaIcon = getMediaIcon(e.media_type);
         const hasMedia = e.media_url;
-        const peopleList = e.people ? e.people.split(',').map(p => p.trim()).filter(p => p) : [];
+        const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
         html += `
-      <div class="timeline-item ${index % 2 === 0 ? 'left' : 'right'}">
+      <div class="timeline-item ${index % 2 === 0 ? 'left' : 'right'}" id="event-${e.id}">
         <div class="timeline-content" onclick="${hasMedia ? 'showMedia(' + e.id + ')' : ''}">
           <div class="timeline-date">${formatDate(e.date)}</div>
           <div class="timeline-title">${escapeHtml(e.title)}</div>
           <div class="timeline-location"><i class="fa-solid fa-location-dot me-1"></i>${escapeHtml(e.location)}</div>
-          ${peopleList.length > 0 ? '<div class="timeline-people mb-2"><i class="fa-solid fa-users me-1"></i>' + peopleList.map(p => '<span class="badge bg-secondary me-1">' + escapeHtml(p) + '</span>').join('') + '</div>' : ''}
+          ${tagList.length > 0 ? '<div class="timeline-people mb-2"><i class="fa-solid fa-tags me-1"></i>' + tagList.map(t => '<span class="badge bg-secondary me-1">' + escapeHtml(t) + '</span>').join('') + '</div>' : ''}
           ${e.description ? '<p class="timeline-desc">' + escapeHtml(e.description) + '</p>' : ''}
           ${hasMedia ? '<div class="timeline-media-badge"><i class="' + mediaIcon + '"></i> ' + e.media_type + '</div>' : ''}
         </div>
@@ -231,7 +235,7 @@ function renderGallery() {
         return;
     }
     container.innerHTML = mediaEvents.slice(0, galleryLimit).map(e => {
-        const peopleList = e.people ? e.people.split(',').map(p => p.trim()).filter(p => p) : [];
+        const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
         return `
       <div class="col-md-4 col-lg-3">
         <div class="gallery-item" onclick="showMedia(${e.id})">
@@ -243,12 +247,60 @@ function renderGallery() {
           <div class="gallery-overlay">
             <i class="${getMediaIcon(e.media_type)}"></i>
           </div>
-          ${peopleList.length > 0 ? '<div class="gallery-people"><i class="fa-solid fa-users"></i> ' + peopleList.length + '</div>' : ''}
+          ${tagList.length > 0 ? '<div class="gallery-people"><i class="fa-solid fa-tags"></i> ' + tagList.length + '</div>' : ''}
         </div>
         <div class="mt-2 text-center small">${escapeHtml(e.title)}</div>
       </div>
     `;
     }).join('');
+}
+function renderMap() {
+    const filtered = currentMonth > 0
+        ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
+        : events;
+    const geoEvents = filtered.filter(e => e.latitude && e.longitude && (e.latitude !== 0 || e.longitude !== 0));
+    const placeholder = document.getElementById('map-placeholder');
+    if (placeholder)
+        placeholder.style.display = geoEvents.length ? 'none' : 'block';
+    if (!geoEvents.length) {
+        if (map)
+            map.remove();
+        map = null;
+        markers = [];
+        return;
+    }
+    if (!map) {
+        map = L.map('map-container').setView([20, 0], 2);
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
+            maxZoom: 18
+        }).addTo(map);
+    }
+    markers.forEach(m => map.removeLayer(m));
+    markers = [];
+    const bounds = [];
+    const markerIcon = L.divIcon({
+        className: 'custom-marker',
+        html: '<i class="fa-solid fa-map-pin" style="color:#7c3aed;font-size:24px;"></i>',
+        iconSize: [24, 24],
+        iconAnchor: [12, 24],
+        popupAnchor: [0, -24]
+    });
+    geoEvents.forEach(e => {
+        const m = L.marker([e.latitude, e.longitude], { icon: markerIcon }).addTo(map);
+        m.bindPopup(`
+      <div class="map-popup">
+        <h6>${escapeHtml(e.title)}</h6>
+        <p>${formatDate(e.date)} — ${escapeHtml(e.location)}</p>
+      </div>
+    `);
+        markers.push(m);
+        bounds.push([e.latitude, e.longitude]);
+    });
+    if (bounds.length > 0) {
+        map.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+    }
+    setTimeout(() => map.invalidateSize(), 100);
 }
 function showMedia(id) {
     const event = events.find(e => e.id === id);
@@ -309,7 +361,7 @@ async function loadMoreGallery() {
         }
         if (container) {
             container.innerHTML += mediaEvents.map(e => {
-                const peopleList = e.people ? e.people.split(',').map(p => p.trim()).filter(p => p) : [];
+                const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
                 return `
           <div class="col-md-4 col-lg-3">
             <div class="gallery-item" onclick="showMedia(${e.id})">
@@ -321,7 +373,7 @@ async function loadMoreGallery() {
               <div class="gallery-overlay">
                 <i class="${getMediaIcon(e.media_type)}"></i>
               </div>
-              ${peopleList.length > 0 ? '<div class="gallery-people"><i class="fa-solid fa-users"></i> ' + peopleList.length + '</div>' : ''}
+              ${tagList.length > 0 ? '<div class="gallery-people"><i class="fa-solid fa-tags"></i> ' + tagList.length + '</div>' : ''}
             </div>
             <div class="mt-2 text-center small">${escapeHtml(e.title)}</div>
           </div>

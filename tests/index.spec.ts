@@ -61,6 +61,26 @@ test.describe('TRACES Timeline', () => {
   test('should have map section', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('.map-section')).toBeVisible();
+    await expect(page.locator('#map-container')).toBeVisible();
+  });
+
+  test('should display recent activity section', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForTimeout(500);
+    await expect(page.locator('#recent-activity')).toBeVisible();
+    await expect(page.locator('#recent-activity-list')).toBeVisible();
+  });
+
+  test('should have clickable activity feed items', async ({ page }) => {
+    await page.goto('/');
+    await page.waitForTimeout(500);
+    const items = page.locator('#recent-activity-list .recent-activity-item');
+    const count = await items.count();
+    if (count > 0) {
+      await expect(items.first()).toBeVisible();
+      await items.first().click();
+      await page.waitForTimeout(500);
+    }
   });
 });
 
