@@ -4,9 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 )
+
+func init() {
+	if os.Getenv("DOCKER") != "true" {
+		basePath = "."
+		dbPath = "./traces.db"
+		mediaPath = "./media"
+	}
+}
 
 func TestHashPassword(t *testing.T) {
 	tests := []struct {
