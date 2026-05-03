@@ -24,6 +24,6 @@ COPY --from=builder /app/static ./static
 RUN mkdir -p /db && chmod 777 /db
 RUN mkdir -p /app/media && chmod 777 /app/media
 
-EXPOSE 8080
+EXPOSE 6270
 
 CMD ["./traces-server"]

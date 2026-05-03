@@ -111,6 +111,18 @@
             </div>
         </section>
 
+        <section class="recent-activity mb-5">
+            <h2 class="mb-4"><i class="fa-solid fa-clock-rotate-left me-2"></i>Recent Activity</h2>
+            <div class="card">
+                <div class="card-body" id="recent-activity-list">
+                    <div class="text-center text-muted py-4">
+                        <i class="fa-solid fa-spinner fa-spin fa-2x"></i>
+                        <p class="mt-2">Loading recent activity...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+
         <section class="month-filter mb-4">
             <div class="d-flex gap-2 flex-wrap">
                 <button class="btn btn-sm btn-dark active" onclick="filterMonth(0)">All Year</button>
@@ -137,6 +149,47 @@
         <section id="gallery" class="gallery-section mb-5">
             <h2 class="mb-4"><i class="fa-solid fa-images me-2"></i>Media Gallery</h2>
             <div class="row g-4" id="gallery-container">
+            </div>
+            <div class="text-center mt-4">
+                <button class="btn btn-outline-primary" onclick="loadMoreGallery()"><i class="fa-solid fa-plus me-2"></i>Load More</button>
+            </div>
+        </section>
+
+        <section id="compare" class="compare-section mb-5">
+            <h2 class="mb-4"><i class="fa-solid fa-arrow-right-arrow-left me-2"></i>Compare Years</h2>
+            <div class="row g-4">
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header"><h5 class="mb-0"><i class="fa-solid fa-calendar me-2"></i>Year 1</h5></div>
+                        <div class="card-body">
+                            <select class="form-select" id="compare-year-1" onchange="updateCompare()">
+                                <option value="2026">2026</option>
+                                <option value="2025">2025</option>
+                                <option value="2024">2024</option>
+                            </select>
+                            <div id="compare-stats-1" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header"><h5 class="mb-0"><i class="fa-solid fa-calendar me-2"></i>Year 2</h5></div>
+                        <div class="card-body">
+                            <select class="form-select" id="compare-year-2" onchange="updateCompare()">
+                                <option value="2025">2025</option>
+                                <option value="2026">2026</option>
+                                <option value="2024">2024</option>
+                            </select>
+                            <div id="compare-stats-2" class="mt-3"></div>
+                        </div>
+                    </div>
+                </div>
+                <div class="col-md-4">
+                    <div class="card">
+                        <div class="card-header"><h5 class="mb-0"><i class="fa-solid fa-chart-line me-2"></i>Comparison</h5></div>
+                        <div class="card-body" id="compare-result"></div>
+                    </div>
+                </div>
             </div>
         </section>
     </main>
@@ -165,292 +218,7 @@
         </div>
     </footer>
 
-    <script>
-        const themeToggle = document.getElementById('theme-toggle');
-        const themeIcon = themeToggle.querySelector('i');
-        const setTheme = (theme) => {
-            document.documentElement.setAttribute('data-theme', theme);
-            localStorage.setItem('theme', theme);
-            themeIcon.className = theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
-        };
-        const savedTheme = localStorage.getItem('theme') || (window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light');
-        setTheme(savedTheme);
-        themeToggle.addEventListener('click', () => setTheme(document.documentElement.getAttribute('data-theme') === 'dark' ? 'light' : 'dark'));
-
-        let currentYear = new Date().getFullYear();
-        let currentMonth = 0;
-        let events = [];
-        let contributions = {};
-
-        const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                          'July', 'August', 'September', 'October', 'November', 'December'];
-
-        function changeYear(year) {
-            currentYear = year;
-            document.getElementById('current-year').textContent = year;
-            loadData();
-        }
-
-        function searchEvents() {
-            const query = document.getElementById('search-input').value;
-            if (query) {
-                window.location.href = '?q=' + encodeURIComponent(query);
-            }
-        }
-
-        function filterMonth(month) {
-            currentMonth = month;
-            document.getElementById('current-year').textContent = year;
-            loadData();
-        }
-
-        function filterMonth(month) {
-            currentMonth = month;
-            document.querySelectorAll('.month-filter .btn').forEach((btn, i) => {
-                btn.classList.toggle('active', i === month);
-                btn.classList.toggle('btn-dark', i === month);
-                btn.classList.toggle('btn-outline-dark', i !== month);
-            });
-            renderTimeline();
-            renderGallery();
-        }
-
-        async function loadContributions() {
-            try {
-                const res = await fetch('/api/contributions?year=' + currentYear);
-                contributions = await res.json();
-                renderContributionGraph();
-                updateStats();
-            } catch (err) {
-                console.error('Failed to load contributions:', err);
-            }
-        }
-
-        function renderContributionGraph() {
-            const graph = document.getElementById('contribution-graph');
-            const firstDay = new Date(currentYear, 0, 1);
-            const startDay = firstDay.getDay();
-            const daysInYear = (currentYear % 4 === 0 && currentYear % 100 !== 0) || currentYear % 400 === 0 ? 366 : 365;
-            
-            const maxCount = Math.max(...Object.values(contributions), 1);
-            
-            let html = '<div class="graph-months">';
-            const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-            let currentMonth = -1;
-            months.forEach((m, i) => {
-                if (i === 0 || new Date(currentYear, i, 1).getDay() === 0) {
-                    html += '<span class="month-label">' + m + '</span>';
-                    currentMonth = i;
-                }
-            });
-            html += '</div>';
-            
-            html += '<div class="graph-grid"><div class="graph-days">';
-            for (let i = 0; i < startDay; i++) {
-                html += '<div class="day-cell empty"></div>';
-            }
-            
-            for (let day = 1; day <= daysInYear; day++) {
-                const date = currentYear + '-' + String(day).padStart(3, '0').slice(0, -2) + '-' + String(day).padStart(3, '0').slice(-2);
-                const dateObj = new Date(currentYear, 0, day);
-                const dateStr = dateObj.toISOString().split('T')[0];
-                const count = contributions[dateStr] || 0;
-                let level = 0;
-                if (count > 0) level = Math.ceil((count / maxCount) * 4);
-                
-                html += '<div class="day-cell level-' + level + '" data-date="' + dateStr + '" data-count="' + count + '" title="' + dateStr + ': ' + count + ' event(s)"></div>';
-                
-                if (dateObj.getDay() === 6 && day < daysInYear) {
-                    html += '</div><div class="graph-days">';
-                }
-            }
-            html += '</div></div>';
-            
-            graph.innerHTML = html;
-        }
-
-        function updateStats() {
-            const filtered = currentMonth > 0 
-                ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
-                : events;
-            
-            document.getElementById('total-events').textContent = filtered.length + ' events';
-            
-            const images = filtered.filter(e => e.media_type === 'image').length;
-            const videos = filtered.filter(e => e.media_type === 'video').length;
-            const audio = filtered.filter(e => e.media_type === 'audio').length;
-            const locations = new Set(filtered.map(e => e.location).filter(l => l)).size;
-            
-            document.getElementById('stat-images').textContent = images;
-            document.getElementById('stat-videos').textContent = videos;
-            document.getElementById('stat-audio').textContent = audio;
-            document.getElementById('stat-locations').textContent = locations;
-        }
-
-        async function loadEvents() {
-            try {
-                let url = '/api/events?year=' + currentYear;
-                if (currentMonth > 0) {
-                    url += '&month=' + String(currentMonth).padStart(2, '0');
-                }
-                const res = await fetch(url);
-                events = await res.json();
-                renderTimeline();
-                renderGallery();
-            } catch (err) {
-                console.error('Failed to load events:', err);
-            }
-        }
-
-        async function loadData() {
-            await Promise.all([loadEvents(), loadContributions()]);
-        }
-
-        function renderTimeline() {
-            const container = document.getElementById('timeline-container');
-            
-            const filteredEvents = currentMonth > 0 
-                ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
-                : events;
-
-            if (filteredEvents.length === 0) {
-                container.innerHTML = `
-                    <div class="text-center text-muted py-5">
-                        <i class="fa-solid fa-clock fa-3x mb-3"></i>
-                        <p>No events found for ${currentYear}.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            let currentMonth = -1;
-            let html = '';
-
-            filteredEvents.forEach((e, index) => {
-                const eventDate = new Date(e.date);
-                const month = eventDate.getMonth();
-
-                if (month !== currentMonth) {
-                    currentMonth = month;
-                    html += `
-                        <div class="timeline-month-label">
-                            <span class="badge bg-primary">${monthNames[month]}</span>
-                        </div>
-                    `;
-                }
-
-                const mediaIcon = getMediaIcon(e.media_type);
-                const hasMedia = e.media_url;
-
-                html += `
-                    <div class="timeline-item ${index % 2 === 0 ? 'left' : 'right'}">
-                        <div class="timeline-content" onclick="${hasMedia ? 'showMedia(' + e.id + ')' : ''}">
-                            <div class="timeline-date">${formatDate(e.date)}</div>
-                            <div class="timeline-title">${escapeHtml(e.title)}</div>
-                            <div class="timeline-location"><i class="fa-solid fa-location-dot me-1"></i>${escapeHtml(e.location)}</div>
-                            ${e.description ? '<p class="timeline-desc">' + escapeHtml(e.description) + '</p>' : ''}
-                            ${hasMedia ? '<div class="timeline-media-badge"><i class="' + mediaIcon + '"></i> ' + e.media_type + '</div>' : ''}
-                        </div>
-                    </div>
-                `;
-            });
-
-            container.innerHTML = html;
-        }
-
-        function getMediaIcon(mediaType) {
-            switch(mediaType) {
-                case 'video': return 'fa-solid fa-video';
-                case 'audio': return 'fa-solid fa-music';
-                default: return 'fa-solid fa-image';
-            }
-        }
-
-        function formatDate(dateStr) {
-            const date = new Date(dateStr);
-            return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-        }
-
-        function renderGallery() {
-            const container = document.getElementById('gallery-container');
-            
-            const filtered = currentMonth > 0 
-                ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
-                : events;
-            const mediaEvents = filtered.filter(e => e.media_url);
-
-            if (mediaEvents.length === 0) {
-                container.innerHTML = `
-                    <div class="col-12 text-center text-muted py-5">
-                        <i class="fa-solid fa-images fa-3x mb-3"></i>
-                        <p>No media found for ${currentYear}.</p>
-                    </div>
-                `;
-                return;
-            }
-
-            container.innerHTML = mediaEvents.map(e => `
-                <div class="col-md-4 col-lg-3">
-                    <div class="gallery-item" onclick="showMedia(${e.id})">
-                        ${e.media_type === 'video' 
-                            ? '<video src="' + e.media_url + '" muted></video>'
-                            : e.media_type === 'audio'
-                            ? '<div class="audio-placeholder"><i class="fa-solid fa-music fa-3x"></i></div>'
-                            : '<img src="' + (e.thumbnail || e.media_url) + '" alt="' + escapeHtml(e.title) + '">'
-                        }
-                        <div class="gallery-overlay">
-                            <i class="${getMediaIcon(e.media_type)}"></i>
-                        </div>
-                    </div>
-                </div>
-            `).join('');
-        }
-
-        function showMedia(id) {
-            const event = events.find(e => e.id === id);
-            if (!event) return;
-
-            document.getElementById('mediaModalTitle').textContent = event.title;
-            document.getElementById('mediaModalDesc').innerHTML = `
-                ${event.description || ''}
-                <div class="mt-2 small opacity-75">
-                    <i class="fa-solid fa-calendar me-1"></i>${event.date}
-                    ${event.location ? '<i class="fa-solid fa-location-dot ms-2 me-1"></i>' + event.location : ''}
-                </div>
-            `;
-
-            let mediaHtml = '';
-            if (event.media_url) {
-                if (event.media_type === 'video') {
-                    mediaHtml = '<video controls class="w-100" src="' + event.media_url + '"></video>';
-                } else if (event.media_type === 'audio') {
-                    mediaHtml = '<audio controls class="w-100" src="' + event.media_url + '"></audio>';
-                } else {
-                    mediaHtml = '<img src="' + event.media_url + '" class="img-fluid" alt="' + event.title + '">';
-                }
-            }
-
-            document.getElementById('mediaModalBody').innerHTML = mediaHtml || '<p>No media available</p>';
-            new bootstrap.Modal(document.getElementById('mediaModal')).show();
-        }
-
-        function escapeHtml(text) {
-            if (!text) return '';
-            return text.replace(/&/g, '&amp;')
-                      .replace(/</g, '&lt;')
-                      .replace(/>/g, '&gt;')
-                      .replace(/"/g, '&quot;')
-                      .replace(/'/g, '&#039;');
-        }
-
-        loadData();
-
-        fetch('/api/version').then(r => r.json()).then(d => {
-            document.getElementById('version-display').textContent = 'v' + d.version;
-        }).catch(() => {
-            document.getElementById('version-display').textContent = 'v1.0.0';
-        });
-    </script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script src="/static/app.js"></script>
 </body>
 </html>

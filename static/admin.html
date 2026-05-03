@@ -233,6 +233,11 @@
                             <label class="form-label small fw-bold">Thumbnail URL (optional)</label>
                             <input type="text" class="form-control" name="thumbnail" id="event-thumbnail" placeholder="/static/media/...">
                         </div>
+                        <div class="mb-3">
+                            <label class="form-label small fw-bold">People (comma separated)</label>
+                            <input type="text" class="form-control" name="people" id="event-people" placeholder="John, Jane, Bob">
+                            <div class="form-text">Enter names of people involved in this event, separated by commas</div>
+                        </div>
                         <button type="submit" class="btn btn-primary w-100">Save Event</button>
                     </form>
                 </div>
@@ -246,24 +251,42 @@
         const eventModal = new bootstrap.Modal(document.getElementById('eventModal'));
 
         async function init() {
+            console.log('[ADMIN] Initializing...');
             await loadEvents();
         }
 
         async function loadEvents() {
             try {
+                console.log('[ADMIN] Loading events...');
                 const res = await fetch('/api/events');
-                events = await res.json();
+                if (!res.ok) {
+                    const err = await res.text();
+                    console.error('[ADMIN] Failed to load events - server error:', res.status, err);
+                    throw new Error('Server error: ' + res.status);
+                }
+                const data = await res.json();
+                console.log('[ADMIN] Loaded events:', data);
+                events = data || [];
                 renderEventList();
             } catch (e) {
-                console.error('Failed to load events', e);
+                console.error('[ADMIN] Failed to load events:', e);
+                events = [];
+                renderEventList();
             }
         }
 
         function renderEventList() {
             const list = document.getElementById('event-list');
+            if (!list) return;
+
+            if (!events || events.length === 0) {
+                list.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4">No events found</td></tr>';
+                return;
+            }
+
             list.innerHTML = events.map(e => `
                 <tr>
-                    <td class="ps-4 fw-bold">${e.date}</td>
+                    <td class="ps-4 fw-bold">${e.date || ''}</td>
                     <td>${escapeHtml(e.title)}</td>
                     <td>${escapeHtml(e.location)}</td>
                     <td>
@@ -281,20 +304,32 @@
 
         function openEventModal(event = null) {
             const form = document.getElementById('event-form');
+            const titleEl = document.getElementById('eventModalLabel');
+            const idEl = document.getElementById('event-id');
+            const eventTitleEl = document.getElementById('event-title');
+            const eventDescEl = document.getElementById('event-desc');
+            const eventDateEl = document.getElementById('event-date');
+            const eventLocationEl = document.getElementById('event-location');
+            const eventMediaTypeEl = document.getElementById('event-media-type');
+            const eventMediaUrlEl = document.getElementById('event-media-url');
+            const eventThumbnailEl = document.getElementById('event-thumbnail');
+            const eventPeopleEl = document.getElementById('event-people');
+
             if (event) {
-                document.getElementById('eventModalLabel').textContent = 'Edit Event';
-                document.getElementById('event-id').value = event.id;
-                document.getElementById('event-title').value = event.title;
-                document.getElementById('event-desc').value = event.description || '';
-                document.getElementById('event-date').value = event.date;
-                document.getElementById('event-location').value = event.location || '';
-                document.getElementById('event-media-type').value = event.media_type || 'image';
-                document.getElementById('event-media-url').value = event.media_url || '';
-                document.getElementById('event-thumbnail').value = event.thumbnail || '';
+                if (titleEl) titleEl.textContent = 'Edit Event';
+                if (idEl) idEl.value = String(event.id);
+                if (eventTitleEl) eventTitleEl.value = event.title || '';
+                if (eventDescEl) eventDescEl.value = event.description || '';
+                if (eventDateEl) eventDateEl.value = event.date || '';
+                if (eventLocationEl) eventLocationEl.value = event.location || '';
+                if (eventMediaTypeEl) eventMediaTypeEl.value = event.media_type || 'image';
+                if (eventMediaUrlEl) eventMediaUrlEl.value = event.media_url || '';
+                if (eventThumbnailEl) eventThumbnailEl.value = event.thumbnail || '';
+                if (eventPeopleEl) eventPeopleEl.value = event.people || '';
             } else {
-                document.getElementById('eventModalLabel').textContent = 'Add Event';
-                form.reset();
-                document.getElementById('event-id').value = '0';
+                if (titleEl) titleEl.textContent = 'Add Event';
+                if (form) form.reset();
+                if (idEl) idEl.value = '0';
             }
             eventModal.show();
         }
@@ -307,6 +342,7 @@
         async function deleteEvent(id) {
             if (!confirm('Delete this event?')) return;
             try {
+                console.log('[ADMIN] Deleting event:', id);
                 await fetch('/api/events?id=' + id, { method: 'DELETE' });
                 await loadEvents();
             } catch (e) {
@@ -316,28 +352,42 @@
 
         document.getElementById('event-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            
+            const idVal = document.getElementById('event-id')?.value || '0';
             const data = {
-                id: parseInt(document.getElementById('event-id').value) || 0,
+                id: parseInt(idVal) || 0,
                 title: document.getElementById('event-title').value,
                 description: document.getElementById('event-desc').value,
                 date: document.getElementById('event-date').value,
                 location: document.getElementById('event-location').value,
                 media_type: document.getElementById('event-media-type').value,
                 media_url: document.getElementById('event-media-url').value,
-                thumbnail: document.getElementById('event-thumbnail').value
+                thumbnail: document.getElementById('event-thumbnail').value,
+                people: document.getElementById('event-people').value
             };
-            
-            const res = await fetch('/api/events', {
-                method: 'POST',
-                headers: {'Content-Type': 'application/json'},
-                body: JSON.stringify(data)
-            });
-            
-            if (res.ok) {
+
+            console.log('[ADMIN] Saving event:', data);
+
+            try {
+                const res = await fetch('/api/events', {
+                    method: 'POST',
+                    headers: {'Content-Type': 'application/json'},
+                    body: JSON.stringify(data)
+                });
+
+                if (!res.ok) {
+                    const err = await res.text();
+                    console.error('[ADMIN] Save failed:', res.status, err);
+                    alert('Failed to save event: ' + err);
+                    return;
+                }
+
+                console.log('[ADMIN] Event saved successfully');
                 eventModal.hide();
                 await loadEvents();
-            } else {
-                alert('Failed to save event');
+            } catch (err) {
+                console.error('[ADMIN] Save error:', err);
+                alert('Failed to save event: ' + err.message);
             }
         });
 
@@ -348,16 +398,16 @@
             
             switch(type) {
                 case 'video':
-                    fileInput.accept = 'video/mp4,video/webm,video/quicktime';
-                    label.textContent = 'Video File';
+                    if (fileInput) fileInput.accept = 'video/mp4,video/webm,video/quicktime';
+                    if (label) label.textContent = 'Video File';
                     break;
                 case 'audio':
-                    fileInput.accept = 'audio/mp3,audio/wav,audio/ogg';
-                    label.textContent = 'Audio File';
+                    if (fileInput) fileInput.accept = 'audio/mp3,audio/wav,audio/ogg';
+                    if (label) label.textContent = 'Audio File';
                     break;
                 default:
-                    fileInput.accept = 'image/*';
-                    label.textContent = 'Image File';
+                    if (fileInput) fileInput.accept = 'image/*';
+                    if (label) label.textContent = 'Image File';
             }
         }
 
@@ -366,7 +416,7 @@
             const type = document.getElementById('media-type').value;
             const fileInput = document.getElementById('media-file');
             
-            if (!fileInput.files[0]) {
+            if (!fileInput?.files[0]) {
                 alert('Please select a file');
                 return;
             }
@@ -380,18 +430,25 @@
                     method: 'POST',
                     body: formData
                 });
-                const data = await res.json();
                 
-                if (res.ok) {
-                    document.getElementById('upload-result').innerHTML = `
+                if (!res.ok) {
+                    const err = await res.text();
+                    alert('Upload failed: ' + err);
+                    return;
+                }
+                
+                const data = await res.json();
+                console.log('[ADMIN] Upload result:', data);
+                
+                const resultDiv = document.getElementById('upload-result');
+                if (resultDiv) {
+                    resultDiv.innerHTML = `
                         <div class="alert alert-success">
                             <strong>Upload successful!</strong><br>
                             Media URL: <code>${data.url}</code><br>
                             Copy this URL and paste it in the Event form.
                         </div>
                     `;
-                } else {
-                    alert('Upload failed');
                 }
             } catch (err) {
                 alert('Error: ' + err.message);

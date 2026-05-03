@@ -10,6 +10,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
@@ -30,6 +31,7 @@ type TimelineEvent struct {
 	Thumbnail   string   `json:"thumbnail"`
 	MediaCaption string  `json:"media_caption"`
 	Tags        string   `json:"tags"`
+	People     string   `json:"people"`
 	SortOrder   int      `json:"sort_order"`
 	IsPublic   bool     `json:"is_public"`
 	CreatedAt   string   `json:"created_at"`
@@ -56,7 +58,7 @@ type ShareToken struct {
 	Expires   time.Time `json:"expires"`
 }
 
-const currentSchemaVersion = 2
+const currentSchemaVersion = 3
 const currentVersion = "1.1.0"
 
 var (
@@ -88,6 +90,8 @@ func main() {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		log.Printf("Warning: could not create database directory: %v", err)
 	}
+
+	compileTypeScript()
 
 	var err error
 	db, err = sql.Open("sqlite3", dbPath)
@@ -263,6 +267,7 @@ func initDB() {
 		thumbnail TEXT,
 		media_caption TEXT,
 		tags TEXT,
+		people TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -330,6 +335,9 @@ func runMigration(fromVersion int) {
 			year TEXT,
 			expires_at TEXT
 		)`)
+	case 2:
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN people TEXT`)
+		_, _ = db.Exec(`UPDATE timeline_events SET people = '' WHERE people IS NULL`)
 	}
 }
 
@@ -481,25 +489,48 @@ func handleLogout(w http.ResponseWriter, r *http.Request) {
 func getEvents(w http.ResponseWriter, r *http.Request) {
 	year := r.URL.Query().Get("year")
 	month := r.URL.Query().Get("month")
+	limit := r.URL.Query().Get("limit")
+	skip := r.URL.Query().Get("skip")
+	sort := r.URL.Query().Get("sort")
+
+	log.Printf("[API] getEvents: year=%s, month=%s, limit=%s, skip=%s, sort=%s", year, month, limit, skip, sort)
 
 	var query string
 	var args []interface{}
 
 	if year != "" && month != "" {
-		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, created_at 
-				 FROM timeline_events WHERE strftime('%Y', event_date) = ? AND strftime('%m', event_date) = ? ORDER BY event_date ASC`
+		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(people,''), created_at 
+				 FROM timeline_events WHERE strftime('%Y', event_date) = ? AND strftime('%m', event_date) = ?`
 		args = []interface{}{year, month}
 	} else if year != "" {
-		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, created_at 
-				 FROM timeline_events WHERE strftime('%Y', event_date) = ? ORDER BY event_date ASC`
+		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(people,''), created_at 
+				 FROM timeline_events WHERE strftime('%Y', event_date) = ?`
 		args = []interface{}{year}
 	} else {
-		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, created_at 
-				 FROM timeline_events ORDER BY event_date ASC`
+		query = `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(people,''), created_at 
+				 FROM timeline_events`
 	}
+
+	if sort == "desc" {
+		query += " ORDER BY event_date DESC"
+	} else if sort == "asc" {
+		query += " ORDER BY event_date ASC"
+	} else {
+		query += " ORDER BY event_date ASC"
+	}
+
+	if limit != "" {
+		query += " LIMIT " + limit
+		if skip != "" {
+			query += " OFFSET " + skip
+		}
+	}
+
+	log.Printf("[API] getEvents query: %s with args: %v", query, args)
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
+		log.Printf("[API] getEvents query error: %v", err)
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -508,12 +539,17 @@ func getEvents(w http.ResponseWriter, r *http.Request) {
 	var events []TimelineEvent
 	for rows.Next() {
 		var e TimelineEvent
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.CreatedAt)
+		var people string
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &people, &e.CreatedAt)
 		if err != nil {
+			log.Printf("[API] getEvents scan error: %v", err)
 			continue
 		}
+		e.People = people
 		events = append(events, e)
 	}
+
+	log.Printf("[API] getEvents returned %d events", len(events))
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(events)
@@ -552,25 +588,27 @@ func saveEvent(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	log.Printf("[EVENT] Saving event: ID=%d, Title=%s, Date=%s, MediaType=%s, Tags=%s",
-		e.ID, e.Title, e.Date, e.MediaType, e.Tags)
+	log.Printf("[EVENT] Saving event: ID=%d, Title=%q, Date=%q, Location=%q, MediaType=%q, Tags=%q, People=%q",
+		e.ID, e.Title, e.Date, e.Location, e.MediaType, e.Tags, e.People)
 
 	if e.ID == 0 {
-		_, err := db.Exec(`INSERT INTO timeline_events 
-			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic)
+		result, err := db.Exec(`INSERT INTO timeline_events 
+			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, people, sort_order, is_public) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.People, e.SortOrder, e.IsPublic)
 		if err != nil {
 			log.Printf("[EVENT] Insert failed: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
-		log.Printf("[EVENT] Created new event")
+		id, _ := result.LastInsertId()
+		e.ID = int(id)
+		log.Printf("[EVENT] Created new event with ID: %d", e.ID)
 	} else {
 		_, err := db.Exec(`UPDATE timeline_events SET 
-			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=? 
+			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, people=?, sort_order=?, is_public=? 
 			WHERE id=?`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.ID)
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.People, e.SortOrder, e.IsPublic, e.ID)
 		if err != nil {
 			log.Printf("[EVENT] Update failed: %v", err)
 			http.Error(w, err.Error(), http.StatusInternalServerError)
@@ -709,13 +747,13 @@ func searchEvents(w http.ResponseWriter, r *http.Request) {
 	year := r.URL.Query().Get("year")
 	tag := r.URL.Query().Get("tag")
 
-	sql := "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, created_at FROM timeline_events WHERE 1=1"
+	sql := "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(media_caption,''), COALESCE(tags,''), COALESCE(people,''), sort_order, is_public, created_at FROM timeline_events WHERE 1=1"
 	args := []interface{}{}
 
 	if query != "" {
-		sql += " AND (title LIKE ? OR description LIKE ? OR location LIKE ?)"
+		sql += " AND (title LIKE ? OR description LIKE ? OR location LIKE ? OR people LIKE ?)"
 		like := "%" + query + "%"
-		args = append(args, like, like, like)
+		args = append(args, like, like, like, like)
 	}
 	if year != "" {
 		sql += " AND strftime('%Y', event_date) = ?"
@@ -738,10 +776,16 @@ func searchEvents(w http.ResponseWriter, r *http.Request) {
 	var events []TimelineEvent
 	for rows.Next() {
 		var e TimelineEvent
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
+		/* scan with nullable strings */
+		var people, mediaCaption, tags string
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &mediaCaption, &tags, &people, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
 		if err != nil {
+			log.Printf("[API] searchEvents scan error: %v", err)
 			continue
 		}
+		e.MediaCaption = mediaCaption
+		e.Tags = tags
+		e.People = people
 		events = append(events, e)
 	}
 
@@ -760,18 +804,21 @@ func cloneEvent(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var e TimelineEvent
-	err := db.QueryRow("SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order FROM timeline_events WHERE id = ?", input.ID).
-		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.Tags, &e.SortOrder)
+	var people, tags string
+	err := db.QueryRow("SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, people, sort_order FROM timeline_events WHERE id = ?", input.ID).
+		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &tags, &people, &e.SortOrder)
 	if err != nil {
 		http.Error(w, "Event not found", http.StatusNotFound)
 		return
 	}
+	e.Tags = tags
+	e.People = people
 
 	e.Date = input.Date
 	e.ID = 0
 
-	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder)
+	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, people, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.People, e.SortOrder)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -820,6 +867,9 @@ func importEvents(w http.ResponseWriter, r *http.Request) {
 			if len(record) > 4 {
 				e.Tags = record[4]
 			}
+			if len(record) > 5 {
+				e.People = record[5]
+			}
 			events = append(events, e)
 		}
 	} else {
@@ -831,8 +881,8 @@ func importEvents(w http.ResponseWriter, r *http.Request) {
 
 	count := 0
 	for _, e := range events {
-		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder)
+		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, people, sort_order) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.People, e.SortOrder)
 		if err == nil {
 			count++
 		}
@@ -849,7 +899,7 @@ func exportEvents(w http.ResponseWriter, r *http.Request) {
 		format = "json"
 	}
 
-	sql := "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, created_at FROM timeline_events"
+	sql := "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, people, sort_order, is_public, created_at FROM timeline_events"
 	args := []interface{}{}
 
 	if year != "" {
@@ -868,19 +918,24 @@ func exportEvents(w http.ResponseWriter, r *http.Request) {
 	var events []TimelineEvent
 	for rows.Next() {
 		var e TimelineEvent
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
+		var people, mediaCaption, tags string
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &mediaCaption, &tags, &people, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
 		if err != nil {
+			log.Printf("[API] exportEvents scan error: %v", err)
 			continue
 		}
+		e.MediaCaption = mediaCaption
+		e.Tags = tags
+		e.People = people
 		events = append(events, e)
 	}
 
 	if format == "csv" {
 		w.Header().Set("Content-Type", "text/csv")
 		w.Header().Set("Content-Disposition", "attachment; filename=events.csv")
-		fmt.Fprint(w, "Title,Description,Date,Location,MediaType,Tags\n")
+		fmt.Fprint(w, "Title,Description,Date,Location,MediaType,Tags,People\n")
 		for _, e := range events {
-			fmt.Fprintf(w, "%q,%q,%s,%q,%s,%s\n", e.Title, e.Description, e.Date, e.Location, e.MediaType, e.Tags)
+			fmt.Fprintf(w, "%q,%q,%s,%q,%s,%s,%s\n", e.Title, e.Description, e.Date, e.Location, e.MediaType, e.Tags, e.People)
 		}
 		return
 	}
@@ -1023,9 +1078,9 @@ func getPublicEvents(w http.ResponseWriter, r *http.Request) {
 	var args []interface{}
 
 	if eventIDs != "" {
-		query = "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, created_at FROM timeline_events WHERE id IN (" + eventIDs + ") ORDER BY event_date ASC"
+		query = "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(media_caption,''), COALESCE(tags,''), COALESCE(people,''), sort_order, is_public, created_at FROM timeline_events WHERE id IN (" + eventIDs + ") ORDER BY event_date ASC"
 	} else {
-		query = "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, created_at FROM timeline_events WHERE is_public = 1"
+		query = "SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, COALESCE(media_caption,''), COALESCE(tags,''), COALESCE(people,''), sort_order, is_public, created_at FROM timeline_events WHERE is_public = 1"
 		if year != "" {
 			query += " AND strftime('%Y', event_date) = ?"
 			args = append(args, year)
@@ -1043,10 +1098,15 @@ func getPublicEvents(w http.ResponseWriter, r *http.Request) {
 	var events []TimelineEvent
 	for rows.Next() {
 		var e TimelineEvent
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
+		var people, mediaCaption, tags string
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &mediaCaption, &tags, &people, &e.SortOrder, &e.IsPublic, &e.CreatedAt)
 		if err != nil {
+			log.Printf("[API] getPublicEvents scan error: %v", err)
 			continue
 		}
+		e.MediaCaption = mediaCaption
+		e.Tags = tags
+		e.People = people
 		events = append(events, e)
 	}
 
@@ -1080,4 +1140,41 @@ func getTags(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(tags)
+}
+
+func compileTypeScript() {
+	tsFile := filepath.Join(basePath, "static", "app.ts")
+	jsFile := filepath.Join(basePath, "static", "app.js")
+
+	tsInfo, err := os.Stat(tsFile)
+	if err != nil {
+		log.Printf("[TS] No app.ts found, skipping TypeScript compilation")
+		return
+	}
+
+	jsInfo, err := os.Stat(jsFile)
+	needsCompile := true
+
+	if err == nil && jsInfo.ModTime().After(tsInfo.ModTime()) {
+		needsCompile = false
+	}
+
+	if !needsCompile {
+		log.Printf("[TS] app.js is up to date, skipping TypeScript compilation")
+		return
+	}
+
+	log.Printf("[TS] Compiling TypeScript...")
+
+	cmd := exec.Command("npx", "tsc")
+	cmd.Dir = basePath
+	cmd.Stdout = os.Stdout
+	cmd.Stderr = os.Stderr
+
+	if err := cmd.Run(); err != nil {
+		log.Printf("[TS] TypeScript compilation failed: %v", err)
+		return
+	}
+
+	log.Printf("[TS] TypeScript compiled successfully")
 }

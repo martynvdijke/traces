@@ -6,12 +6,31 @@ tasks:
     cmds:
       - go build -o traces-server .
 
+  build-ts:
+    desc: Build TypeScript
+    cmds:
+      - npx tsc
+
+  typecheck:
+    desc: Type check TypeScript
+    cmds:
+      - npx tsc --noEmit
+
   run:
     desc: Run the application locally
+    deps:
+      - build
     cmds:
       - ./traces-server
     env:
-      PORT: "8080"
+      PORT: "6270"
+
+  dev:
+    desc: Run with hot reloading (requires air)
+    cmds:
+      - air -c .air.toml
+    env:
+      PORT: "6270"
 
   test:
     desc: Run Go unit tests
@@ -48,7 +67,7 @@ tasks:
   docker-run:
     desc: Run Docker container
     cmds:
-      - docker run -p 8080:8080 traces
+      - docker run -p 6270:6270 traces
 
   docker-push:
     desc: Push Docker image to registry
