@@ -7,7 +7,7 @@
     [
       "@semantic-release/exec",
       {
-        "prepareCmd": "sed -i 's/const currentVersion = \".*\"/const currentVersion = \"${nextRelease.version}\"/' main.go"
+        "prepareCmd": "sed -i 's/\"version\": \".*\"/\"version\": \"${nextRelease.version}\"/' package.json && sed -i 's/const currentVersion = \".*\"/const currentVersion = \"${nextRelease.version}\"/' main.go && sed -i 's/\"version\": \".*\"/\"version\": \"${nextRelease.version}\"/' static/swagger.json"
       }
     ]
   ],
