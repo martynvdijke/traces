@@ -346,6 +346,8 @@ func getEvents(c *gin.Context) {
 	year := c.Query("year")
 	month := c.Query("month")
 	tag := c.Query("tag")
+	limit := c.Query("limit")
+	sort := c.Query("sort")
 
 	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
@@ -364,7 +366,16 @@ func getEvents(c *gin.Context) {
 		query += " AND e.tags LIKE ?"
 		args = append(args, "%"+tag+"%")
 	}
-	query += " ORDER BY e.event_date ASC"
+	if sort == "desc" {
+		query += " ORDER BY e.event_date DESC"
+	} else {
+		query += " ORDER BY e.event_date ASC"
+	}
+	if limit != "" {
+		query += " LIMIT ?"
+		l, _ := strconv.Atoi(limit)
+		args = append(args, l)
+	}
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
