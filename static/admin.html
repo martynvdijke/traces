@@ -62,6 +62,24 @@
             .nav-tabs { justify-content: flex-start; overflow-x: auto; padding-bottom: 0.5rem; flex-wrap: nowrap; }
             .admin-header .container { flex-direction: column !important; gap: 1rem; text-align: center; }
             .admin-header .btn { width: 100%; margin: 0.25rem 0 !important; }
+            .modal-dialog.modal-lg { margin: 0; max-width: 100%; }
+            .modal-content { border-radius: 0; min-height: 100dvh; }
+            .modal-body { padding: 1rem; }
+            .table { font-size: 0.8rem; }
+            .table td, .table th { padding: 0.5rem 0.4rem; white-space: nowrap; }
+            .btn { padding: 0.5rem 0.75rem; font-size: 0.875rem; }
+            .form-control, .form-select { font-size: 16px; padding: 0.6rem 0.75rem; }
+            #location-map { height: 200px; }
+            .card-body { padding: 0.75rem; }
+        }
+        @media (max-width: 576px) {
+            .container { padding-left: 0.5rem; padding-right: 0.5rem; }
+            .table td:first-child { padding-left: 0.75rem !important; }
+            .table td:last-child { padding-right: 0.75rem !important; }
+            .table th:first-child { padding-left: 0.75rem !important; }
+            .table th:last-child { padding-right: 0.75rem !important; }
+            .btn-sm { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
+            .card-header { padding: 0.75rem; }
         }
     </style>
 </head>
@@ -254,16 +272,25 @@
                             <input type="text" class="form-control" name="thumbnail" id="event-thumbnail" placeholder="/media/...">
                         </div>
                         <div class="row g-3 mb-3">
-                            <div class="col-6">
+                            <div class="col-md-6">
                                 <label class="form-label small fw-bold">Latitude</label>
-                                <input type="number" step="any" class="form-control" name="latitude" id="event-latitude" placeholder="e.g. 40.7580">
+                                <div class="input-group">
+                                    <input type="number" step="any" class="form-control" name="latitude" id="event-latitude" placeholder="e.g. 40.7580">
+                                </div>
                             </div>
-                            <div class="col-6">
+                            <div class="col-md-6">
                                 <label class="form-label small fw-bold">Longitude</label>
-                                <input type="number" step="any" class="form-control" name="longitude" id="event-longitude" placeholder="e.g. -73.9855">
+                                <div class="input-group">
+                                    <input type="number" step="any" class="form-control" name="longitude" id="event-longitude" placeholder="e.g. -73.9855">
+                                </div>
+                            </div>
+                            <div class="col-12">
+                                <button type="button" class="btn btn-outline-info w-100" onclick="useMyLocation()">
+                                    <i class="fa-solid fa-location-crosshairs me-1"></i> Use My Location
+                                </button>
                             </div>
                         </div>
-                        <div id="location-map"></div>
+                        <div id="location-map" class="mb-3"></div>
                         <button type="submit" class="btn btn-primary w-100 mt-3">Save Event</button>
                     </form>
                 </div>
@@ -395,6 +422,40 @@
             locationMap.setView([lat, lng], 13);
         }
 
+        function useMyLocation() {
+            if (!navigator.geolocation) {
+                alert('Geolocation is not supported by your browser');
+                return;
+            }
+            document.getElementById('event-location').placeholder = 'Detecting location...';
+            navigator.geolocation.getCurrentPosition(
+                async (pos) => {
+                    const lat = pos.coords.latitude;
+                    const lng = pos.coords.longitude;
+                    document.getElementById('event-latitude').value = lat.toFixed(6);
+                    document.getElementById('event-longitude').value = lng.toFixed(6);
+                    setMapMarker(lat, lng);
+                    try {
+                        const res = await fetch(
+                            `https://nominatim.openstreetmap.org/reverse?format=jsonv2&lat=${lat}&lon=${lng}`,
+                            { headers: { 'Accept-Language': 'en' } }
+                        );
+                        const data = await res.json();
+                        if (data.display_name && !document.getElementById('event-location').value) {
+                            const parts = data.display_name.split(',');
+                            document.getElementById('event-location').value = parts.slice(0, 3).join(',').trim();
+                        }
+                    } catch(e) {}
+                    document.getElementById('event-location').placeholder = 'Location';
+                },
+                (err) => {
+                    alert('Failed to get location: ' + err.message);
+                    document.getElementById('event-location').placeholder = 'Location';
+                },
+                { enableHighAccuracy: true, timeout: 10000 }
+            );
+        }
+
         function openEventModal(event = null) {
             if (event) {
                 document.getElementById('eventModalLabel').textContent = 'Edit Event';
@@ -512,7 +573,13 @@
             const res = await fetch('/api/upload', { method:'POST', body:fd });
             const data = await res.json();
             if (res.ok) {
-                document.getElementById('upload-result').innerHTML = `<div class="alert alert-success"><strong>Upload successful!</strong><br>URL: <code>${data.url}</code></div>`;
+                let html = `<div class="alert alert-success"><strong>Upload successful!</strong><br>URL: <code>${data.url}</code>`;
+                if (data.thumbnail) html += `<br>Thumbnail: <code>${data.thumbnail}</code>`;
+                html += `</div>`;
+                if (data.thumbnail) {
+                    html += `<div class="text-center mt-2"><img src="${data.thumbnail}" class="img-fluid rounded" style="max-height:200px" alt="thumbnail preview"></div>`;
+                }
+                document.getElementById('upload-result').innerHTML = html;
             } else alert('Upload failed: ' + (data.error||''));
         });
 
