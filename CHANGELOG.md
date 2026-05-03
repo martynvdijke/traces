@@ -1,3 +1,18 @@
+# [1.1.0](https://github.com/martynvdijke/traces/compare/v1.0.0...v1.1.0) (2026-05-03)
+
+
+### Bug Fixes
+
+* align media route with Gin router and return empty arrays instead of null for JSON APIs ([cade074](https://github.com/martynvdijke/traces/commit/cade0740bb5b6618741e8ab2fe2f951c1249db51))
+* align Playwright tests with updated UI and port 6270 ([580ea48](https://github.com/martynvdijke/traces/commit/580ea4836199465ceaa0e9a25c2b1f216313afe9))
+* remove build files and fix CI webServer startup ([6cde9f9](https://github.com/martynvdijke/traces/commit/6cde9f90d8ad481d2aafefacddb80c81792e996d))
+* update static media path from /static/media to /media ([3deacf0](https://github.com/martynvdijke/traces/commit/3deacf089bd250a0adf63184cd09634d3b184e24))
+
+
+### Features
+
+* migrate to Gin, add persons/map/Gotify/stats, responsive mobile, expanded media formats ([c5a5adb](https://github.com/martynvdijke/traces/commit/c5a5adbcb764207ff3c7aae075b26d3e8130dff7))
+
 # 1.0.0 (2026-05-03)
 
 
