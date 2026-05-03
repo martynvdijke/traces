@@ -50,6 +50,9 @@ jobs:
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium
 
+      - name: Build server binary
+        run: go build -o traces-server .
+
       - name: Run Playwright tests
         run: npm run test:e2e
 
