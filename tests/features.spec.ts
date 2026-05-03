@@ -7,9 +7,18 @@ test.describe('TRACES Search', () => {
   });
 });
 
-test.describe('TRACES API New Features', () => {
-  test('should return tags', async ({ request }) => {
-    const resp = await request.get('/api/tags?year=2026');
+test.describe('TRACES API Features', () => {
+  test('should return persons', async ({ request }) => {
+    const resp = await request.get('/api/persons');
     expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    expect(Array.isArray(data)).toBeTruthy();
+  });
+
+  test('should return full events list', async ({ request }) => {
+    const resp = await request.get('/api/events/full');
+    expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    expect(Array.isArray(data)).toBeTruthy();
   });
 });
