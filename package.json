@@ -1,0 +1,29 @@
+{
+  "name": "traces",
+  "version": "1.1.0",
+  "description": "A Go-based timeline application for tracking events throughout the year with multimedia support.",
+  "main": "index.js",
+  "scripts": {
+    "test": "go test ./...",
+    "test:e2e": "playwright test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/martynvdijke/traces.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "bugs": {
+    "url": "https://github.com/martynvdijke/traces/issues"
+  },
+  "homepage": "https://github.com/martynvdijke/traces#readme",
+  "devDependencies": {
+    "@playwright/test": "^1.59.1",
+    "@types/node": "^25.6.0"
+  },
+  "dependencies": {
+    "playwright": "^1.59.1"
+  }
+}

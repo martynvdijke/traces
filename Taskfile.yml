@@ -1,0 +1,90 @@
+version: '3'
+
+tasks:
+  build:
+    desc: Build the Go application
+    cmds:
+      - go build -o traces-server .
+
+  build-ts:
+    desc: Build TypeScript
+    cmds:
+      - npx tsc
+
+  typecheck:
+    desc: Type check TypeScript
+    cmds:
+      - npx tsc --noEmit
+
+  run:
+    desc: Run the application locally
+    deps:
+      - build
+    cmds:
+      - ./traces-server
+    env:
+      PORT: "6270"
+
+  dev:
+    desc: Run with hot reloading (requires air)
+    cmds:
+      - air -c .air.toml
+    env:
+      PORT: "6270"
+
+  test:
+    desc: Run Go unit tests
+    cmds:
+      - go test -v ./...
+
+  test-e2e:
+    desc: Run Playwright e2e tests
+    cmds:
+      - npx playwright test
+
+  test-all:
+    desc: Run all tests
+    cmds:
+      - task: test
+      - task: test-e2e
+
+  lint:
+    desc: Run go vet
+    cmds:
+      - go vet ./...
+
+  tidy:
+    desc: Format and tidy Go modules
+    cmds:
+      - go fmt ./...
+      - go mod tidy
+
+  docker-build:
+    desc: Build Docker image
+    cmds:
+      - docker build -t traces .
+
+  docker-run:
+    desc: Run Docker container
+    cmds:
+      - docker run -p 6270:6270 traces
+
+  docker-push:
+    desc: Push Docker image to registry
+    cmds:
+      - docker tag traces:latest ghcr.io/{{.USER}}/traces:latest
+      - docker push ghcr.io/{{.USER}}/traces:latest
+
+  clean:
+    desc: Clean build artifacts
+    cmds:
+      - rm -f traces-server
+      - rm -f traces.db
+
+  all:
+    desc: Run build, test, and lint
+    cmds:
+      - task: tidy
+      - task: build
+      - task: test
+      - task: lint
