@@ -1,3 +1,10 @@
+## [1.1.1](https://github.com/martynvdijke/traces/compare/v1.1.0...v1.1.1) (2026-05-03)
+
+
+### Bug Fixes
+
+* restore activity feed, map, and add backend CRUD tests ([6fef529](https://github.com/martynvdijke/traces/commit/6fef52953ac966758578216c7353077c0fac8f9f))
+
 # [1.1.0](https://github.com/martynvdijke/traces/compare/v1.0.0...v1.1.0) (2026-05-03)
 
 

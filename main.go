@@ -80,7 +80,7 @@ type GotifyConfig struct {
 }
 
 const currentSchemaVersion = 3
-const currentVersion = "1.1.0"
+const currentVersion = "1.1.1"
 
 var (
 	publicMode    bool = false
