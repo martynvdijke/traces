@@ -2,133 +2,561 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TRACES Admin - Management</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>TRACES Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
-            --traces-primary: #7c3aed;
-            --traces-dark: #111;
+            --primary: #7c3aed;
+            --primary-dark: #6d28d9;
+            --primary-light: #a78bfa;
+            --primary-glow: rgba(124,58,237,0.15);
+            --bg: #f8fafc;
+            --bg-card: #ffffff;
+            --text: #0f172a;
+            --text-muted: #64748b;
+            --border: #e2e8f0;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.06);
+            --shadow-md: 0 4px 20px rgba(0,0,0,0.08);
+            --shadow-lg: 0 8px 40px rgba(0,0,0,0.12);
+            --radius: 12px;
+            --radius-lg: 16px;
+            --font-sans: 'DM Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+            --font-mono: 'Space Mono', monospace;
+            --gradient: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
+            --gradient-hero: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
         }
-        body { 
-            background: #f4f7f6; 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+        [data-theme="dark"] {
+            --bg: #0f172a;
+            --bg-card: #1e293b;
+            --text: #e2e8f0;
+            --text-muted: #94a3b8;
+            --border: #334155;
+            --shadow-sm: 0 1px 3px rgba(0,0,0,0.2);
+            --shadow-md: 0 4px 20px rgba(0,0,0,0.3);
+            --shadow-lg: 0 8px 40px rgba(0,0,0,0.4);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: var(--font-sans);
+            background: var(--bg);
+            color: var(--text);
             min-height: 100vh;
+            transition: background 0.3s, color 0.3s;
         }
-        .admin-header { 
-            background: var(--traces-dark); 
-            color: white; 
-            padding: 1rem 0; 
-            border-bottom: 4px solid var(--traces-primary);
+        .admin-header {
+            background: var(--gradient-hero);
+            color: white;
+            padding: 1.25rem 0;
+            position: sticky;
+            top: 0;
+            z-index: 100;
+            box-shadow: 0 4px 30px rgba(0,0,0,0.15);
+            backdrop-filter: blur(10px);
         }
-        .admin-header h1 { font-size: clamp(1rem, 3vw, 1.5rem); }
-        .admin-header .btn { font-size: clamp(0.75rem, 2vw, 0.875rem); white-space: nowrap; }
-        .card { 
-            border: none; border-radius: 10px; 
-            box-shadow: 0 4px 12px rgba(0,0,0,0.05); margin-bottom: 25px; 
+        .admin-header h1 {
+            font-family: var(--font-mono);
+            font-size: clamp(1.1rem, 3vw, 1.5rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
         }
-        .card-header { 
-            background: white; border-bottom: 1px solid #eee; 
-            font-weight: 700; color: #333; padding: 15px 20px; 
-            border-radius: 10px 10px 0 0 !important; 
-            font-size: clamp(0.9rem, 2vw, 1rem);
+        .admin-header h1 i { color: var(--primary-light); }
+        .admin-header .btn {
+            font-size: clamp(0.75rem, 2vw, 0.875rem);
+            border-radius: 8px;
+            padding: 0.5rem 1rem;
+            transition: all 0.2s;
         }
-        .btn-primary { background: var(--traces-primary); border-color: var(--traces-primary); }
-        .btn-primary:hover { background: #6d28d9; border-color: #6d28d9; }
-        .table thead th { 
-            background: #f8f9fa; text-transform: uppercase; 
-            font-size: 0.75rem; letter-spacing: 0.05em; color: #666; white-space: nowrap;
+        .admin-header .btn-outline-light:hover {
+            background: rgba(255,255,255,0.15);
+            transform: translateY(-1px);
         }
-        .table td, .table th { font-size: clamp(0.8rem, 1.5vw, 0.9rem); vertical-align: middle; }
-        .nav-tabs { flex-wrap: wrap; gap: 0.25rem; }
-        .nav-tabs .nav-link { 
-            color: #666; font-weight: 600; border: none; padding: 0.75rem 1rem;
-            font-size: clamp(0.8rem, 2vw, 0.95rem); white-space: nowrap;
-            border-radius: 8px 8px 0 0; transition: all 0.2s;
+        .nav-tabs-wrapper {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            padding: 0 0;
+            position: sticky;
+            top: 73px;
+            z-index: 99;
+            box-shadow: var(--shadow-sm);
         }
-        .nav-tabs .nav-link.active { color: var(--traces-primary); border-bottom: 3px solid var(--traces-primary); background: white; }
-        .media-type-badge { padding: 4px 8px; border-radius: 4px; font-size: 0.75rem; text-transform: uppercase; }
-        .media-type-badge.image { background: #10b981; color: white; }
-        .media-type-badge.video { background: #ef4444; color: white; }
-        .media-type-badge.audio { background: #f59e0b; color: white; }
-        .form-label { font-size: clamp(0.8rem, 1.5vw, 0.9rem); }
-        .form-control, .form-select { font-size: clamp(0.85rem, 1.5vw, 0.95rem); }
-        #location-map { height: 280px; border-radius: 8px; margin-top: 0.5rem; }
-        .color-dot { display: inline-block; width: 14px; height: 14px; border-radius: 50%; margin-right: 6px; vertical-align: middle; }
+        .nav-tabs {
+            border: none;
+            gap: 0;
+            overflow-x: auto;
+            flex-wrap: nowrap;
+            -webkit-overflow-scrolling: touch;
+            scrollbar-width: none;
+        }
+        .nav-tabs::-webkit-scrollbar { display: none; }
+        .nav-tabs .nav-link {
+            color: var(--text-muted);
+            font-weight: 600;
+            border: none;
+            padding: 1rem 1.25rem;
+            font-size: clamp(0.8rem, 1.5vw, 0.9rem);
+            white-space: nowrap;
+            border-radius: 0;
+            transition: all 0.2s;
+            position: relative;
+            background: transparent;
+        }
+        .nav-tabs .nav-link::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 0;
+            height: 3px;
+            background: var(--gradient);
+            border-radius: 3px 3px 0 0;
+            transition: width 0.3s;
+        }
+        .nav-tabs .nav-link:hover { color: var(--primary); background: var(--primary-glow); }
+        .nav-tabs .nav-link.active {
+            color: var(--primary);
+            background: transparent;
+        }
+        .nav-tabs .nav-link.active::after { width: 60%; }
+        .card {
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-sm);
+            background: var(--bg-card);
+            margin-bottom: 1.5rem;
+            transition: box-shadow 0.3s, transform 0.2s;
+            overflow: hidden;
+        }
+        .card:hover { box-shadow: var(--shadow-md); }
+        .card-header {
+            background: var(--bg-card);
+            border-bottom: 1px solid var(--border);
+            font-weight: 700;
+            color: var(--text);
+            padding: 1.25rem 1.5rem;
+            font-size: clamp(0.9rem, 2vw, 1.05rem);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+        }
+        .card-header i { color: var(--primary); }
+        .card-body { padding: 1.5rem; }
+
+        .search-bar {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+        .search-bar .form-control,
+        .search-bar .form-select {
+            border-radius: 8px;
+            border: 1px solid var(--border);
+            font-size: 0.875rem;
+            padding: 0.5rem 0.75rem;
+            background: var(--bg);
+            color: var(--text);
+        }
+        .search-bar .form-control:focus,
+        .search-bar .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+
+        .btn-primary {
+            background: var(--gradient);
+            border: none;
+            border-radius: 8px;
+            padding: 0.5rem 1.25rem;
+            font-weight: 600;
+            transition: all 0.2s;
+        }
+        .btn-primary:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 15px var(--primary-glow);
+        }
+        .btn-success {
+            background: linear-gradient(135deg, #059669 0%, #10b981 100%);
+            border: none;
+            border-radius: 8px;
+            font-weight: 600;
+        }
+        .btn-success:hover { transform: translateY(-1px); box-shadow: 0 4px 15px rgba(16,185,129,0.3); }
+        .btn-danger {
+            background: linear-gradient(135deg, #dc2626 0%, #ef4444 100%);
+            border: none;
+            border-radius: 8px;
+        }
+        .btn-outline-primary {
+            border-color: var(--primary);
+            color: var(--primary);
+            border-radius: 8px;
+        }
+        .btn-outline-primary:hover { background: var(--primary); color: white; }
+
+        .table {
+            margin: 0;
+            font-size: clamp(0.8rem, 1.5vw, 0.9rem);
+        }
+        .table thead th {
+            background: var(--bg);
+            text-transform: uppercase;
+            font-size: 0.7rem;
+            letter-spacing: 0.08em;
+            color: var(--text-muted);
+            padding: 1rem 1rem;
+            border-bottom: 2px solid var(--border);
+            font-weight: 700;
+        }
+        .table td { padding: 0.875rem 1rem; vertical-align: middle; border-color: var(--border); }
+        .table tbody tr { transition: background 0.15s; }
+        .table tbody tr:hover { background: var(--primary-glow); }
+
+        .media-type-badge {
+            padding: 0.25rem 0.6rem;
+            border-radius: 6px;
+            font-size: 0.7rem;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+        .media-type-badge.image { background: #dbeafe; color: #1d4ed8; }
+        .media-type-badge.video { background: #fce7f3; color: #be185d; }
+        .media-type-badge.audio { background: #fef3c7; color: #b45309; }
+        [data-theme="dark"] .media-type-badge.image { background: rgba(59,130,246,0.2); color: #93c5fd; }
+        [data-theme="dark"] .media-type-badge.video { background: rgba(236,72,153,0.2); color: #f9a8d4; }
+        [data-theme="dark"] .media-type-badge.audio { background: rgba(245,158,11,0.2); color: #fcd34d; }
+
+        .person-card {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            padding: 1rem 1.25rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            transition: all 0.2s;
+            cursor: pointer;
+            background: var(--bg-card);
+        }
+        .person-card:hover {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+            transform: translateY(-2px);
+        }
+        .person-avatar {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            object-fit: cover;
+            flex-shrink: 0;
+            border: 2px solid var(--border);
+        }
+        .person-avatar-placeholder {
+            width: 48px;
+            height: 48px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: white;
+            flex-shrink: 0;
+        }
+        .person-info { flex: 1; min-width: 0; }
+        .person-info .name { font-weight: 600; font-size: 0.95rem; }
+        .person-info .meta { font-size: 0.8rem; color: var(--text-muted); }
+        .person-stats {
+            text-align: right;
+            flex-shrink: 0;
+        }
+        .person-stats .count {
+            font-family: var(--font-mono);
+            font-size: 1.25rem;
+            font-weight: 700;
+            color: var(--primary);
+            display: block;
+        }
+        .person-stats .label {
+            font-size: 0.65rem;
+            color: var(--text-muted);
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+        }
+
+        .autocomplete-wrapper {
+            position: relative;
+        }
+        .autocomplete-dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            right: 0;
+            z-index: 1050;
+            background: var(--bg-card);
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            box-shadow: var(--shadow-lg);
+            max-height: 200px;
+            overflow-y: auto;
+            display: none;
+        }
+        .autocomplete-dropdown.show { display: block; }
+        .autocomplete-item {
+            padding: 0.6rem 1rem;
+            cursor: pointer;
+            font-size: 0.875rem;
+            transition: background 0.1s;
+            border-bottom: 1px solid var(--border);
+        }
+        .autocomplete-item:last-child { border-bottom: none; }
+        .autocomplete-item:hover,
+        .autocomplete-item.active { background: var(--primary-glow); color: var(--primary); }
+        .autocomplete-item i { width: 20px; margin-right: 0.5rem; color: var(--text-muted); }
+
+        .modal-content {
+            border: none;
+            border-radius: var(--radius-lg);
+            box-shadow: var(--shadow-lg);
+            background: var(--bg-card);
+        }
+        .modal-header {
+            border-bottom: 1px solid var(--border);
+            padding: 1.25rem 1.5rem;
+        }
+        .modal-header .modal-title {
+            font-weight: 700;
+            font-size: 1.1rem;
+        }
+        .modal-body { padding: 1.5rem; }
+        .modal-footer { border-top: 1px solid var(--border); padding: 1rem 1.5rem; }
+        .modal-dialog.modal-lg { max-width: 700px; }
+
+        .form-label {
+            font-weight: 600;
+            font-size: 0.8rem;
+            color: var(--text);
+            margin-bottom: 0.35rem;
+        }
+        .form-control, .form-select {
+            border: 1px solid var(--border);
+            border-radius: 8px;
+            padding: 0.6rem 0.75rem;
+            font-size: 0.9rem;
+            background: var(--bg);
+            color: var(--text);
+            transition: border-color 0.2s, box-shadow 0.2s;
+        }
+        .form-control:focus, .form-select:focus {
+            border-color: var(--primary);
+            box-shadow: 0 0 0 3px var(--primary-glow);
+        }
+        .form-control::placeholder { color: var(--text-muted); opacity: 0.6; }
+        textarea.form-control { resize: vertical; min-height: 80px; }
+
+        #location-map {
+            height: 250px;
+            border-radius: var(--radius);
+            border: 1px solid var(--border);
+            overflow: hidden;
+        }
+
+        .color-dot {
+            display: inline-block;
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 6px;
+            vertical-align: middle;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 3rem 2rem;
+            color: var(--text-muted);
+        }
+        .empty-state i {
+            font-size: 3rem;
+            margin-bottom: 1rem;
+            opacity: 0.4;
+        }
+        .empty-state p { font-size: 0.9rem; }
+
+        .filter-chips {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+            margin-bottom: 1rem;
+        }
+        .filter-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.4rem;
+            padding: 0.35rem 0.75rem;
+            background: var(--primary-glow);
+            color: var(--primary);
+            border-radius: 20px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid transparent;
+        }
+        .filter-chip:hover { border-color: var(--primary); }
+        .filter-chip i { font-size: 0.7rem; }
+        .filter-chip.active {
+            background: var(--primary);
+            color: white;
+        }
+
+        .person-detail-header {
+            display: flex;
+            align-items: center;
+            gap: 1.5rem;
+            padding: 1.5rem;
+            background: var(--gradient-hero);
+            border-radius: var(--radius-lg);
+            color: white;
+            margin-bottom: 1.5rem;
+        }
+        .person-detail-header .avatar-lg {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            object-fit: cover;
+            border: 3px solid rgba(255,255,255,0.3);
+        }
+        .person-detail-header .avatar-placeholder-lg {
+            width: 80px;
+            height: 80px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: 700;
+            font-size: 2rem;
+            color: white;
+            border: 3px solid rgba(255,255,255,0.3);
+        }
+        .person-detail-header .info h2 { font-weight: 700; margin: 0; font-size: 1.5rem; }
+        .person-detail-header .info .sub { opacity: 0.8; font-size: 0.9rem; }
+        .person-detail-header .close-btn {
+            margin-left: auto;
+            background: rgba(255,255,255,0.1);
+            border: none;
+            color: white;
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        .person-detail-header .close-btn:hover { background: rgba(255,255,255,0.2); }
+
+        .animate-in {
+            animation: slideUp 0.3s ease-out;
+        }
+        @keyframes slideUp {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
         @media (max-width: 768px) {
-            .nav-tabs { justify-content: flex-start; overflow-x: auto; padding-bottom: 0.5rem; flex-wrap: nowrap; }
-            .admin-header .container { flex-direction: column !important; gap: 1rem; text-align: center; }
-            .admin-header .btn { width: 100%; margin: 0.25rem 0 !important; }
-            .modal-dialog.modal-lg { margin: 0; max-width: 100%; }
+            .admin-header { padding: 0.75rem 0; }
+            .admin-header .container { flex-direction: column !important; gap: 0.75rem; text-align: center; }
+            .admin-header .btn { width: 100%; }
+            .nav-tabs-wrapper { top: 60px; }
+            .nav-tabs .nav-link { padding: 0.75rem 0.875rem; font-size: 0.8rem; }
+            .card-header { padding: 1rem 1rem; }
+            .card-body { padding: 1rem; }
+            .modal-dialog.modal-lg { margin: 0; max-width: 100%; border-radius: 0; }
             .modal-content { border-radius: 0; min-height: 100dvh; }
-            .modal-body { padding: 1rem; }
-            .table { font-size: 0.8rem; }
-            .table td, .table th { padding: 0.5rem 0.4rem; white-space: nowrap; }
-            .btn { padding: 0.5rem 0.75rem; font-size: 0.875rem; }
-            .form-control, .form-select { font-size: 16px; padding: 0.6rem 0.75rem; }
-            #location-map { height: 200px; }
-            .card-body { padding: 0.75rem; }
+            .modal-header, .modal-body, .modal-footer { padding: 1rem; }
+            .table { font-size: 0.75rem; }
+            .table td, .table th { padding: 0.6rem 0.5rem; }
+            .btn { padding: 0.5rem 0.75rem; font-size: 0.85rem; }
+            .form-control, .form-select { font-size: 16px; }
+            #location-map { height: 180px; }
+            .person-card { padding: 0.75rem 1rem; }
+            .person-avatar, .person-avatar-placeholder { width: 40px; height: 40px; font-size: 0.9rem; }
+            .person-stats .count { font-size: 1rem; }
+            .person-detail-header { flex-direction: column; text-align: center; padding: 1.25rem; }
+            .person-detail-header .close-btn { margin: 0 auto; }
+            .person-detail-header .avatar-lg,
+            .person-detail-header .avatar-placeholder-lg { width: 64px; height: 64px; font-size: 1.5rem; }
+            .search-bar { flex-direction: column; }
         }
         @media (max-width: 576px) {
             .container { padding-left: 0.5rem; padding-right: 0.5rem; }
-            .table td:first-child { padding-left: 0.75rem !important; }
-            .table td:last-child { padding-right: 0.75rem !important; }
-            .table th:first-child { padding-left: 0.75rem !important; }
-            .table th:last-child { padding-right: 0.75rem !important; }
-            .btn-sm { padding: 0.35rem 0.5rem; font-size: 0.75rem; }
-            .card-header { padding: 0.75rem; }
+            .table td:first-child { padding-left: 0.5rem !important; }
+            .table td:last-child { padding-right: 0.5rem !important; }
         }
     </style>
 </head>
 <body>
-    <header class="admin-header mb-4">
+    <header class="admin-header">
         <div class="container d-flex justify-content-between align-items-center">
-            <h1 class="h4 mb-0"><i class="fa-solid fa-clock me-2"></i>TRACES ADMIN</h1>
-            <div>
-                <a href="/" class="btn btn-outline-light btn-sm me-2"><i class="fa-solid fa-eye me-1"></i> Timeline</a>
+            <h1 class="mb-0"><i class="fa-solid fa-clock me-2"></i>TRACES</h1>
+            <div class="d-flex gap-2 flex-wrap justify-content-center">
+                <a href="/" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-eye me-1"></i> Timeline</a>
                 <button class="btn btn-danger btn-sm" onclick="logout()"><i class="fa-solid fa-sign-out-alt me-1"></i> Logout</button>
             </div>
         </div>
     </header>
 
-    <div class="container">
-        <ul class="nav nav-tabs mb-4" id="adminTabs" role="tablist">
-            <li class="nav-item">
-                <button class="nav-link active" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button"><i class="fa-solid fa-calendar me-2"></i>Events</button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="persons-tab" data-bs-toggle="tab" data-bs-target="#persons-pane" type="button"><i class="fa-solid fa-users me-2"></i>Persons</button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button"><i class="fa-solid fa-upload me-2"></i>Upload</button>
-            </li>
-            <li class="nav-item">
-                <button class="nav-link" id="gotify-tab" data-bs-toggle="tab" data-bs-target="#gotify-pane" type="button"><i class="fa-solid fa-bell me-2"></i>Gotify</button>
-            </li>
-        </ul>
+    <div class="nav-tabs-wrapper">
+        <div class="container">
+            <ul class="nav nav-tabs" id="adminTabs" role="tablist">
+                <li class="nav-item"><button class="nav-link active" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button"><i class="fa-solid fa-calendar me-2"></i>Events</button></li>
+                <li class="nav-item"><button class="nav-link" id="persons-tab" data-bs-toggle="tab" data-bs-target="#persons-pane" type="button"><i class="fa-solid fa-users me-2"></i>Persons</button></li>
+                <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button"><i class="fa-solid fa-upload me-2"></i>Upload</button></li>
+                <li class="nav-item"><button class="nav-link" id="gotify-tab" data-bs-toggle="tab" data-bs-target="#gotify-pane" type="button"><i class="fa-solid fa-bell me-2"></i>Notifications</button></li>
+            </ul>
+        </div>
+    </div>
 
+    <div class="container py-4">
         <div class="tab-content">
-            <!-- Events Tab -->
+            <!-- EVENTS TAB -->
             <div class="tab-pane fade show active" id="events-pane">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-calendar me-2 text-primary"></i>Events</h5>
+                    <button class="btn btn-sm btn-success" onclick="openEventModal()"><i class="fa-solid fa-plus me-1"></i> Add Event</button>
+                </div>
+
                 <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="fa-solid fa-calendar me-2 text-primary"></i>Events</span>
-                        <button class="btn btn-sm btn-success" onclick="openEventModal()"><i class="fa-solid fa-plus me-1"></i> Add</button>
-                    </div>
-                    <div class="card-body p-0">
+                    <div class="card-body">
+                        <div class="search-bar mb-3">
+                            <div class="flex-grow-1">
+                                <input type="text" class="form-control" id="event-search" placeholder="Search events, people, places..." oninput="debouncedSearch()">
+                            </div>
+                            <select class="form-select" id="filter-person" style="min-width:140px" onchange="applyFilters()">
+                                <option value="">All Persons</option>
+                            </select>
+                            <select class="form-select" id="filter-media" style="min-width:110px" onchange="applyFilters()">
+                                <option value="">All Media</option>
+                                <option value="image">Images</option>
+                                <option value="video">Videos</option>
+                                <option value="audio">Audio</option>
+                            </select>
+                            <select class="form-select" id="filter-year" style="min-width:100px" onchange="applyFilters()">
+                            </select>
+                            <button class="btn btn-primary" onclick="loadEvents()"><i class="fa-solid fa-search"></i></button>
+                        </div>
                         <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
+                            <table class="table table-hover">
                                 <thead>
                                     <tr>
-                                        <th class="ps-4">Date</th>
+                                        <th class="ps-3">Date</th>
                                         <th>Title</th>
                                         <th>Location</th>
                                         <th>Person</th>
                                         <th>Media</th>
-                                        <th class="text-end pe-4">Actions</th>
+                                        <th class="text-end pe-3">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="event-list"></tbody>
@@ -138,41 +566,26 @@
                 </div>
             </div>
 
-            <!-- Persons Tab -->
+            <!-- PERSONS TAB -->
             <div class="tab-pane fade" id="persons-pane">
-                <div class="card">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="fa-solid fa-users me-2 text-primary"></i>Persons</span>
-                        <button class="btn btn-sm btn-success" onclick="openPersonModal()"><i class="fa-solid fa-plus me-1"></i> Add</button>
-                    </div>
-                    <div class="card-body p-0">
-                        <div class="table-responsive">
-                            <table class="table table-hover align-middle mb-0">
-                                <thead>
-                                    <tr>
-                                        <th class="ps-4">Color</th>
-                                        <th>Avatar</th>
-                                        <th>Name</th>
-                                        <th>Bio</th>
-                                        <th>Birth</th>
-                                        <th class="text-end pe-4">Actions</th>
-                                    </tr>
-                                </thead>
-                                <tbody id="person-list"></tbody>
-                            </table>
-                        </div>
-                    </div>
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-users me-2 text-primary"></i>People</h5>
+                    <button class="btn btn-sm btn-success" onclick="openPersonModal()"><i class="fa-solid fa-plus me-1"></i> Add Person</button>
                 </div>
+                <div class="mb-3">
+                    <input type="text" class="form-control" id="person-search" placeholder="Search people..." oninput="renderPersonList()">
+                </div>
+                <div class="row g-3" id="person-list"></div>
             </div>
 
-            <!-- Upload Tab -->
+            <!-- UPLOAD TAB -->
             <div class="tab-pane fade" id="upload-pane">
                 <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-upload me-2 text-primary"></i>Upload Media</div>
+                    <div class="card-header"><i class="fa-solid fa-upload me-2"></i>Upload Media</div>
                     <div class="card-body">
                         <form id="upload-form">
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">Media Type</label>
+                                <label class="form-label">Media Type</label>
                                 <select class="form-select" id="media-type" onchange="updateUploadField()">
                                     <option value="image">Image</option>
                                     <option value="video">Video</option>
@@ -180,7 +593,7 @@
                                 </select>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label small fw-bold" id="file-label">Image File</label>
+                                <label class="form-label" id="file-label">Image File</label>
                                 <input type="file" class="form-control" id="media-file" accept="image/*">
                             </div>
                             <button type="submit" class="btn btn-primary"><i class="fa-solid fa-upload me-1"></i> Upload</button>
@@ -190,23 +603,23 @@
                 </div>
             </div>
 
-            <!-- Gotify Tab -->
+            <!-- GOTIFY TAB -->
             <div class="tab-pane fade" id="gotify-pane">
                 <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-bell me-2 text-primary"></i>Gotify Notifications</div>
+                    <div class="card-header"><i class="fa-solid fa-bell me-2"></i>Gotify Notifications</div>
                     <div class="card-body">
                         <form id="gotify-form">
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">Gotify Server URL</label>
+                                <label class="form-label">Server URL</label>
                                 <input type="text" class="form-control" id="gotify-url" placeholder="https://gotify.example.com">
                             </div>
                             <div class="mb-3">
-                                <label class="form-label small fw-bold">App Token</label>
+                                <label class="form-label">App Token</label>
                                 <input type="password" class="form-control" id="gotify-token" placeholder="Your Gotify app token">
                             </div>
                             <div class="form-check form-switch mb-3">
                                 <input class="form-check-input" type="checkbox" id="gotify-enabled">
-                                <label class="form-check-label small fw-bold">Enable Notifications</label>
+                                <label class="form-check-label fw-bold">Enable Notifications</label>
                             </div>
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
@@ -220,9 +633,9 @@
         </div>
     </div>
 
-    <!-- Event Modal -->
+    <!-- EVENT MODAL -->
     <div class="modal fade" id="eventModal" tabindex="-1">
-        <div class="modal-dialog modal-lg">
+        <div class="modal-dialog modal-lg modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="eventModalLabel">Edit Event</h5>
@@ -232,57 +645,71 @@
                     <form id="event-form">
                         <input type="hidden" name="id" id="event-id">
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Title</label>
+                            <label class="form-label">Title</label>
                             <input type="text" class="form-control" name="title" id="event-title" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Description</label>
+                            <label class="form-label">Description</label>
                             <textarea class="form-control" name="description" id="event-desc" rows="3"></textarea>
                         </div>
                         <div class="row g-3 mb-3">
-                            <div class="col-6">
-                                <label class="form-label small fw-bold">Date</label>
+                            <div class="col-sm-6">
+                                <label class="form-label">Date</label>
                                 <input type="date" class="form-control" name="date" id="event-date" required>
                             </div>
-                            <div class="col-6">
-                                <label class="form-label small fw-bold">Location</label>
-                                <input type="text" class="form-control" name="location" id="event-location">
+                            <div class="col-sm-6">
+                                <label class="form-label">Location</label>
+                                <div class="autocomplete-wrapper">
+                                    <input type="text" class="form-control" name="location" id="event-location" placeholder="Type to search..." autocomplete="off">
+                                    <div class="autocomplete-dropdown" id="location-autocomplete"></div>
+                                </div>
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Person</label>
-                            <select class="form-select" name="person_id" id="event-person">
-                                <option value="0">None</option>
-                            </select>
+                            <label class="form-label">Person</label>
+                            <div class="autocomplete-wrapper">
+                                <select class="form-select" name="person_id" id="event-person">
+                                    <option value="0">None</option>
+                                </select>
+                                <input type="text" class="form-control mt-1" id="person-search-input" placeholder="Search person..." oninput="filterPersonSelect()">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
+                            <div class="col-sm-4">
+                                <label class="form-label">Media Type</label>
+                                <select class="form-select" name="media_type" id="event-media-type">
+                                    <option value="image">Image</option>
+                                    <option value="video">Video</option>
+                                    <option value="audio">Audio</option>
+                                </select>
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label">Media URL</label>
+                                <div class="autocomplete-wrapper">
+                                    <input type="text" class="form-control" name="media_url" id="event-media-url" placeholder="/media/..." autocomplete="off">
+                                    <div class="autocomplete-dropdown" id="media-autocomplete"></div>
+                                </div>
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label">Tags</label>
+                                <div class="autocomplete-wrapper">
+                                    <input type="text" class="form-control" name="tags" id="event-tags" placeholder="tag1, tag2..." autocomplete="off">
+                                    <div class="autocomplete-dropdown" id="tags-autocomplete"></div>
+                                </div>
+                            </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Media Type</label>
-                            <select class="form-select" name="media_type" id="event-media-type">
-                                <option value="image">Image</option>
-                                <option value="video">Video</option>
-                                <option value="audio">Audio</option>
-                            </select>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Media URL</label>
-                            <input type="text" class="form-control" name="media_url" id="event-media-url" placeholder="/media/...">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label small fw-bold">Thumbnail URL (optional)</label>
+                            <label class="form-label">Thumbnail URL (optional)</label>
                             <input type="text" class="form-control" name="thumbnail" id="event-thumbnail" placeholder="/media/...">
                         </div>
                         <div class="row g-3 mb-3">
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Latitude</label>
-                                <div class="input-group">
-                                    <input type="number" step="any" class="form-control" name="latitude" id="event-latitude" placeholder="e.g. 40.7580">
-                                </div>
+                            <div class="col-sm-6">
+                                <label class="form-label">Latitude</label>
+                                <input type="number" step="any" class="form-control" name="latitude" id="event-latitude" placeholder="e.g. 40.7580">
                             </div>
-                            <div class="col-md-6">
-                                <label class="form-label small fw-bold">Longitude</label>
-                                <div class="input-group">
-                                    <input type="number" step="any" class="form-control" name="longitude" id="event-longitude" placeholder="e.g. -73.9855">
-                                </div>
+                            <div class="col-sm-6">
+                                <label class="form-label">Longitude</label>
+                                <input type="number" step="any" class="form-control" name="longitude" id="event-longitude" placeholder="e.g. -73.9855">
                             </div>
                             <div class="col-12">
                                 <button type="button" class="btn btn-outline-info w-100" onclick="useMyLocation()">
@@ -291,16 +718,16 @@
                             </div>
                         </div>
                         <div id="location-map" class="mb-3"></div>
-                        <button type="submit" class="btn btn-primary w-100 mt-3">Save Event</button>
+                        <button type="submit" class="btn btn-primary w-100 mt-2">Save Event</button>
                     </form>
                 </div>
             </div>
         </div>
     </div>
 
-    <!-- Person Modal -->
+    <!-- PERSON MODAL -->
     <div class="modal fade" id="personModal" tabindex="-1">
-        <div class="modal-dialog">
+        <div class="modal-dialog modal-dialog-scrollable">
             <div class="modal-content">
                 <div class="modal-header">
                     <h5 class="modal-title" id="personModalLabel">Edit Person</h5>
@@ -310,23 +737,23 @@
                     <form id="person-form">
                         <input type="hidden" name="id" id="person-id">
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Name</label>
+                            <label class="form-label">Name</label>
                             <input type="text" class="form-control" name="name" id="person-name" required>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Avatar URL</label>
+                            <label class="form-label">Avatar URL</label>
                             <input type="text" class="form-control" name="avatar_url" id="person-avatar" placeholder="/media/...">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Bio</label>
+                            <label class="form-label">Bio</label>
                             <textarea class="form-control" name="bio" id="person-bio" rows="2"></textarea>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Birth Date</label>
+                            <label class="form-label">Birth Date</label>
                             <input type="date" class="form-control" name="birth_date" id="person-birth">
                         </div>
                         <div class="mb-3">
-                            <label class="form-label small fw-bold">Color</label>
+                            <label class="form-label">Color</label>
                             <input type="color" class="form-control form-control-color" name="color" id="person-color" value="#7c3aed" style="width:60px;height:40px">
                         </div>
                         <button type="submit" class="btn btn-primary w-100">Save Person</button>
@@ -341,20 +768,64 @@
     <script>
         let events = [];
         let persons = [];
+        let allPersons = [];
+        let filteredEvents = [];
         const eventModal = new bootstrap.Modal(document.getElementById('eventModal'));
         const personModal = new bootstrap.Modal(document.getElementById('personModal'));
         let locationMap = null;
         let locationMarker = null;
+        let searchTimeout = null;
+        let viewingPersonId = null;
 
         async function init() {
-            await Promise.all([loadEvents(), loadPersons(), loadGotifyConfig()]);
+            populateYearFilter();
+            await loadEvents();
+            await loadPersons();
+            loadGotifyConfig();
             initLocationMap();
+            initAutocomplete('event-location', 'location-autocomplete', 'location');
+            initAutocomplete('event-tags', 'tags-autocomplete', 'tag');
+            initAutocomplete('event-media-url', 'media-autocomplete', 'media');
+        }
+
+        function populateYearFilter() {
+            const select = document.getElementById('filter-year');
+            const y = new Date().getFullYear();
+            for (let i = y + 1; i >= y - 10; i--) {
+                const opt = document.createElement('option');
+                opt.value = i;
+                opt.textContent = i;
+                if (i === y) opt.selected = true;
+                select.appendChild(opt);
+            }
+        }
+
+        function debouncedSearch() {
+            clearTimeout(searchTimeout);
+            searchTimeout = setTimeout(applyFilters, 300);
+        }
+
+        function applyFilters() {
+            const q = document.getElementById('event-search').value.toLowerCase();
+            const personId = document.getElementById('filter-person').value;
+            const mediaType = document.getElementById('filter-media').value;
+            const year = document.getElementById('filter-year').value;
+
+            filteredEvents = events.filter(e => {
+                if (q && !e.title.toLowerCase().includes(q) && !e.description.toLowerCase().includes(q) && !e.location.toLowerCase().includes(q) && !getPersonName(e.person_id).toLowerCase().includes(q)) return false;
+                if (personId && String(e.person_id) !== personId) return false;
+                if (mediaType && e.media_type !== mediaType) return false;
+                if (year && e.date.slice(0, 4) !== year) return false;
+                return true;
+            });
+            renderEventList();
         }
 
         async function loadEvents() {
             try {
                 const res = await fetch('/api/events/full');
                 events = await res.json();
+                filteredEvents = [...events];
                 renderEventList();
             } catch (e) { console.error('Failed to load events', e); }
         }
@@ -362,50 +833,101 @@
         async function loadPersons() {
             try {
                 const res = await fetch('/api/persons');
-                persons = await res.json();
+                allPersons = persons = await res.json();
                 renderPersonList();
                 updatePersonSelect();
+                updateFilterPerson();
             } catch (e) { console.error('Failed to load persons', e); }
         }
 
         function getPersonName(id) {
-            const p = persons.find(p => p.id === id);
-            return p ? p.name : '—';
+            const p = allPersons.find(p => p.id === id);
+            return p ? p.name : '';
+        }
+
+        function getPerson(id) {
+            return allPersons.find(p => p.id === id);
         }
 
         function renderEventList() {
-            document.getElementById('event-list').innerHTML = events.map(e => `
-                <tr>
-                    <td class="ps-4 fw-bold">${e.date}</td>
-                    <td>${escapeHtml(e.title)}</td>
-                    <td>${escapeHtml(e.location)}</td>
-                    <td>${e.person_id ? escapeHtml(getPersonName(e.person_id)) : '<span class="text-muted">—</span>'}</td>
-                    <td>${e.media_url ? '<span class="media-type-badge '+e.media_type+'">'+e.media_type+'</span>' : '<span class="text-muted">—</span>'}</td>
-                    <td class="text-end pe-4">
-                        <button class="btn btn-sm btn-outline-primary" onclick="editEvent(${e.id})"><i class="fa-solid fa-pen"></i></button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deleteEvent(${e.id})"><i class="fa-solid fa-trash"></i></button>
+            const list = document.getElementById('event-list');
+            const data = filteredEvents.length ? filteredEvents : events;
+            if (!data.length) {
+                list.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No events found</td></tr>';
+                return;
+            }
+            list.innerHTML = data.map(e => {
+                const p = getPerson(e.person_id);
+                return `<tr class="animate-in">
+                    <td class="ps-3 fw-bold font-monospace" style="font-size:0.85rem">${e.date}</td>
+                    <td><span class="fw-medium">${escapeHtml(e.title)}</span></td>
+                    <td>${e.location ? '<i class="fa-solid fa-location-dot me-1 text-muted" style="font-size:0.7rem"></i>' + escapeHtml(e.location) : '<span class="text-muted">—</span>'}</td>
+                    <td>${p ? '<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (p.color||'#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(p.name) + '</span>' : '<span class="text-muted">—</span>'}</td>
+                    <td>${e.media_url ? '<span class="media-type-badge ' + e.media_type + '"><i class="fa-solid ' + getMediaIcon(e.media_type) + ' me-1"></i>' + e.media_type + '</span>' : '<span class="text-muted">—</span>'}</td>
+                    <td class="text-end pe-3">
+                        <button class="btn btn-sm btn-outline-primary me-1" onclick="editEvent(${e.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+                        <button class="btn btn-sm btn-outline-danger" onclick="deleteEvent(${e.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
                     </td>
-                </tr>`).join('');
+                </tr>`;
+            }).join('');
         }
 
-        function renderPersonList() {
-            document.getElementById('person-list').innerHTML = persons.map(p => `
-                <tr>
-                    <td class="ps-4"><span class="color-dot" style="background:${escapeHtml(p.color||'#7c3aed')}"></span></td>
-                    <td>${p.avatar_url ? '<img src="'+p.avatar_url+'" class="rounded-circle" width="32" height="32" style="object-fit:cover">' : '<div class="rounded-circle bg-secondary" style="width:32px;height:32px;display:inline-flex;align-items:center;justify-content:center;color:white;font-size:0.8rem">'+(p.name?p.name[0].toUpperCase():'?')+'</div>'}</td>
-                    <td class="fw-bold">${escapeHtml(p.name)}</td>
-                    <td><small>${escapeHtml(p.bio||'')}</small></td>
-                    <td><small>${p.birth_date||'—'}</small></td>
-                    <td class="text-end pe-4">
-                        <button class="btn btn-sm btn-outline-primary" onclick="editPerson(${p.id})"><i class="fa-solid fa-pen"></i></button>
-                        <button class="btn btn-sm btn-outline-danger" onclick="deletePerson(${p.id})"><i class="fa-solid fa-trash"></i></button>
-                    </td>
-                </tr>`).join('');
+        function getMediaIcon(t) {
+            if (t === 'video') return 'fa-video';
+            if (t === 'audio') return 'fa-music';
+            return 'fa-image';
+        }
+
+        function renderPersonList(filter) {
+            const container = document.getElementById('person-list');
+            const q = (document.getElementById('person-search').value || '').toLowerCase();
+            const filtered = persons.filter(p => !q || p.name.toLowerCase().includes(q));
+
+            if (!filtered.length) {
+                container.innerHTML = '<div class="col-12"><div class="empty-state"><i class="fa-solid fa-users"></i><p>No people found</p></div></div>';
+                return;
+            }
+            container.innerHTML = filtered.map(p => {
+                const initial = p.name ? p.name[0].toUpperCase() : '?';
+                const eventCount = p.event_count || 0;
+                return `<div class="col-md-6 col-lg-4">
+                    <div class="person-card" onclick="showPersonEvents(${p.id})">
+                        ${p.avatar_url
+                            ? '<img src="' + p.avatar_url + '" class="person-avatar" alt="">'
+                            : '<div class="person-avatar-placeholder" style="background:' + (p.color||'#7c3aed') + '">' + initial + '</div>'
+                        }
+                        <div class="person-info">
+                            <div class="name">${escapeHtml(p.name)}</div>
+                            <div class="meta">${p.bio ? escapeHtml(p.bio.substring(0, 50)) + (p.bio.length > 50 ? '...' : '') : ''}</div>
+                        </div>
+                        <div class="person-stats">
+                            <span class="count">${eventCount}</span>
+                            <span class="label">events</span>
+                        </div>
+                    </div>
+                </div>`;
+            }).join('');
         }
 
         function updatePersonSelect() {
             const select = document.getElementById('event-person');
-            select.innerHTML = '<option value="0">None</option>' + persons.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+            const val = select.value;
+            select.innerHTML = '<option value="0">None</option>' + allPersons.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+            select.value = val;
+        }
+
+        function updateFilterPerson() {
+            const select = document.getElementById('filter-person');
+            select.innerHTML = '<option value="">All Persons</option>' + allPersons.map(p => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+        }
+
+        function filterPersonSelect() {
+            const q = document.getElementById('person-search-input').value.toLowerCase();
+            const select = document.getElementById('event-person');
+            for (const opt of select.options) {
+                if (opt.value === '0') continue;
+                opt.style.display = opt.text.toLowerCase().includes(q) ? '' : 'none';
+            }
         }
 
         function initLocationMap() {
@@ -423,11 +945,8 @@
         }
 
         function useMyLocation() {
-            if (!navigator.geolocation) {
-                alert('Geolocation is not supported by your browser');
-                return;
-            }
-            document.getElementById('event-location').placeholder = 'Detecting location...';
+            if (!navigator.geolocation) { alert('Geolocation not supported'); return; }
+            document.getElementById('event-location').placeholder = 'Detecting...';
             navigator.geolocation.getCurrentPosition(
                 async (pos) => {
                     const lat = pos.coords.latitude;
@@ -446,151 +965,258 @@
                             document.getElementById('event-location').value = parts.slice(0, 3).join(',').trim();
                         }
                     } catch(e) {}
-                    document.getElementById('event-location').placeholder = 'Location';
+                    document.getElementById('event-location').placeholder = 'Type to search...';
                 },
-                (err) => {
-                    alert('Failed to get location: ' + err.message);
-                    document.getElementById('event-location').placeholder = 'Location';
-                },
+                (err) => { alert('Location failed: ' + err.message); document.getElementById('event-location').placeholder = 'Type to search...'; },
                 { enableHighAccuracy: true, timeout: 10000 }
             );
         }
 
-        function openEventModal(event = null) {
+        function initAutocomplete(inputId, dropdownId, field) {
+            const input = document.getElementById(inputId);
+            const dropdown = document.getElementById(dropdownId);
+            let timeout, selectedIdx = -1, items = [];
+
+            input.addEventListener('input', function() {
+                clearTimeout(timeout);
+                const q = this.value.trim();
+                if (q.length < 1) { dropdown.classList.remove('show'); return; }
+                timeout = setTimeout(async () => {
+                    try {
+                        const res = await fetch('/api/autocomplete?field=' + field + '&q=' + encodeURIComponent(q));
+                        items = await res.json();
+                        if (!items.length) { dropdown.classList.remove('show'); return; }
+                        selectedIdx = -1;
+                        dropdown.innerHTML = items.map((v, i) =>
+                            '<div class="autocomplete-item" data-index="' + i + '" onclick="selectAutocomplete(\'' + inputId + '\',\'' + dropdownId + '\',\'' + escapeHtml(v) + '\')"><i class="fa-solid fa-' + (field === 'location' ? 'location-dot' : field === 'tag' ? 'tag' : 'file') + '"></i>' + escapeHtml(v) + '</div>'
+                        ).join('');
+                        dropdown.classList.add('show');
+                    } catch(e) { dropdown.classList.remove('show'); }
+                }, 200);
+            });
+
+            input.addEventListener('keydown', function(e) {
+                const items = dropdown.querySelectorAll('.autocomplete-item');
+                if (e.key === 'ArrowDown') { e.preventDefault(); selectedIdx = Math.min(selectedIdx + 1, items.length - 1); highlightItem(items, selectedIdx); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); selectedIdx = Math.max(selectedIdx - 1, 0); highlightItem(items, selectedIdx); }
+                else if (e.key === 'Enter' && selectedIdx >= 0 && items[selectedIdx]) { e.preventDefault(); items[selectedIdx].click(); }
+                else if (e.key === 'Escape') { dropdown.classList.remove('show'); }
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) dropdown.classList.remove('show');
+            });
+        }
+
+        function highlightItem(items, idx) {
+            items.forEach((item, i) => item.classList.toggle('active', i === idx));
+        }
+
+        function selectAutocomplete(inputId, dropdownId, value) {
+            document.getElementById(inputId).value = value;
+            document.getElementById(dropdownId).classList.remove('show');
+            if (inputId === 'event-tags') {
+                // Also update the tags field
+            }
+        }
+
+        function showPersonEvents(personId) {
+            viewingPersonId = personId;
+            const person = getPerson(personId);
+            if (!person) return;
+
+            document.getElementById('events-tab').click();
+
+            document.getElementById('event-search').value = '';
+            document.getElementById('filter-person').value = personId;
+            document.getElementById('filter-media').value = '';
+            applyFilters();
+
+            // Show a person detail banner
+            const list = document.getElementById('event-list');
+            const initial = person.name ? person.name[0].toUpperCase() : '?';
+            list.insertAdjacentHTML('afterbegin', `
+                <tr id="person-banner">
+                    <td colspan="6" class="p-0">
+                        <div class="person-detail-header animate-in">
+                            ${person.avatar_url
+                                ? '<img src="' + person.avatar_url + '" class="avatar-lg" alt="">'
+                                : '<div class="avatar-placeholder-lg" style="background:' + (person.color||'#7c3aed') + '">' + initial + '</div>'
+                            }
+                            <div class="info">
+                                <h2>${escapeHtml(person.name)}</h2>
+                                <div class="sub">${person.bio || ''} ${person.birth_date ? '&middot; Born ' + person.birth_date : ''}</div>
+                            </div>
+                            <button class="close-btn" onclick="clearPersonFilter()"><i class="fa-solid fa-xmark"></i></button>
+                        </div>
+                    </td>
+                </tr>
+            `);
+        }
+
+        function clearPersonFilter() {
+            viewingPersonId = null;
+            document.getElementById('filter-person').value = '';
+            applyFilters();
+            const banner = document.getElementById('person-banner');
+            if (banner) banner.remove();
+        }
+
+        function openEventModal(event) {
+            document.getElementById('event-form').reset();
+            document.getElementById('event-id').value = '0';
+            document.getElementById('eventModalLabel').textContent = 'Add Event';
+
             if (event) {
                 document.getElementById('eventModalLabel').textContent = 'Edit Event';
                 document.getElementById('event-id').value = event.id;
                 document.getElementById('event-title').value = event.title;
-                document.getElementById('event-desc').value = event.description||'';
+                document.getElementById('event-desc').value = event.description || '';
                 document.getElementById('event-date').value = event.date;
-                document.getElementById('event-location').value = event.location||'';
-                document.getElementById('event-person').value = event.person_id||0;
-                document.getElementById('event-media-type').value = event.media_type||'image';
-                document.getElementById('event-media-url').value = event.media_url||'';
-                document.getElementById('event-thumbnail').value = event.thumbnail||'';
-                document.getElementById('event-latitude').value = event.latitude||'';
-                document.getElementById('event-longitude').value = event.longitude||'';
+                document.getElementById('event-location').value = event.location || '';
+                document.getElementById('event-person').value = event.person_id || 0;
+                document.getElementById('event-media-type').value = event.media_type || 'image';
+                document.getElementById('event-media-url').value = event.media_url || '';
+                document.getElementById('event-thumbnail').value = event.thumbnail || '';
+                document.getElementById('event-tags').value = event.tags || '';
+                document.getElementById('event-latitude').value = event.latitude || '';
+                document.getElementById('event-longitude').value = event.longitude || '';
                 if (event.latitude && event.longitude) setMapMarker(event.latitude, event.longitude);
-                else { if(locationMarker) locationMap.removeLayer(locationMarker); locationMarker = null; locationMap.setView([40.7128,-74.0060],5); }
+                else { if (locationMarker) locationMap.removeLayer(locationMarker); locationMarker = null; locationMap.setView([40.7128, -74.0060], 5); }
             } else {
-                document.getElementById('eventModalLabel').textContent = 'Add Event';
-                document.getElementById('event-form').reset();
-                document.getElementById('event-id').value = '0';
                 if (locationMarker) locationMap.removeLayer(locationMarker);
                 locationMarker = null;
-                locationMap.setView([40.7128,-74.0060],5);
+                locationMap.setView([40.7128, -74.0060], 5);
             }
             eventModal.show();
             setTimeout(() => locationMap.invalidateSize(), 200);
         }
 
-        function editEvent(id) { const e = events.find(e => e.id === id); if (e) openEventModal(e); }
+        function editEvent(id) {
+            const e = events.find(e => e.id === id);
+            if (e) openEventModal(e);
+        }
 
         async function deleteEvent(id) {
             if (!confirm('Delete this event?')) return;
-            await fetch('/api/events?id='+id, { method: 'DELETE' });
+            await fetch('/api/events?id=' + id, { method: 'DELETE' });
+            if (viewingPersonId) clearPersonFilter();
             await loadEvents();
         }
 
         document.getElementById('event-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
-                id: parseInt(document.getElementById('event-id').value)||0,
+                id: parseInt(document.getElementById('event-id').value) || 0,
                 title: document.getElementById('event-title').value,
                 description: document.getElementById('event-desc').value,
                 date: document.getElementById('event-date').value,
                 location: document.getElementById('event-location').value,
-                person_id: parseInt(document.getElementById('event-person').value)||0,
+                person_id: parseInt(document.getElementById('event-person').value) || 0,
                 media_type: document.getElementById('event-media-type').value,
                 media_url: document.getElementById('event-media-url').value,
                 thumbnail: document.getElementById('event-thumbnail').value,
-                latitude: parseFloat(document.getElementById('event-latitude').value)||0,
-                longitude: parseFloat(document.getElementById('event-longitude').value)||0
+                tags: document.getElementById('event-tags').value,
+                latitude: parseFloat(document.getElementById('event-latitude').value) || null,
+                longitude: parseFloat(document.getElementById('event-longitude').value) || null
             };
-            const res = await fetch('/api/events', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
-            if (res.ok) { eventModal.hide(); await loadEvents(); }
-            else alert('Failed to save event');
+            const res = await fetch('/api/events', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                eventModal.hide();
+                if (viewingPersonId) clearPersonFilter();
+                await loadEvents();
+            } else alert('Failed to save event');
         });
 
-        function openPersonModal(person = null) {
+        function openPersonModal(person) {
+            document.getElementById('person-form').reset();
+            document.getElementById('person-id').value = '0';
+            document.getElementById('person-color').value = '#7c3aed';
+            document.getElementById('personModalLabel').textContent = 'Add Person';
+
             if (person) {
                 document.getElementById('personModalLabel').textContent = 'Edit Person';
                 document.getElementById('person-id').value = person.id;
                 document.getElementById('person-name').value = person.name;
-                document.getElementById('person-avatar').value = person.avatar_url||'';
-                document.getElementById('person-bio').value = person.bio||'';
-                document.getElementById('person-birth').value = person.birth_date||'';
-                document.getElementById('person-color').value = person.color||'#7c3aed';
-            } else {
-                document.getElementById('personModalLabel').textContent = 'Add Person';
-                document.getElementById('person-form').reset();
-                document.getElementById('person-id').value = '0';
-                document.getElementById('person-color').value = '#7c3aed';
+                document.getElementById('person-avatar').value = person.avatar_url || '';
+                document.getElementById('person-bio').value = person.bio || '';
+                document.getElementById('person-birth').value = person.birth_date || '';
+                document.getElementById('person-color').value = person.color || '#7c3aed';
             }
             personModal.show();
         }
 
-        function editPerson(id) { const p = persons.find(p => p.id === id); if (p) openPersonModal(p); }
-
         async function deletePerson(id) {
-            if (!confirm('Delete this person? Events linked to them will be unlinked.')) return;
-            await fetch('/api/persons?id='+id, { method:'DELETE' });
-            await Promise.all([loadPersons(), loadEvents()]);
+            if (!confirm('Delete this person? Events linked will be unlinked.')) return;
+            const res = await fetch('/api/persons?id=' + id, { method: 'DELETE' });
+            if (res.ok) {
+                if (viewingPersonId === id) clearPersonFilter();
+                await Promise.all([loadPersons(), loadEvents()]);
+            } else alert('Failed to delete person');
         }
 
         document.getElementById('person-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const data = {
-                id: parseInt(document.getElementById('person-id').value)||0,
+                id: parseInt(document.getElementById('person-id').value) || 0,
                 name: document.getElementById('person-name').value,
                 avatar_url: document.getElementById('person-avatar').value,
                 bio: document.getElementById('person-bio').value,
                 birth_date: document.getElementById('person-birth').value,
                 color: document.getElementById('person-color').value
             };
-            const res = await fetch('/api/persons', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
-            if (res.ok) { personModal.hide(); await Promise.all([loadPersons(), loadEvents()]); }
-            else alert('Failed to save person');
+            const res = await fetch('/api/persons', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                personModal.hide();
+                await Promise.all([loadPersons(), loadEvents()]);
+            } else alert('Failed to save person');
         });
 
         function updateUploadField() {
             const type = document.getElementById('media-type').value;
             const fi = document.getElementById('media-file');
             const lbl = document.getElementById('file-label');
-            if(type==='video') { fi.accept='video/mp4,video/webm,video/quicktime'; lbl.textContent='Video File'; }
-            else if(type==='audio') { fi.accept='audio/mp3,audio/wav,audio/ogg'; lbl.textContent='Audio File'; }
-            else { fi.accept='image/*'; lbl.textContent='Image File'; }
+            if (type === 'video') { fi.accept = 'video/mp4,video/webm,video/quicktime'; lbl.textContent = 'Video File'; }
+            else if (type === 'audio') { fi.accept = 'audio/mp3,audio/wav,audio/ogg'; lbl.textContent = 'Audio File'; }
+            else { fi.accept = 'image/*'; lbl.textContent = 'Image File'; }
         }
 
         document.getElementById('upload-form').addEventListener('submit', async (e) => {
             e.preventDefault();
             const type = document.getElementById('media-type').value;
             const fileInput = document.getElementById('media-file');
-            if (!fileInput.files[0]) { alert('Please select a file'); return; }
+            if (!fileInput.files[0]) { alert('Select a file'); return; }
             const fd = new FormData();
             fd.append(type, fileInput.files[0]);
             fd.append('media_type', type);
-            const res = await fetch('/api/upload', { method:'POST', body:fd });
+            const res = await fetch('/api/upload', { method: 'POST', body: fd });
             const data = await res.json();
+            const el = document.getElementById('upload-result');
             if (res.ok) {
-                let html = `<div class="alert alert-success"><strong>Upload successful!</strong><br>URL: <code>${data.url}</code>`;
-                if (data.thumbnail) html += `<br>Thumbnail: <code>${data.thumbnail}</code>`;
-                html += `</div>`;
-                if (data.thumbnail) {
-                    html += `<div class="text-center mt-2"><img src="${data.thumbnail}" class="img-fluid rounded" style="max-height:200px" alt="thumbnail preview"></div>`;
-                }
-                document.getElementById('upload-result').innerHTML = html;
-            } else alert('Upload failed: ' + (data.error||''));
+                let html = '<div class="alert alert-success"><strong>Uploaded!</strong><br>URL: <code>' + data.url + '</code>';
+                if (data.thumbnail) html += '<br>Thumbnail: <code>' + data.thumbnail + '</code>';
+                html += '</div>';
+                if (data.thumbnail) html += '<div class="text-center mt-2"><img src="' + data.thumbnail + '" class="img-fluid rounded" style="max-height:200px" alt="preview"></div>';
+                el.innerHTML = html;
+            } else el.innerHTML = '<div class="alert alert-danger">Upload failed: ' + (data.error || '') + '</div>';
         });
 
         async function loadGotifyConfig() {
             try {
                 const res = await fetch('/api/gotify/config');
                 const cfg = await res.json();
-                document.getElementById('gotify-url').value = cfg.url||'';
-                document.getElementById('gotify-token').value = cfg.token||'';
-                document.getElementById('gotify-enabled').checked = cfg.enabled||false;
-            } catch(e) {}
+                document.getElementById('gotify-url').value = cfg.url || '';
+                document.getElementById('gotify-token').value = cfg.token || '';
+                document.getElementById('gotify-enabled').checked = cfg.enabled || false;
+            } catch (e) {}
         }
 
         document.getElementById('gotify-form').addEventListener('submit', async (e) => {
@@ -600,27 +1226,34 @@
                 token: document.getElementById('gotify-token').value,
                 enabled: document.getElementById('gotify-enabled').checked
             };
-            const res = await fetch('/api/gotify/config', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(data) });
+            const res = await fetch('/api/gotify/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
             const result = await res.json();
-            const el = document.getElementById('gotify-result');
-            if (res.ok) el.innerHTML = '<div class="alert alert-success">Gotify settings saved.</div>';
-            else el.innerHTML = '<div class="alert alert-danger">Error: '+(result.error||'')+'</div>';
+            document.getElementById('gotify-result').innerHTML = res.ok
+                ? '<div class="alert alert-success">Gotify settings saved.</div>'
+                : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
         });
 
         async function testGotify() {
             const el = document.getElementById('gotify-result');
-            el.innerHTML = '<div class="alert alert-info">Sending test notification...</div>';
-            const res = await fetch('/api/gotify/test', { method:'POST' });
+            el.innerHTML = '<div class="alert alert-info">Sending test...</div>';
+            const res = await fetch('/api/gotify/test', { method: 'POST' });
             const data = await res.json();
-            if (res.ok) el.innerHTML = '<div class="alert alert-success">Test notification sent!</div>';
-            else el.innerHTML = '<div class="alert alert-danger">Error: '+(data.error||'')+'</div>';
+            el.innerHTML = res.ok
+                ? '<div class="alert alert-success">Test notification sent!</div>'
+                : '<div class="alert alert-danger">Error: ' + (data.error || '') + '</div>';
         }
 
-        function logout() { fetch('/api/logout',{method:'POST'}).then(()=>window.location.href='/login.html'); }
+        function logout() {
+            fetch('/api/logout', { method: 'POST' }).then(() => window.location.href = '/login.html');
+        }
 
         function escapeHtml(text) {
             if (!text) return '';
-            return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#039;');
+            return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
         }
 
         init();

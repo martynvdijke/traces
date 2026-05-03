@@ -158,6 +158,7 @@ func main() {
 		api.GET("/share", getShareLink)
 		api.GET("/map", getMapData)
 		api.GET("/persons", getPersons)
+		api.GET("/autocomplete", getAutocomplete)
 
 		auth := api.Group("")
 		auth.Use(authMiddlewareGin())
@@ -170,6 +171,7 @@ func main() {
 			auth.POST("/share/create", createShareLink)
 			auth.POST("/persons", savePerson)
 			auth.DELETE("/persons", deletePerson)
+			auth.GET("/persons/:id/events", getPersonEvents)
 			auth.GET("/gotify/config", getGotifyConfig)
 			auth.POST("/gotify/config", saveGotifyConfig)
 			auth.POST("/gotify/test", testGotify)
@@ -683,6 +685,10 @@ func searchEvents(c *gin.Context) {
 	query := c.Query("q")
 	year := c.Query("year")
 	tag := c.Query("tag")
+	person := c.Query("person")
+	mediaType := c.Query("media_type")
+	location := c.Query("location")
+	month := c.Query("month")
 
 	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
@@ -690,22 +696,132 @@ func searchEvents(c *gin.Context) {
 	args := []interface{}{}
 
 	if query != "" {
-		sqlStr += " AND (e.title LIKE ? OR e.description LIKE ? OR e.location LIKE ?)"
+		sqlStr += " AND (e.title LIKE ? OR e.description LIKE ? OR e.location LIKE ? OR p.name LIKE ?)"
 		like := "%" + query + "%"
-		args = append(args, like, like, like)
+		args = append(args, like, like, like, like)
 	}
 	if year != "" {
 		sqlStr += " AND strftime('%Y', e.event_date) = ?"
 		args = append(args, year)
 	}
+	if month != "" {
+		sqlStr += " AND strftime('%m', e.event_date) = ?"
+		args = append(args, month)
+	}
 	if tag != "" {
 		sqlStr += " AND e.tags LIKE ?"
 		args = append(args, "%"+tag+"%")
+	}
+	if person != "" {
+		sqlStr += " AND p.name LIKE ?"
+		args = append(args, "%"+person+"%")
+	}
+	if mediaType != "" {
+		sqlStr += " AND e.media_type = ?"
+		args = append(args, mediaType)
+	}
+	if location != "" {
+		sqlStr += " AND e.location LIKE ?"
+		args = append(args, "%"+location+"%")
 	}
 
 	sqlStr += " ORDER BY e.event_date ASC"
 
 	rows, err := db.Query(sqlStr, args...)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	events := scanEventsWithPerson(rows)
+	c.JSON(http.StatusOK, events)
+}
+
+func getAutocomplete(c *gin.Context) {
+	field := c.Query("field")
+	q := c.Query("q")
+
+	var results []string
+
+	switch field {
+	case "location":
+		rows, err := db.Query(`SELECT DISTINCT location FROM timeline_events WHERE location != '' AND location LIKE ? ORDER BY location LIMIT 10`, "%"+q+"%")
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var v string
+				rows.Scan(&v)
+				results = append(results, v)
+			}
+		}
+	case "person":
+		rows, err := db.Query(`SELECT name FROM persons WHERE name LIKE ? ORDER BY name LIMIT 10`, "%"+q+"%")
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var v string
+				rows.Scan(&v)
+				results = append(results, v)
+			}
+		}
+	case "tag":
+		rows, err := db.Query(`SELECT DISTINCT tags FROM timeline_events WHERE tags != '' AND tags LIKE ? ORDER BY tags LIMIT 10`, "%"+q+"%")
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var v string
+				rows.Scan(&v)
+				for _, t := range strings.Split(v, ",") {
+					t = strings.TrimSpace(t)
+					if t != "" && strings.Contains(strings.ToLower(t), strings.ToLower(q)) {
+						results = append(results, t)
+					}
+				}
+			}
+		}
+		results = uniqueStrings(results)
+		if len(results) > 10 {
+			results = results[:10]
+		}
+	case "media":
+		rows, err := db.Query(`SELECT DISTINCT media_url FROM timeline_events WHERE media_url != '' AND media_url LIKE ? ORDER BY media_url LIMIT 10`, "%"+q+"%")
+		if err == nil {
+			defer rows.Close()
+			for rows.Next() {
+				var v string
+				rows.Scan(&v)
+				results = append(results, v)
+			}
+		}
+	}
+
+	c.JSON(http.StatusOK, results)
+}
+
+func uniqueStrings(s []string) []string {
+	seen := make(map[string]bool)
+	var r []string
+	for _, v := range s {
+		if !seen[v] {
+			seen[v] = true
+			r = append(r, v)
+		}
+	}
+	return r
+}
+
+func getPersonEvents(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid person ID"})
+		return
+	}
+
+	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.person_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
