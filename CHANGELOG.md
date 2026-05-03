@@ -1,3 +1,10 @@
+# [1.3.0](https://github.com/martynvdijke/traces/compare/v1.2.0...v1.3.0) (2026-05-03)
+
+
+### Features
+
+* add geolocation, mobile UI improvements, and tests for hash-based upload ([2b7ff05](https://github.com/martynvdijke/traces/commit/2b7ff05d6c607b15570fb65e98083ae41d2d03e9))
+
 # [1.2.0](https://github.com/martynvdijke/traces/compare/v1.1.1...v1.2.0) (2026-05-03)
 
 
