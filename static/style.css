@@ -463,6 +463,55 @@ footer {
     margin-top: 3rem;
 }
 
+/* ==================== MOBILE RESPONSIVE ==================== */
+
+@media (max-width: 992px) {
+    header .container {
+        flex-direction: column !important;
+        gap: 1rem;
+        text-align: center;
+    }
+    
+    .logo {
+        font-size: 1.25rem;
+    }
+    
+    .logo img {
+        width: 40px !important;
+        height: 40px !important;
+    }
+    
+    .logo span {
+        display: none;
+    }
+    
+    nav {
+        flex-wrap: wrap;
+        justify-content: center;
+        gap: 0.5rem !important;
+    }
+    
+    nav ul {
+        flex-wrap: wrap;
+        justify-content: center;
+    }
+    
+    nav a {
+        font-size: 0.75rem;
+        padding: 0.4rem 0.5rem;
+    }
+    
+    .search-box {
+        width: 100%;
+        max-width: 200px;
+    }
+    
+    .theme-toggle {
+        width: 36px;
+        height: 36px;
+    }
+}
+
 @media (max-width: 768px) {
     .timeline::before {
         left: 20px;
@@ -490,12 +539,293 @@ footer {
         border-right: 8px solid var(--bg);
     }
     
+    .timeline-content {
+        padding: 0.75rem 1rem;
+    }
+    
+    .timeline-title {
+        font-size: 1rem;
+    }
+    
     .graph-months {
         display: none;
     }
     
     .stats-grid {
         grid-template-columns: repeat(2, 1fr);
+    }
+    
+    .contribution-header {
+        flex-direction: column;
+        gap: 0.5rem;
+        align-items: flex-start !important;
+    }
+    
+    .year-selector h2 {
+        font-size: 1.25rem;
+    }
+    
+    .month-filter .btn {
+        font-size: 0.7rem;
+        padding: 0.35rem 0.5rem;
+    }
+    
+    .gallery-item {
+        aspect-ratio: 4/3;
+    }
+    
+    h2 {
+        font-size: 1.5rem;
+    }
+    
+    footer {
+        padding: 2rem 0;
+        text-align: center;
+    }
+}
+
+@media (max-width: 576px) {
+    body {
+        font-size: 14px;
+    }
+    
+    .container {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+    
+    .logo {
+        flex-direction: column;
+        gap: 0.25rem;
+    }
+    
+    .logo > div:first-child {
+        display: flex;
+        align-items: center;
+    }
+    
+    nav {
+        flex-direction: column;
+        width: 100%;
+    }
+    
+    nav ul {
+        width: 100%;
+        justify-content: center;
+    }
+    
+    nav a {
+        font-size: 0.7rem;
+        padding: 0.4rem 0.35rem;
+    }
+    
+    .search-box {
+        display: flex;
+        width: 100%;
+        max-width: none;
+    }
+    
+    .search-box input {
+        font-size: 0.85rem;
+    }
+    
+    .theme-toggle {
+        width: 32px;
+        height: 32px;
+        font-size: 0.9rem;
+    }
+    
+    .year-selector .row > div:first-child {
+        text-align: center;
+    }
+    
+    .year-selector .d-flex {
+        justify-content: center;
+    }
+    
+    .year-selector .btn {
+        font-size: 0.8rem;
+        padding: 0.4rem 0.6rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+        gap: 0.5rem;
+    }
+    
+    .stat-card {
+        padding: 0.75rem;
+    }
+    
+    .stat-card i {
+        font-size: 1.25rem;
+    }
+    
+    .stat-card .stat-value {
+        font-size: 1.25rem;
+    }
+    
+    .stat-card .stat-label {
+        font-size: 0.65rem;
+    }
+    
+    .month-filter {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 0.5rem;
+    }
+    
+    .month-filter .btn {
+        font-size: 0.65rem;
+        padding: 0.3rem 0.4rem;
+        white-space: nowrap;
+    }
+    
+    .gallery-row {
+        margin-left: -0.5rem;
+        margin-right: -0.5rem;
+    }
+    
+    .gallery-row > div {
+        padding-left: 0.5rem;
+        padding-right: 0.5rem;
+        margin-bottom: 0.5rem;
+    }
+    
+    .gallery-item {
+        aspect-ratio: 1;
+    }
+    
+    .map-section .map-card {
+        border-radius: 8px;
+    }
+    
+    #map-container {
+        height: 280px;
+    }
+    
+    .map-info {
+        padding: 0.5rem;
+    }
+    
+    .modal-dialog {
+        margin: 0.5rem;
+    }
+    
+    .modal-content {
+        border-radius: 8px;
+    }
+    
+    .modal-body {
+        padding: 1rem;
+    }
+    
+    .form-label {
+        font-size: 0.85rem;
+    }
+    
+    .btn {
+        padding: 0.4rem 0.75rem;
+        font-size: 0.85rem;
+    }
+    
+    .btn-sm {
+        padding: 0.25rem 0.5rem;
+        font-size: 0.75rem;
+    }
+    
+    table {
+        font-size: 0.8rem;
+    }
+    
+    table th,
+    table td {
+        padding: 0.5rem 0.25rem;
+    }
+    
+    .card {
+        border-radius: 8px;
+        margin-bottom: 1rem;
+    }
+    
+    .card-header {
+        padding: 0.75rem 1rem;
+        font-size: 0.9rem;
+    }
+    
+    .nav-tabs {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .nav-tabs .nav-link {
+        font-size: 0.8rem;
+        padding: 0.5rem 0.75rem;
+        white-space: nowrap;
+    }
+}
+
+/* Touch-friendly improvements */
+@media (hover: none) and (pointer: coarse) {
+    .timeline-content:hover,
+    .stat-card:hover,
+    .gallery-item:hover {
+        transform: none;
+    }
+    
+    .timeline-content:active,
+    .stat-card:active {
+        transform: scale(0.98);
+    }
+    
+    .gallery-item:active .gallery-overlay {
+        opacity: 1;
+    }
+    
+    .btn,
+    nav a,
+    .theme-toggle {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    input,
+    select,
+    textarea {
+        font-size: 16px;
+    }
+}
+
+/* Very small screens */
+@media (max-width: 400px) {
+    body {
+        font-size: 13px;
+    }
+    
+    nav ul {
+        gap: 0.25rem !important;
+    }
+    
+    nav a {
+        font-size: 0.65rem;
+        padding: 0.3rem 0.25rem;
+    }
+    
+    .stats-grid {
+        grid-template-columns: 1fr 1fr;
+    }
+    
+    .stat-card {
+        padding: 0.5rem;
+    }
+    
+    .stat-card .stat-value {
+        font-size: 1rem;
+    }
+    
+    .year-selector .btn {
+        padding: 0.3rem 0.5rem;
+        font-size: 0.75rem;
     }
 }
 
@@ -575,4 +905,30 @@ footer {
 .standing-item .points {
     color: var(--text-muted);
     font-size: 0.85rem;
+}
+
+.map-section .map-card {
+    background: var(--bg);
+    border-radius: 16px;
+    overflow: hidden;
+    box-shadow: 0 4px 20px var(--shadow);
+    border: 1px solid var(--border);
+}
+
+#map-container {
+    width: 100%;
+    height: 450px;
+    z-index: 1;
+}
+
+.map-info {
+    padding: 0.75rem 1.25rem;
+    background: var(--bg);
+    border-top: 1px solid var(--border);
+}
+
+@media (max-width: 768px) {
+    #map-container {
+        height: 300px;
+    }
 }
