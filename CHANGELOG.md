@@ -1,3 +1,10 @@
+# [1.7.0](https://github.com/martynvdijke/traces/compare/v1.6.1...v1.7.0) (2026-05-04)
+
+
+### Features
+
+* person avatar upload, inline media picker, tag selector, and expanded tests ([463135a](https://github.com/martynvdijke/traces/commit/463135ac3f116a155247f20bff2589102deb8909))
+
 ## [1.6.1](https://github.com/martynvdijke/traces/compare/v1.6.0...v1.6.1) (2026-05-04)
 
 # [1.6.0](https://github.com/martynvdijke/traces/compare/v1.5.0...v1.6.0) (2026-05-04)

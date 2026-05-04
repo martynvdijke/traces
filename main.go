@@ -107,7 +107,7 @@ type EmailConfig struct {
 }
 
 const currentSchemaVersion = 5
-const currentVersion = "1.6.1"
+const currentVersion = "1.7.0"
 
 var (
 	publicMode    bool = false
