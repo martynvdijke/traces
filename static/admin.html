@@ -592,11 +592,21 @@
                                     <option value="audio">Audio</option>
                                 </select>
                             </div>
-                            <div class="mb-3">
-                                <label class="form-label" id="file-label">Image File</label>
-                                <input type="file" class="form-control" id="media-file" accept="image/*">
+                            <div class="upload-zone" id="upload-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:2rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;background:var(--bg)">
+                                <i class="fa-solid fa-cloud-arrow-up" style="font-size:3rem;color:var(--text-muted)"></i>
+                                <p class="mt-3 mb-2 text-muted">Drag &amp; drop a file here or tap to browse</p>
+                                <input type="file" class="form-control d-none" id="media-file" accept="image/*">
+                                <div class="d-flex justify-content-center gap-2 flex-wrap mt-2">
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('media-file').click()"><i class="fa-solid fa-folder-open me-1"></i> Browse Files</button>
+                                    <button type="button" class="btn btn-outline-success btn-sm" id="camera-btn" onclick="openCamera()"><i class="fa-solid fa-camera me-1"></i> Take Photo</button>
+                                </div>
+                                <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
                             </div>
-                            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-upload me-1"></i> Upload</button>
+                            <div id="upload-preview" class="mt-3 text-center" style="display:none">
+                                <img id="upload-preview-img" class="img-fluid rounded shadow-sm" style="max-height:300px" alt="Preview">
+                                <p class="mt-1 text-muted" id="upload-preview-name"></p>
+                            </div>
+                            <button type="submit" class="btn btn-primary w-100 mt-3"><i class="fa-solid fa-upload me-1"></i> Upload</button>
                         </form>
                         <div id="upload-result" class="mt-3"></div>
                     </div>
@@ -645,28 +655,45 @@
                     <form id="event-form">
                         <input type="hidden" name="id" id="event-id">
                         <div class="mb-3">
-                            <label class="form-label">Title</label>
-                            <input type="text" class="form-control" name="title" id="event-title" required>
+                            <label class="form-label fw-bold">Title <span class="text-danger">*</span></label>
+                            <input type="text" class="form-control" name="title" id="event-title" required placeholder="Event name" autofocus>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Description</label>
+                            <label class="form-label">Description <span class="text-muted">(optional)</span></label>
                             <textarea class="form-control" name="description" id="event-desc" rows="3"></textarea>
                         </div>
                         <div class="row g-3 mb-3">
                             <div class="col-sm-6">
-                                <label class="form-label">Date</label>
-                                <input type="date" class="form-control" name="date" id="event-date" required>
+                                <label class="form-label">Date <span class="text-muted">(optional)</span></label>
+                                <input type="date" class="form-control" name="date" id="event-date">
                             </div>
                             <div class="col-sm-6">
-                                <label class="form-label">Location</label>
+                                <label class="form-label">Location <span class="text-muted">(optional)</span></label>
                                 <div class="autocomplete-wrapper">
                                     <input type="text" class="form-control" name="location" id="event-location" placeholder="Type to search..." autocomplete="off">
                                     <div class="autocomplete-dropdown" id="location-autocomplete"></div>
                                 </div>
                             </div>
                         </div>
+
+                        <!-- Inline Photo Upload -->
+                        <div class="mb-3 p-3 border rounded" style="border-color: var(--border) !important">
+                            <label class="form-label fw-bold"><i class="fa-solid fa-camera me-1"></i>Photo <span class="text-muted">(optional)</span></label>
+                            <div class="upload-zone" id="event-upload-zone" style="border:2px dashed var(--border);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s;background:var(--bg)">
+                                <i class="fa-solid fa-cloud-arrow-up" style="font-size:2rem;color:var(--text-muted)"></i>
+                                <p class="mt-2 mb-1 text-muted">Tap to pick a photo or drop one here</p>
+                                <input type="file" id="event-photo-input" accept="image/*" capture="environment" style="display:none">
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('event-photo-input').click()"><i class="fa-solid fa-image me-1"></i> Choose Photo</button>
+                            </div>
+                            <div id="event-photo-preview" class="mt-2" style="display:none">
+                                <img id="event-photo-img" class="img-fluid rounded" style="max-height:200px" alt="Preview">
+                                <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearEventPhoto()"><i class="fa-solid fa-xmark me-1"></i> Remove</button>
+                            </div>
+                            <div id="event-photo-result" class="mt-2"></div>
+                        </div>
+
                         <div class="mb-3">
-                            <label class="form-label">Person</label>
+                            <label class="form-label">Person <span class="text-muted">(optional)</span></label>
                             <div class="autocomplete-wrapper">
                                 <select class="form-select" name="person_id" id="event-person">
                                     <option value="0">None</option>
@@ -676,7 +703,7 @@
                         </div>
                         <div class="row g-3 mb-3">
                             <div class="col-sm-4">
-                                <label class="form-label">Media Type</label>
+                                <label class="form-label">Media Type <span class="text-muted">(optional)</span></label>
                                 <select class="form-select" name="media_type" id="event-media-type">
                                     <option value="image">Image</option>
                                     <option value="video">Video</option>
@@ -684,14 +711,14 @@
                                 </select>
                             </div>
                             <div class="col-sm-4">
-                                <label class="form-label">Media URL</label>
+                                <label class="form-label">Media URL <span class="text-muted">(optional)</span></label>
                                 <div class="autocomplete-wrapper">
                                     <input type="text" class="form-control" name="media_url" id="event-media-url" placeholder="/media/..." autocomplete="off">
                                     <div class="autocomplete-dropdown" id="media-autocomplete"></div>
                                 </div>
                             </div>
                             <div class="col-sm-4">
-                                <label class="form-label">Tags</label>
+                                <label class="form-label">Tags <span class="text-muted">(optional)</span></label>
                                 <div class="autocomplete-wrapper">
                                     <input type="text" class="form-control" name="tags" id="event-tags" placeholder="tag1, tag2..." autocomplete="off">
                                     <div class="autocomplete-dropdown" id="tags-autocomplete"></div>
@@ -699,16 +726,16 @@
                             </div>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Thumbnail URL (optional)</label>
+                            <label class="form-label">Thumbnail URL <span class="text-muted">(optional)</span></label>
                             <input type="text" class="form-control" name="thumbnail" id="event-thumbnail" placeholder="/media/...">
                         </div>
                         <div class="row g-3 mb-3">
                             <div class="col-sm-6">
-                                <label class="form-label">Latitude</label>
+                                <label class="form-label">Latitude <span class="text-muted">(optional)</span></label>
                                 <input type="number" step="any" class="form-control" name="latitude" id="event-latitude" placeholder="e.g. 40.7580">
                             </div>
                             <div class="col-sm-6">
-                                <label class="form-label">Longitude</label>
+                                <label class="form-label">Longitude <span class="text-muted">(optional)</span></label>
                                 <input type="number" step="any" class="form-control" name="longitude" id="event-longitude" placeholder="e.g. -73.9855">
                             </div>
                             <div class="col-12">
@@ -776,6 +803,8 @@
         let locationMarker = null;
         let searchTimeout = null;
         let viewingPersonId = null;
+        let eventPhotoUrl = '';
+        let eventPhotoThumb = '';
 
         async function init() {
             populateYearFilter();
@@ -1066,6 +1095,7 @@
             document.getElementById('event-form').reset();
             document.getElementById('event-id').value = '0';
             document.getElementById('eventModalLabel').textContent = 'Add Event';
+            clearEventPhoto();
 
             if (event) {
                 document.getElementById('eventModalLabel').textContent = 'Edit Event';
@@ -1081,6 +1111,8 @@
                 document.getElementById('event-tags').value = event.tags || '';
                 document.getElementById('event-latitude').value = event.latitude || '';
                 document.getElementById('event-longitude').value = event.longitude || '';
+                if (event.thumbnail) { document.getElementById('event-photo-img').src = event.thumbnail; document.getElementById('event-photo-preview').style.display = 'block'; eventPhotoUrl = event.media_url; eventPhotoThumb = event.thumbnail; }
+                else clearEventPhoto();
                 if (event.latitude && event.longitude) setMapMarker(event.latitude, event.longitude);
                 else { if (locationMarker) locationMap.removeLayer(locationMarker); locationMarker = null; locationMap.setView([40.7128, -74.0060], 5); }
             } else {
@@ -1106,16 +1138,18 @@
 
         document.getElementById('event-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            const title = document.getElementById('event-title').value.trim();
+            if (!title) { alert('Title is required'); return; }
             const data = {
                 id: parseInt(document.getElementById('event-id').value) || 0,
-                title: document.getElementById('event-title').value,
+                title: title,
                 description: document.getElementById('event-desc').value,
                 date: document.getElementById('event-date').value,
                 location: document.getElementById('event-location').value,
                 person_id: parseInt(document.getElementById('event-person').value) || 0,
                 media_type: document.getElementById('event-media-type').value,
-                media_url: document.getElementById('event-media-url').value,
-                thumbnail: document.getElementById('event-thumbnail').value,
+                media_url: eventPhotoUrl || '',
+                thumbnail: eventPhotoThumb || '',
                 tags: document.getElementById('event-tags').value,
                 latitude: parseFloat(document.getElementById('event-latitude').value) || null,
                 longitude: parseFloat(document.getElementById('event-longitude').value) || null
@@ -1129,7 +1163,10 @@
                 eventModal.hide();
                 if (viewingPersonId) clearPersonFilter();
                 await loadEvents();
-            } else alert('Failed to save event');
+            } else {
+                const err = await res.json();
+                alert('Failed to save event: ' + (err.error || ''));
+            }
         });
 
         function openPersonModal(person) {
@@ -1180,14 +1217,99 @@
             } else alert('Failed to save person');
         });
 
+        function clearEventPhoto() {
+            eventPhotoUrl = '';
+            eventPhotoThumb = '';
+            document.getElementById('event-photo-preview').style.display = 'none';
+            document.getElementById('event-photo-img').src = '';
+            document.getElementById('event-photo-input').value = '';
+            document.getElementById('event-photo-result').innerHTML = '';
+            document.getElementById('event-upload-zone').style.display = '';
+            document.getElementById('event-media-type').value = 'image';
+        }
+
         function updateUploadField() {
             const type = document.getElementById('media-type').value;
             const fi = document.getElementById('media-file');
-            const lbl = document.getElementById('file-label');
-            if (type === 'video') { fi.accept = 'video/mp4,video/webm,video/quicktime'; lbl.textContent = 'Video File'; }
-            else if (type === 'audio') { fi.accept = 'audio/mp3,audio/wav,audio/ogg'; lbl.textContent = 'Audio File'; }
-            else { fi.accept = 'image/*'; lbl.textContent = 'Image File'; }
+            const cam = document.getElementById('camera-input');
+            const camBtn = document.getElementById('camera-btn');
+            if (type === 'video') { fi.accept = 'video/mp4,video/webm,video/quicktime'; cam.style.display = 'none'; camBtn.style.display = 'none'; }
+            else if (type === 'audio') { fi.accept = 'audio/mp3,audio/wav,audio/ogg'; cam.style.display = 'none'; camBtn.style.display = 'none'; }
+            else { fi.accept = 'image/*'; cam.accept = 'image/*'; cam.style.display = 'none'; camBtn.style.display = ''; }
+            document.getElementById('media-file').value = '';
+            document.getElementById('upload-preview').style.display = 'none';
+            document.getElementById('upload-result').innerHTML = '';
         }
+
+        function showUploadPreview(file) {
+            const preview = document.getElementById('upload-preview');
+            const img = document.getElementById('upload-preview-img');
+            const name = document.getElementById('upload-preview-name');
+            preview.style.display = 'block';
+            name.textContent = file.name + ' (' + formatFileSize(file.size) + ')';
+            if (file.type.startsWith('image/')) {
+                const reader = new FileReader();
+                reader.onload = e => { img.src = e.target.result; };
+                reader.readAsDataURL(file);
+            } else {
+                img.src = '';
+            }
+        }
+
+        function formatFileSize(bytes) {
+            if (bytes < 1024) return bytes + ' B';
+            if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
+            return (bytes / 1048576).toFixed(1) + ' MB';
+        }
+
+        function openCamera() {
+            const input = document.getElementById('camera-input');
+            if (input) input.click();
+        }
+
+        // Upload tab: drag & drop
+        const dropZone = document.getElementById('upload-drop-zone');
+        if (dropZone) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                dropZone.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); });
+            });
+            ['dragenter', 'dragover'].forEach(evt => {
+                dropZone.addEventListener(evt, function() {
+                    dropZone.style.borderColor = 'var(--primary)';
+                    dropZone.style.background = 'var(--primary-glow)';
+                });
+            });
+            ['dragleave', 'drop'].forEach(evt => {
+                dropZone.addEventListener(evt, function() {
+                    dropZone.style.borderColor = 'var(--border)';
+                    dropZone.style.background = 'var(--bg)';
+                });
+            });
+            dropZone.addEventListener('drop', function(e) {
+                const file = e.dataTransfer.files[0];
+                if (!file) return;
+                document.getElementById('media-file').files = e.dataTransfer.files;
+                showUploadPreview(file);
+            });
+            dropZone.addEventListener('click', function(e) {
+                if (!e.target.closest('button')) {
+                    document.getElementById('media-file').click();
+                }
+            });
+        }
+
+        document.getElementById('media-file').addEventListener('change', function() {
+            if (this.files[0]) showUploadPreview(this.files[0]);
+        });
+
+        document.getElementById('camera-input').addEventListener('change', function() {
+            if (this.files[0]) {
+                const dt = new DataTransfer();
+                dt.items.add(this.files[0]);
+                document.getElementById('media-file').files = dt.files;
+                showUploadPreview(this.files[0]);
+            }
+        });
 
         document.getElementById('upload-form').addEventListener('submit', async (e) => {
             e.preventDefault();
@@ -1197,17 +1319,75 @@
             const fd = new FormData();
             fd.append(type, fileInput.files[0]);
             fd.append('media_type', type);
+            const el = document.getElementById('upload-result');
+            el.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Uploading...</p></div>';
             const res = await fetch('/api/upload', { method: 'POST', body: fd });
             const data = await res.json();
-            const el = document.getElementById('upload-result');
             if (res.ok) {
-                let html = '<div class="alert alert-success"><strong>Uploaded!</strong><br>URL: <code>' + data.url + '</code>';
-                if (data.thumbnail) html += '<br>Thumbnail: <code>' + data.thumbnail + '</code>';
+                let html = '<div class="alert alert-success"><strong>Uploaded!</strong><br>URL: <code class="user-select-all">' + data.url + '</code>';
+                if (data.thumbnail) html += '<br>Thumbnail: <code class="user-select-all">' + data.thumbnail + '</code>';
                 html += '</div>';
-                if (data.thumbnail) html += '<div class="text-center mt-2"><img src="' + data.thumbnail + '" class="img-fluid rounded" style="max-height:200px" alt="preview"></div>';
+                if (data.thumbnail) html += '<div class="text-center mt-2"><img src="' + data.thumbnail + '" class="img-fluid rounded shadow-sm" style="max-height:300px" alt="preview"></div>';
                 el.innerHTML = html;
             } else el.innerHTML = '<div class="alert alert-danger">Upload failed: ' + (data.error || '') + '</div>';
         });
+
+        // Event modal: inline photo upload
+        const eventUploadZone = document.getElementById('event-upload-zone');
+        if (eventUploadZone) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                eventUploadZone.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); });
+            });
+            ['dragenter', 'dragover'].forEach(evt => {
+                eventUploadZone.addEventListener(evt, function() {
+                    eventUploadZone.style.borderColor = 'var(--primary)';
+                    eventUploadZone.style.background = 'var(--primary-glow)';
+                });
+            });
+            ['dragleave', 'drop'].forEach(evt => {
+                eventUploadZone.addEventListener(evt, function() {
+                    eventUploadZone.style.borderColor = 'var(--border)';
+                    eventUploadZone.style.background = 'var(--bg)';
+                });
+            });
+            eventUploadZone.addEventListener('drop', async function(e) {
+                const file = e.dataTransfer.files[0];
+                if (!file) return;
+                await uploadEventPhoto(file);
+            });
+            eventUploadZone.addEventListener('click', function(e) {
+                if (!e.target.closest('button')) {
+                    document.getElementById('event-photo-input').click();
+                }
+            });
+        }
+
+        document.getElementById('event-photo-input').addEventListener('change', async function() {
+            if (this.files[0]) await uploadEventPhoto(this.files[0]);
+        });
+
+        async function uploadEventPhoto(file) {
+            const result = document.getElementById('event-photo-result');
+            const preview = document.getElementById('event-photo-preview');
+            const img = document.getElementById('event-photo-img');
+            result.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Uploading photo...</div>';
+            const fd = new FormData();
+            fd.append('image', file);
+            fd.append('media_type', 'image');
+            const res = await fetch('/api/upload', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (res.ok) {
+                eventPhotoUrl = data.url;
+                eventPhotoThumb = data.thumbnail || data.url;
+                document.getElementById('event-media-type').value = 'image';
+                img.src = eventPhotoThumb;
+                preview.style.display = 'block';
+                document.getElementById('event-upload-zone').style.display = 'none';
+                result.innerHTML = '';
+            } else {
+                result.innerHTML = '<div class="alert alert-danger py-1">Upload failed: ' + (data.error || '') + '</div>';
+            }
+        }
 
         async function loadGotifyConfig() {
             try {

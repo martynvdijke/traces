@@ -495,6 +495,15 @@ func saveEvent(c *gin.Context) {
 		return
 	}
 
+	if e.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Title is required"})
+		return
+	}
+
+	if e.Date == "" {
+		e.Date = time.Now().Format("2006-01-02")
+	}
+
 	log.Printf("[EVENT] Saving event: ID=%d, Title=%s, Date=%s", e.ID, e.Title, e.Date)
 
 	action := "created"
