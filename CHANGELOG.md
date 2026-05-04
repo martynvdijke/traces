@@ -1,3 +1,10 @@
+# [1.5.0](https://github.com/martynvdijke/traces/compare/v1.4.0...v1.5.0) (2026-05-04)
+
+
+### Features
+
+* photo uploader with mobile camera capture and title-only event creation ([e7ff821](https://github.com/martynvdijke/traces/commit/e7ff821763e5e52873f1058ba7475863431b8a62))
+
 # [1.4.0](https://github.com/martynvdijke/traces/compare/v1.3.0...v1.4.0) (2026-05-03)
 
 
