@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"crypto/tls"
 	"database/sql"
 	"encoding/csv"
 	"encoding/json"
@@ -13,6 +14,7 @@ import (
 	"io"
 	"log"
 	"net/http"
+	"net/smtp"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -89,7 +91,22 @@ type GotifyConfig struct {
 	Enabled bool   `json:"enabled"`
 }
 
-const currentSchemaVersion = 3
+type MemoriesConfig struct {
+	Enabled      bool `json:"enabled"`
+	DaysWindow   int  `json:"days_window"`
+	EmailEnabled bool `json:"email_enabled"`
+}
+
+type EmailConfig struct {
+	SMTPHost string `json:"smtp_host"`
+	SMTPPort int    `json:"smtp_port"`
+	SMTPUser string `json:"smtp_user"`
+	SMTPPass string `json:"smtp_pass"`
+	FromAddr string `json:"from_addr"`
+	ToAddr   string `json:"to_addr"`
+}
+
+const currentSchemaVersion = 4
 const currentVersion = "1.5.0"
 
 var (
@@ -175,6 +192,13 @@ func main() {
 			auth.GET("/gotify/config", getGotifyConfig)
 			auth.POST("/gotify/config", saveGotifyConfig)
 			auth.POST("/gotify/test", testGotify)
+			auth.GET("/memories", getMemories)
+			auth.GET("/memories/config", getMemoriesConfig)
+			auth.POST("/memories/config", saveMemoriesConfig)
+			auth.POST("/memories/send", sendMemoriesEmailHandler)
+			auth.GET("/email/config", getEmailConfig)
+			auth.POST("/email/config", saveEmailConfig)
+			auth.POST("/email/test", testEmail)
 		}
 	}
 
@@ -1342,6 +1366,298 @@ func testGotify(c *gin.Context) {
 	}
 }
 
+func getMemories(c *gin.Context) {
+	var cfg MemoriesConfig
+	var enabledInt int
+	err := db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &cfg.DaysWindow, &cfg.EmailEnabled)
+	if err != nil || enabledInt == 0 {
+		c.JSON(http.StatusOK, []interface{}{})
+		return
+	}
+	cfg.Enabled = enabledInt == 1
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	start := today.AddDate(0, 0, -cfg.DaysWindow)
+	end := today.AddDate(0, 0, cfg.DaysWindow)
+
+	startMD := start.Format("01-02")
+	endMD := end.Format("01-02")
+
+	var rows *sql.Rows
+	if startMD <= endMD {
+		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
+			FROM timeline_events e
+			WHERE e.event_date != ''
+			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
+			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
+			ORDER BY e.event_date DESC`, startMD, endMD)
+	} else {
+		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
+			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
+			FROM timeline_events e
+			WHERE e.event_date != ''
+			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
+			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)
+			ORDER BY e.event_date DESC`, startMD, endMD)
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	type MemoryEvent struct {
+		TimelineEvent
+		YearsAgo int `json:"years_ago"`
+	}
+
+	memories := make([]MemoryEvent, 0)
+	pMap := make(map[int]Person)
+	pRows, _ := db.Query("SELECT id, name, avatar_url, bio, birth_date, color, created_at FROM persons")
+	if pRows != nil {
+		defer pRows.Close()
+		for pRows.Next() {
+			var p Person
+			if pRows.Scan(&p.ID, &p.Name, &p.AvatarURL, &p.Bio, &p.BirthDate, &p.Color, &p.CreatedAt) == nil {
+				pMap[p.ID] = p
+			}
+		}
+	}
+
+	for rows.Next() {
+		var me MemoryEvent
+		var personID sql.NullInt64
+		err := rows.Scan(&me.ID, &me.Title, &me.Description, &me.Date, &me.Location, &me.MediaType, &me.MediaURL, &me.Thumbnail, &me.MediaCaption, &me.Tags, &me.SortOrder, &me.IsPublic, &me.CreatedAt, &personID, &me.Latitude, &me.Longitude, &me.YearsAgo)
+		if err != nil {
+			continue
+		}
+		if personID.Valid {
+			pid := int(personID.Int64)
+			me.PersonID = &pid
+			if p, ok := pMap[pid]; ok {
+				me.Person = &p
+			}
+		}
+		memories = append(memories, me)
+	}
+
+	c.JSON(http.StatusOK, memories)
+}
+
+func getMemoriesConfig(c *gin.Context) {
+	var cfg MemoriesConfig
+	var enabledInt int
+	err := db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &cfg.DaysWindow, &cfg.EmailEnabled)
+	if err != nil {
+		c.JSON(http.StatusOK, MemoriesConfig{Enabled: true, DaysWindow: 3, EmailEnabled: false})
+		return
+	}
+	cfg.Enabled = enabledInt == 1
+	c.JSON(http.StatusOK, cfg)
+}
+
+func saveMemoriesConfig(c *gin.Context) {
+	var cfg MemoriesConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	enabledInt := 0
+	if cfg.Enabled {
+		enabledInt = 1
+	}
+	emailInt := 0
+	if cfg.EmailEnabled {
+		emailInt = 1
+	}
+	if cfg.DaysWindow < 1 {
+		cfg.DaysWindow = 1
+	}
+	if cfg.DaysWindow > 14 {
+		cfg.DaysWindow = 14
+	}
+	_, err := db.Exec(`UPDATE memories_settings SET enabled=?, days_window=?, email_enabled=? WHERE id=1`, enabledInt, cfg.DaysWindow, emailInt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func getEmailConfig(c *gin.Context) {
+	var cfg EmailConfig
+	var port int
+	err := db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&cfg.SMTPHost, &port, &cfg.SMTPUser, &cfg.SMTPPass, &cfg.FromAddr, &cfg.ToAddr)
+	if err != nil {
+		c.JSON(http.StatusOK, EmailConfig{SMTPPort: 587})
+		return
+	}
+	cfg.SMTPPort = port
+	c.JSON(http.StatusOK, cfg)
+}
+
+func saveEmailConfig(c *gin.Context) {
+	var cfg EmailConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if cfg.SMTPPort == 0 {
+		cfg.SMTPPort = 587
+	}
+	_, err := db.Exec(`UPDATE email_settings SET smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=?, from_addr=?, to_addr=? WHERE id=1`,
+		cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.FromAddr, cfg.ToAddr)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func testEmail(c *gin.Context) {
+	var cfg EmailConfig
+	var port int
+	err := db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&cfg.SMTPHost, &port, &cfg.SMTPUser, &cfg.SMTPPass, &cfg.FromAddr, &cfg.ToAddr)
+	if err != nil || cfg.SMTPHost == "" || cfg.ToAddr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Email not configured"})
+		return
+	}
+	cfg.SMTPPort = port
+
+	subject := "TRACES Test Email"
+	body := "This is a test email from TRACES. If you receive this, your email settings are working correctly."
+	if err := sendEmail(cfg, subject, body); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email: " + err.Error()})
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Test email sent successfully"})
+}
+
+func sendEmail(cfg EmailConfig, subject, body string) error {
+	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort)
+	msg := []byte(fmt.Sprintf("From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", cfg.FromAddr, cfg.ToAddr, subject, body))
+
+	var auth smtp.Auth
+	if cfg.SMTPUser != "" {
+		auth = smtp.PlainAuth("", cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPHost)
+	}
+
+	if cfg.SMTPPort == 465 {
+		tlsCfg := &tls.Config{ServerName: cfg.SMTPHost}
+		conn, err := tls.Dial("tcp", addr, tlsCfg)
+		if err != nil {
+			return err
+		}
+		client, err := smtp.NewClient(conn, cfg.SMTPHost)
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		if auth != nil {
+			if err = client.Auth(auth); err != nil {
+				return err
+			}
+		}
+		if err = client.Mail(cfg.FromAddr); err != nil {
+			return err
+		}
+		if err = client.Rcpt(cfg.ToAddr); err != nil {
+			return err
+		}
+		w, err := client.Data()
+		if err != nil {
+			return err
+		}
+		_, err = w.Write(msg)
+		if err != nil {
+			return err
+		}
+		return w.Close()
+	}
+
+	return smtp.SendMail(addr, auth, cfg.FromAddr, []string{cfg.ToAddr}, msg)
+}
+
+func sendMemoriesEmailHandler(c *gin.Context) {
+	var memCfg MemoriesConfig
+	var enabledInt int
+	db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &memCfg.DaysWindow, &memCfg.EmailEnabled)
+	memCfg.Enabled = enabledInt == 1
+
+	if !memCfg.Enabled {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Memories are disabled"})
+		return
+	}
+
+	var emailCfg EmailConfig
+	var port int
+	err := db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&emailCfg.SMTPHost, &port, &emailCfg.SMTPUser, &emailCfg.SMTPPass, &emailCfg.FromAddr, &emailCfg.ToAddr)
+	if err != nil || emailCfg.SMTPHost == "" || emailCfg.ToAddr == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Email not configured"})
+		return
+	}
+	emailCfg.SMTPPort = port
+
+	now := time.Now()
+	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
+	start := today.AddDate(0, 0, -memCfg.DaysWindow)
+	end := today.AddDate(0, 0, memCfg.DaysWindow)
+	startMD := start.Format("01-02")
+	endMD := end.Format("01-02")
+
+	var rows *sql.Rows
+	if startMD <= endMD {
+		rows, err = db.Query(`SELECT e.title, e.event_date,
+			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
+			FROM timeline_events e
+			WHERE e.event_date != ''
+			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
+			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
+			ORDER BY e.event_date DESC`, startMD, endMD)
+	} else {
+		rows, err = db.Query(`SELECT e.title, e.event_date,
+			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
+			FROM timeline_events e
+			WHERE e.event_date != ''
+			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
+			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)
+			ORDER BY e.event_date DESC`, startMD, endMD)
+	}
+
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		return
+	}
+	defer rows.Close()
+
+	var memories []string
+	for rows.Next() {
+		var title, date string
+		var yearsAgo int
+		if err := rows.Scan(&title, &date, &yearsAgo); err == nil {
+			memories = append(memories, fmt.Sprintf("  - %d year(s) ago: %s (%s)", yearsAgo, title, date))
+		}
+	}
+
+	if len(memories) == 0 {
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "No memories for today"})
+		return
+	}
+
+	subject := "TRACES Memories - " + today.Format("January 2, 2006")
+	body := "You have " + strconv.Itoa(len(memories)) + " memory/memories from this date in past years:\n\n" + strings.Join(memories, "\n")
+
+	if err := sendEmail(emailCfg, subject, body); err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email: " + err.Error()})
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": fmt.Sprintf("Sent %d memories via email", len(memories))})
+}
+
 func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
 	events := make([]TimelineEvent, 0)
 	for rows.Next() {
@@ -1459,6 +1775,22 @@ func createTables() {
 			token TEXT DEFAULT '',
 			enabled INTEGER DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS memories_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			enabled INTEGER DEFAULT 1,
+			days_window INTEGER DEFAULT 3,
+			email_enabled INTEGER DEFAULT 0,
+			last_sent_date TEXT DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS email_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			smtp_host TEXT DEFAULT '',
+			smtp_port INTEGER DEFAULT 587,
+			smtp_user TEXT DEFAULT '',
+			smtp_pass TEXT DEFAULT '',
+			from_addr TEXT DEFAULT '',
+			to_addr TEXT DEFAULT ''
+		)`,
 	}
 
 	for _, q := range queries {
@@ -1472,6 +1804,18 @@ func createTables() {
 	db.QueryRow("SELECT COUNT(*) FROM gotify_settings").Scan(&count)
 	if count == 0 {
 		db.Exec("INSERT INTO gotify_settings (id, url, token, enabled) VALUES (1, '', '', 0)")
+	}
+
+	var memCount int
+	db.QueryRow("SELECT COUNT(*) FROM memories_settings").Scan(&memCount)
+	if memCount == 0 {
+		db.Exec("INSERT INTO memories_settings (id, enabled, days_window, email_enabled) VALUES (1, 1, 3, 0)")
+	}
+
+	var emailCount int
+	db.QueryRow("SELECT COUNT(*) FROM email_settings").Scan(&emailCount)
+	if emailCount == 0 {
+		db.Exec("INSERT INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)")
 	}
 }
 
@@ -1521,6 +1865,25 @@ func runMigration(fromVersion int) {
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN person_id INTEGER`)
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN latitude REAL`)
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN longitude REAL`)
+	case 3:
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS memories_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			enabled INTEGER DEFAULT 1,
+			days_window INTEGER DEFAULT 3,
+			email_enabled INTEGER DEFAULT 0,
+			last_sent_date TEXT DEFAULT ''
+		)`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO memories_settings (id, enabled, days_window, email_enabled) VALUES (1, 1, 3, 0)`)
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS email_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			smtp_host TEXT DEFAULT '',
+			smtp_port INTEGER DEFAULT 587,
+			smtp_user TEXT DEFAULT '',
+			smtp_pass TEXT DEFAULT '',
+			from_addr TEXT DEFAULT '',
+			to_addr TEXT DEFAULT ''
+		)`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)`)
 	}
 }
 

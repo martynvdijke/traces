@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"crypto/sha256"
+	"database/sql"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -14,8 +15,10 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func setupTestRouter() *gin.Engine {
@@ -297,5 +300,170 @@ func BenchmarkGetMediaIcon(b *testing.B) {
 	types := []string{"image", "video", "audio"}
 	for i := 0; i < b.N; i++ {
 		GetMediaIcon(types[i%len(types)])
+	}
+}
+
+func TestMemoriesQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL
+	)`)
+
+	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Last year event', ?)`, time.Now().AddDate(-1, 0, 0).Format("2006-01-02"))
+	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Two years ago', ?)`, time.Now().AddDate(-2, 0, 0).Format("2006-01-02"))
+	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Old event out of range', ?)`, time.Now().AddDate(-1, -1, 0).Format("2006-01-02"))
+	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Recent event same year', ?)`, time.Now().Format("2006-01-02"))
+
+	rows, err := db.Query(`SELECT e.title, e.event_date,
+		CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
+		FROM timeline_events e
+		WHERE e.event_date != ''
+		AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
+		AND strftime('%m-%d', e.event_date) = strftime('%m-%d', 'now')
+		ORDER BY e.event_date DESC`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var count int
+	for rows.Next() {
+		count++
+		var title, date string
+		var yearsAgo int
+		if err := rows.Scan(&title, &date, &yearsAgo); err != nil {
+			t.Fatal(err)
+		}
+		t.Logf("Memory: %q (date=%s, years_ago=%d)", title, date, yearsAgo)
+	}
+
+	if count < 2 {
+		t.Errorf("expected at least 2 memories (exact date match), got %d", count)
+	}
+}
+
+func TestMemoriesConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS memories_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		enabled INTEGER DEFAULT 1,
+		days_window INTEGER DEFAULT 3,
+		email_enabled INTEGER DEFAULT 0,
+		last_sent_date TEXT DEFAULT ''
+	)`)
+	db.Exec(`INSERT OR IGNORE INTO memories_settings (id, enabled, days_window, email_enabled) VALUES (1, 1, 3, 0)`)
+
+	var enabledInt, daysWindow, emailInt int
+	err = db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &daysWindow, &emailInt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabledInt != 1 {
+		t.Errorf("enabled = %d, want 1", enabledInt)
+	}
+	if daysWindow != 3 {
+		t.Errorf("days_window = %d, want 3", daysWindow)
+	}
+
+	db.Exec("UPDATE memories_settings SET enabled=0, days_window=7, email_enabled=1 WHERE id=1")
+	err = db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &daysWindow, &emailInt)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if enabledInt != 0 {
+		t.Errorf("enabled = %d, want 0 after update", enabledInt)
+	}
+	if daysWindow != 7 {
+		t.Errorf("days_window = %d, want 7 after update", daysWindow)
+	}
+	if emailInt != 1 {
+		t.Errorf("email_enabled = %d, want 1 after update", emailInt)
+	}
+}
+
+func TestEmailConfigRoundTrip(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS email_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		smtp_host TEXT DEFAULT '',
+		smtp_port INTEGER DEFAULT 587,
+		smtp_user TEXT DEFAULT '',
+		smtp_pass TEXT DEFAULT '',
+		from_addr TEXT DEFAULT '',
+		to_addr TEXT DEFAULT ''
+	)`)
+	db.Exec(`INSERT OR IGNORE INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)`)
+
+	db.Exec(`UPDATE email_settings SET smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=?, from_addr=?, to_addr=? WHERE id=1`,
+		"smtp.example.com", 465, "user", "pass", "from@test.com", "to@test.com")
+
+	var host, user, pass, fromAddr, toAddr string
+	var port int
+	err = db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&host, &port, &user, &pass, &fromAddr, &toAddr)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if host != "smtp.example.com" {
+		t.Errorf("host = %q, want smtp.example.com", host)
+	}
+	if port != 465 {
+		t.Errorf("port = %d, want 465", port)
+	}
+	if user != "user" {
+		t.Errorf("user = %q", user)
+	}
+	if fromAddr != "from@test.com" {
+		t.Errorf("from = %q", fromAddr)
+	}
+	if toAddr != "to@test.com" {
+		t.Errorf("to = %q", toAddr)
 	}
 }
