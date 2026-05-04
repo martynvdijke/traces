@@ -1,3 +1,10 @@
+# [1.6.0](https://github.com/martynvdijke/traces/compare/v1.5.0...v1.6.0) (2026-05-04)
+
+
+### Features
+
+* add memories feature with email support ([57e207e](https://github.com/martynvdijke/traces/commit/57e207e0650bae0840d7b60f560c7220024ec6db))
+
 # [1.5.0](https://github.com/martynvdijke/traces/compare/v1.4.0...v1.5.0) (2026-05-04)
 
 
