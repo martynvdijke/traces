@@ -1,3 +1,10 @@
+## [1.7.1](https://github.com/martynvdijke/traces/compare/v1.7.0...v1.7.1) (2026-05-04)
+
+
+### Bug Fixes
+
+* activity overview API, swagger docs, Umami analytics, and security audit fixes ([25d53ba](https://github.com/martynvdijke/traces/commit/25d53bae77a5a09d57fa3122d9a512cba979a568))
+
 # [1.7.0](https://github.com/martynvdijke/traces/compare/v1.6.1...v1.7.0) (2026-05-04)
 
 
