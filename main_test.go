@@ -819,3 +819,394 @@ func TestUniqueStrings(t *testing.T) {
 		}
 	}
 }
+
+func TestCalendarQuery(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		avatar_url TEXT DEFAULT '',
+		bio TEXT DEFAULT '',
+		birth_date TEXT DEFAULT '',
+		color TEXT DEFAULT '#7c3aed',
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 1', '2026-06-01')")
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 2', '2026-06-15')")
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 3', '2026-06-15')")
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 4', '2026-07-01')")
+
+	t.Run("calendar_month_query", func(t *testing.T) {
+		rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE event_date BETWEEN '2026-06-01' AND '2026-06-30' ORDER BY event_date ASC`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		var dates []string
+		for rows.Next() {
+			var d string
+			rows.Scan(&d)
+			dates = append(dates, d)
+		}
+
+		if len(dates) != 3 {
+			t.Errorf("expected 3 events in June, got %d", len(dates))
+		}
+	})
+
+	t.Run("calendar_group_by_date", func(t *testing.T) {
+		rows, err := db.Query(`SELECT event_date, COUNT(*) FROM timeline_events WHERE event_date BETWEEN '2026-06-01' AND '2026-06-30' GROUP BY event_date ORDER BY event_date`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		groups := make(map[string]int)
+		for rows.Next() {
+			var date string
+			var count int
+			rows.Scan(&date, &count)
+			groups[date] = count
+		}
+
+		if groups["2026-06-15"] != 2 {
+			t.Errorf("expected 2 events on 2026-06-15, got %d", groups["2026-06-15"])
+		}
+	})
+}
+
+func TestRecurringEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0
+	)`)
+
+	db.Exec("INSERT INTO timeline_events (title, event_date, recurring) VALUES ('Birthday', '2026-01-15', 'yearly')")
+	db.Exec("INSERT INTO timeline_events (title, event_date, recurring) VALUES ('Weekly Meetup', '2026-01-05', 'weekly')")
+	db.Exec("INSERT INTO timeline_events (title, event_date, recurring) VALUES ('Monthly Report', '2026-01-01', 'monthly')")
+	db.Exec("INSERT INTO timeline_events (title, event_date, recurring) VALUES ('One-off', '2026-01-01', '')")
+
+	t.Run("recurring_yearly", func(t *testing.T) {
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE recurring = 'yearly'").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 yearly recurring event, got %d", count)
+		}
+	})
+
+	t.Run("recurring_weekly", func(t *testing.T) {
+		var title, recurring string
+		db.QueryRow("SELECT title, recurring FROM timeline_events WHERE recurring = 'weekly'").Scan(&title, &recurring)
+		if title != "Weekly Meetup" {
+			t.Errorf("expected 'Weekly Meetup', got %q", title)
+		}
+	})
+
+	t.Run("non_recurring", func(t *testing.T) {
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE recurring = ''").Scan(&count)
+		if count < 1 {
+			t.Errorf("expected at least 1 non-recurring event")
+		}
+	})
+}
+
+func TestMultiUser(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE,
+		display_name TEXT DEFAULT '',
+		color TEXT DEFAULT '#7c3aed',
+		avatar_url TEXT DEFAULT '',
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	db.Exec("INSERT INTO users (username, display_name, color) VALUES ('alice', 'Alice', '#ef4444')")
+	db.Exec("INSERT INTO users (username, display_name, color) VALUES ('bob', 'Bob', '#3b82f6')")
+
+	t.Run("user_count", func(t *testing.T) {
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+		if count != 2 {
+			t.Errorf("expected 2 users, got %d", count)
+		}
+	})
+
+	t.Run("fetch_user", func(t *testing.T) {
+		var username, displayName, color string
+		err := db.QueryRow("SELECT username, display_name, color FROM users WHERE id = 1").Scan(&username, &displayName, &color)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if username != "alice" {
+			t.Errorf("username = %q", username)
+		}
+		if displayName != "Alice" {
+			t.Errorf("display_name = %q", displayName)
+		}
+		if color != "#ef4444" {
+			t.Errorf("color = %q", color)
+		}
+	})
+
+	t.Run("delete_user", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM users WHERE id = 2")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 user after delete, got %d", count)
+		}
+	})
+}
+
+func TestOllamaConfig(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS ollama_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		url TEXT DEFAULT 'http://localhost:11434',
+		model TEXT DEFAULT 'llama3.2',
+		enabled INTEGER DEFAULT 0
+	)`)
+	db.Exec("INSERT OR IGNORE INTO ollama_settings (id, url, model, enabled) VALUES (1, 'http://localhost:11434', 'llama3.2', 0)")
+
+	t.Run("default_config", func(t *testing.T) {
+		var url, model string
+		var enabled int
+		err := db.QueryRow("SELECT url, model, enabled FROM ollama_settings WHERE id = 1").Scan(&url, &model, &enabled)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if url != "http://localhost:11434" {
+			t.Errorf("url = %q", url)
+		}
+		if model != "llama3.2" {
+			t.Errorf("model = %q", model)
+		}
+		if enabled != 0 {
+			t.Errorf("enabled = %d", enabled)
+		}
+	})
+
+	t.Run("update_config", func(t *testing.T) {
+		db.Exec("UPDATE ollama_settings SET url=?, model=?, enabled=? WHERE id=1", "http://ollama:11434", "mistral", 1)
+		var url, model string
+		var enabled int
+		db.QueryRow("SELECT url, model, enabled FROM ollama_settings WHERE id = 1").Scan(&url, &model, &enabled)
+		if url != "http://ollama:11434" {
+			t.Errorf("url = %q", url)
+		}
+		if enabled != 1 {
+			t.Errorf("enabled = %d", enabled)
+		}
+	})
+}
+
+func TestWeatherDataStructure(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		event_date TEXT,
+		weather_data TEXT DEFAULT ''
+	)`)
+
+	t.Run("store_and_retrieve_weather", func(t *testing.T) {
+		weatherJSON := `{"temperature":22.5,"condition":"Partly cloudy","icon":"cloud-sun","humidity":65,"wind_speed":12.3}`
+		_, err := db.Exec("INSERT INTO timeline_events (title, event_date, weather_data) VALUES (?, ?, ?)", "Weather Event", "2026-06-15", weatherJSON)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var data string
+		db.QueryRow("SELECT weather_data FROM timeline_events WHERE id = 1").Scan(&data)
+		if data != weatherJSON {
+			t.Errorf("weather_data mismatch")
+		}
+
+		var parsed struct {
+			Temperature float64 `json:"temperature"`
+			Condition   string  `json:"condition"`
+		}
+		json.Unmarshal([]byte(data), &parsed)
+		if parsed.Temperature != 22.5 {
+			t.Errorf("temperature = %f", parsed.Temperature)
+		}
+		if parsed.Condition != "Partly cloudy" {
+			t.Errorf("condition = %q", parsed.Condition)
+		}
+	})
+}
+
+func TestManifestAndServiceWorker(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	router := setupTestRouter()
+
+	router.GET("/api/manifest.json", serveManifest)
+	router.GET("/sw.js", serveServiceWorker)
+
+	t.Run("manifest_endpoint", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/manifest.json", nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("status = %d", w.Code)
+		}
+		var manifest map[string]interface{}
+		if err := json.Unmarshal(w.Body.Bytes(), &manifest); err != nil {
+			t.Fatal(err)
+		}
+		if manifest["name"] != "TRACES - Your Year in Review" {
+			t.Errorf("manifest name = %q", manifest["name"])
+		}
+	})
+
+	t.Run("service_worker_endpoint", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/sw.js", nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Errorf("status = %d", w.Code)
+		}
+		if len(w.Body.Bytes()) == 0 {
+			t.Error("empty service worker response")
+		}
+	})
+}
+
+func TestMarkdownInDescription(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT
+	)`)
+
+	t.Run("store_markdown_description", func(t *testing.T) {
+		md := "## Heading\n\nThis is **bold** and *italic*.\n\n- List item 1\n- List item 2"
+		_, err := db.Exec("INSERT INTO timeline_events (title, description, event_date) VALUES (?, ?, ?)", "MD Event", md, "2026-06-15")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var description string
+		db.QueryRow("SELECT description FROM timeline_events WHERE id = 1").Scan(&description)
+		if description != md {
+			t.Errorf("markdown content mismatch")
+		}
+		if !strings.Contains(description, "**bold**") {
+			t.Error("markdown should preserve bold syntax")
+		}
+	})
+}

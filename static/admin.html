@@ -516,6 +516,8 @@
                 <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button"><i class="fa-solid fa-upload me-2"></i>Upload</button></li>
                 <li class="nav-item"><button class="nav-link" id="gotify-tab" data-bs-toggle="tab" data-bs-target="#gotify-pane" type="button"><i class="fa-solid fa-bell me-2"></i>Notifications</button></li>
                 <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button"><i class="fa-solid fa-clock-rotate-left me-2"></i>Memories</button></li>
+                <li class="nav-item"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button"><i class="fa-solid fa-people-group me-2"></i>Users</button></li>
+                <li class="nav-item"><button class="nav-link" id="ollama-tab" data-bs-toggle="tab" data-bs-target="#ollama-pane" type="button"><i class="fa-solid fa-robot me-2"></i>AI</button></li>
             </ul>
         </div>
     </div>
@@ -730,6 +732,71 @@
                     </div>
                 </div>
             </div>
+
+            <!-- USERS TAB -->
+            <div class="tab-pane fade" id="users-pane">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-people-group me-2 text-primary"></i>Family Users</h5>
+                    <button class="btn btn-sm btn-success" onclick="openUserModal()"><i class="fa-solid fa-plus me-1"></i> Add User</button>
+                </div>
+                <div class="row g-3" id="user-list"></div>
+            </div>
+
+            <!-- OLLAMA TAB -->
+            <div class="tab-pane fade" id="ollama-pane">
+                <div class="card">
+                    <div class="card-header"><i class="fa-solid fa-robot me-2"></i>AI Auto-Tagging (Ollama)</div>
+                    <div class="card-body">
+                        <form id="ollama-form">
+                            <div class="mb-3">
+                                <label class="form-label">Ollama Server URL</label>
+                                <input type="text" class="form-control" id="ollama-url" placeholder="http://localhost:11434">
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">Model</label>
+                                <input type="text" class="form-control" id="ollama-model" placeholder="llama3.2">
+                            </div>
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="ollama-enabled">
+                                <label class="form-check-label fw-bold">Enable AI Auto-Tagging</label>
+                                <div class="text-muted" style="font-size:0.85rem">When enabled, the event editor will show an "Auto-Tag" button that uses Ollama to suggest tags</div>
+                            </div>
+                            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
+                        </form>
+                        <div id="ollama-result" class="mt-3"></div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- USER MODAL -->
+    <div class="modal fade" id="userModal" tabindex="-1">
+        <div class="modal-dialog modal-dialog-scrollable">
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h5 class="modal-title" id="userModalLabel">Edit User</h5>
+                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                </div>
+                <div class="modal-body">
+                    <form id="user-form">
+                        <input type="hidden" name="id" id="user-id">
+                        <div class="mb-3">
+                            <label class="form-label">Username</label>
+                            <input type="text" class="form-control" name="username" id="user-username" required>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Display Name</label>
+                            <input type="text" class="form-control" name="display_name" id="user-display-name">
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Color</label>
+                            <input type="color" class="form-control form-control-color" name="color" id="user-color" value="#7c3aed" style="width:60px;height:40px">
+                        </div>
+                        <button type="submit" class="btn btn-primary w-100">Save User</button>
+                    </form>
+                </div>
+            </div>
         </div>
     </div>
 
@@ -785,6 +852,29 @@
                             <div id="event-media-result" class="mt-2"></div>
                         </div>
 
+                        <div class="row g-3 mb-3">
+                            <div class="col-sm-6">
+                                <label class="form-label">Recurring <span class="text-muted">(optional)</span></label>
+                                <select class="form-select" name="recurring" id="event-recurring">
+                                    <option value="">None</option>
+                                    <option value="daily">Daily</option>
+                                    <option value="weekly">Weekly</option>
+                                    <option value="monthly">Monthly</option>
+                                    <option value="yearly">Yearly</option>
+                                </select>
+                            </div>
+                            <div class="col-sm-6">
+                                <label class="form-label">User <span class="text-muted">(optional)</span></label>
+                                <select class="form-select" name="user_id" id="event-user">
+                                    <option value="0">Default</option>
+                                </select>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <button type="button" class="btn btn-outline-info btn-sm" onclick="fetchEventWeather()"><i class="fa-solid fa-cloud-sun me-1"></i> Fetch Weather</button>
+                            <button type="button" class="btn btn-outline-warning btn-sm ms-1" onclick="autoTagEvent()"><i class="fa-solid fa-wand-magic-sparkles me-1"></i> Auto-Tag</button>
+                            <span id="weather-display" class="ms-2 small text-muted"></span>
+                        </div>
                         <div class="mb-3">
                             <label class="form-label">Person <span class="text-muted">(optional)</span></label>
                             <div class="autocomplete-wrapper">
@@ -936,6 +1026,8 @@
             initAutocomplete('event-location', 'location-autocomplete', 'location');
             initTagAutocomplete();
             loadAdminAnalytics();
+            await loadAdminUsers();
+            loadOllamaConfig();
         }
 
         function loadAdminAnalytics() {
@@ -1242,6 +1334,9 @@
                 document.getElementById('event-location').value = event.location || '';
                 document.getElementById('event-person').value = event.person_id || 0;
                 document.getElementById('event-media-type').value = event.media_type || 'image';
+                document.getElementById('event-recurring').value = event.recurring || '';
+                document.getElementById('event-user').value = event.user_id || 0;
+                document.getElementById('weather-display').textContent = '';
                 document.getElementById('event-tags-hidden').value = event.tags || '';
                 selectedTags = event.tags ? event.tags.split(',').map(t => t.trim()).filter(t => t) : [];
                 renderTags();
@@ -1303,7 +1398,10 @@
                 thumbnail: eventPhotoThumb || '',
                 tags: document.getElementById('event-tags-hidden').value,
                 latitude: parseFloat(document.getElementById('event-latitude').value) || null,
-                longitude: parseFloat(document.getElementById('event-longitude').value) || null
+                longitude: parseFloat(document.getElementById('event-longitude').value) || null,
+                recurring: document.getElementById('event-recurring').value || '',
+                user_id: parseInt(document.getElementById('event-user').value) || 0,
+                weather_data: document.getElementById('weather-display').dataset.weather || ''
             };
             const res = await fetch('/api/events', {
                 method: 'POST',
@@ -1900,6 +1998,176 @@
             el.innerHTML = res.ok
                 ? '<div class="alert alert-success">Test email sent successfully!</div>'
                 : '<div class="alert alert-danger">Error: ' + (data.error || '') + '</div>';
+        }
+
+        // Admin Users
+        let adminUsers = [];
+
+        async function loadAdminUsers() {
+            try {
+                const res = await fetch('/api/users');
+                adminUsers = await res.json();
+                renderUserList();
+                updateUserSelect();
+            } catch (e) { console.error('Failed to load users', e); }
+        }
+
+        function renderUserList() {
+            const container = document.getElementById('user-list');
+            if (!container) return;
+            if (!adminUsers.length) {
+                container.innerHTML = '<div class="col-12"><div class="empty-state"><i class="fa-solid fa-users"></i><p>No users yet</p></div></div>';
+                return;
+            }
+            container.innerHTML = adminUsers.map(u => `
+                <div class="col-md-6 col-lg-4">
+                    <div class="person-card">
+                        <div class="person-avatar-placeholder" style="background:${u.color||'#7c3aed'}">
+                            <i class="fa-solid fa-user" style="color:white;font-size:1.2rem"></i>
+                        </div>
+                        <div class="person-info">
+                            <div class="name">${escapeHtml(u.display_name || u.username)}</div>
+                            <div class="meta">@${escapeHtml(u.username)} ${u.event_count ? '· ' + u.event_count + ' events' : ''}</div>
+                        </div>
+                        <div class="person-stats">
+                            <button class="btn btn-sm btn-outline-primary" onclick="openUserModal(${u.id})"><i class="fa-solid fa-pen"></i></button>
+                            <button class="btn btn-sm btn-outline-danger ms-1" onclick="deleteAdminUser(${u.id})"><i class="fa-solid fa-trash"></i></button>
+                        </div>
+                    </div>
+                </div>
+            `).join('');
+        }
+
+        function updateUserSelect() {
+            const select = document.getElementById('event-user');
+            if (!select) return;
+            const val = select.value;
+            select.innerHTML = '<option value="0">Default</option>' + adminUsers.map(u => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('');
+            select.value = val;
+        }
+
+        function openUserModal(userId) {
+            document.getElementById('user-form').reset();
+            document.getElementById('user-id').value = '0';
+            document.getElementById('user-color').value = '#7c3aed';
+            document.getElementById('userModalLabel').textContent = 'Add User';
+            if (userId) {
+                const u = adminUsers.find(u => u.id === userId);
+                if (u) {
+                    document.getElementById('userModalLabel').textContent = 'Edit User';
+                    document.getElementById('user-id').value = u.id;
+                    document.getElementById('user-username').value = u.username;
+                    document.getElementById('user-display-name').value = u.display_name || '';
+                    document.getElementById('user-color').value = u.color || '#7c3aed';
+                }
+            }
+            new bootstrap.Modal(document.getElementById('userModal')).show();
+        }
+
+        document.getElementById('user-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                id: parseInt(document.getElementById('user-id').value) || 0,
+                username: document.getElementById('user-username').value,
+                display_name: document.getElementById('user-display-name').value,
+                color: document.getElementById('user-color').value
+            };
+            const res = await fetch('/api/users', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            if (res.ok) {
+                bootstrap.Modal.getInstance(document.getElementById('userModal')).hide();
+                await loadAdminUsers();
+            } else alert('Failed to save user');
+        });
+
+        async function deleteAdminUser(id) {
+            if (!confirm('Delete this user? Their events will be unlinked.')) return;
+            const res = await fetch('/api/users?id=' + id, { method: 'DELETE' });
+            if (res.ok) await loadAdminUsers();
+            else alert('Failed to delete user');
+        }
+
+        // Ollama Config
+        async function loadOllamaConfig() {
+            try {
+                const res = await fetch('/api/ollama/config');
+                const cfg = await res.json();
+                document.getElementById('ollama-url').value = cfg.url || 'http://localhost:11434';
+                document.getElementById('ollama-model').value = cfg.model || 'llama3.2';
+                document.getElementById('ollama-enabled').checked = cfg.enabled || false;
+            } catch (e) {}
+        }
+
+        document.getElementById('ollama-form').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const data = {
+                url: document.getElementById('ollama-url').value,
+                model: document.getElementById('ollama-model').value,
+                enabled: document.getElementById('ollama-enabled').checked
+            };
+            const res = await fetch('/api/ollama/config', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(data)
+            });
+            document.getElementById('ollama-result').innerHTML = res.ok
+                ? '<div class="alert alert-success">AI settings saved.</div>'
+                : '<div class="alert alert-danger">Failed to save.</div>';
+        });
+
+        // Weather
+        async function fetchEventWeather() {
+            const lat = document.getElementById('event-latitude').value;
+            const lng = document.getElementById('event-longitude').value;
+            const date = document.getElementById('event-date').value;
+            const id = parseInt(document.getElementById('event-id').value) || 0;
+            if (!lat || !lng || !date) { alert('Set date, latitude, and longitude first'); return; }
+            const el = document.getElementById('weather-display');
+            el.textContent = 'Fetching...';
+            try {
+                const res = await fetch('/api/weather/fetch', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ event_id: id, latitude: parseFloat(lat), longitude: parseFloat(lng), date: date })
+                });
+                const data = await res.json();
+                if (res.ok) {
+                    el.innerHTML = '<i class="fa-solid fa-' + data.icon + '"></i> ' + Math.round(data.temperature) + '°C ' + data.condition;
+                    el.dataset.weather = JSON.stringify(data);
+                } else {
+                    el.textContent = 'Weather: ' + (data.error || 'unavailable');
+                }
+            } catch (e) { el.textContent = 'Weather fetch failed'; }
+        }
+
+        // Auto-tag
+        async function autoTagEvent() {
+            const title = document.getElementById('event-title').value;
+            const desc = document.getElementById('event-desc').value;
+            const loc = document.getElementById('event-location').value;
+            if (!title) { alert('Enter a title first'); return; }
+            const btn = event.target;
+            const orig = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Analyzing...';
+            try {
+                const res = await fetch('/api/auto-tag', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ title, description: desc, location: loc })
+                });
+                const data = await res.json();
+                if (res.ok && data.tags) {
+                    data.tags.forEach(t => addTag(t));
+                } else {
+                    alert('Auto-tag failed: ' + (data.error || 'unknown'));
+                }
+            } catch (e) { alert('Auto-tag failed'); }
+            btn.disabled = false;
+            btn.innerHTML = orig;
         }
 
         function escapeHtml(text) {

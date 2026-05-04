@@ -12,6 +12,8 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <link rel="manifest" href="/api/manifest.json">
+    <meta name="theme-color" content="#7c3aed">
     <style>
         #map-container { height: 450px; border-radius: 10px; overflow: hidden; }
         #map-container .leaflet-container { height: 100%; width: 100%; border-radius: 10px; }
@@ -19,11 +21,46 @@
         .map-popup h6 { margin: 0 0 4px 0; font-weight: 700; }
         .map-popup p { margin: 0; font-size: 0.85rem; }
         .legend-squares { display: flex; gap: 3px; }
+        .main-tabs { border-bottom: 2px solid var(--border); margin-bottom: 1.5rem; }
+        .main-tabs .nav-link { color: var(--text-muted); font-weight: 600; border: none; padding: 0.75rem 1.25rem; position: relative; }
+        .main-tabs .nav-link:hover { color: var(--primary); }
+        .main-tabs .nav-link.active { color: var(--primary); background: transparent; }
+        .main-tabs .nav-link.active::after { content: ''; position: absolute; bottom: -2px; left: 0; right: 0; height: 2px; background: var(--primary); }
+        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
+        .calendar-header { text-align: center; font-weight: 700; padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted); }
+        .calendar-day { min-height: 80px; padding: 4px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
+        .calendar-day:hover { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-glow); }
+        .calendar-day.other-month { opacity: 0.4; }
+        .calendar-day.today { border-color: var(--primary); background: var(--primary-glow); }
+        .calendar-day .day-num { font-weight: 700; font-size: 0.85rem; font-family: var(--font-mono); }
+        .calendar-day .event-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); margin: 1px; }
+        .calendar-day .event-dots { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
+        .calendar-nav { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
+        .calendar-nav h3 { margin: 0; font-family: var(--font-mono); }
+        .calendar-event-list { max-height: 300px; overflow-y: auto; }
+        .calendar-event-item { padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; cursor: pointer; transition: background 0.2s; }
+        .calendar-event-item:hover { background: var(--primary-glow); }
+        .calendar-event-item:last-child { border-bottom: none; }
+        .weather-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: var(--text-muted); padding: 0.15rem 0.4rem; border-radius: 4px; background: var(--primary-glow); }
+        .md-content h1, .md-content h2, .md-content h3 { margin-top: 0.5rem; margin-bottom: 0.25rem; }
+        .md-content p { margin-bottom: 0.25rem; }
+        .md-content ul, .md-content ol { padding-left: 1.25rem; margin-bottom: 0.25rem; }
+        .md-content code { background: var(--border); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.8rem; }
+        .md-content pre code { display: block; padding: 0.5rem; overflow-x: auto; }
+        .md-content blockquote { border-left: 3px solid var(--primary); padding-left: 0.5rem; color: var(--text-muted); }
+        .md-content a { color: var(--primary); }
+        .user-badge { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.5rem; border-radius: 10px; font-size: 0.7rem; color: white; }
+        .memories-section { margin-top: 1rem; }
+        .memories-item { padding: 0.75rem; border-left: 3px solid var(--primary); margin-bottom: 0.5rem; background: var(--bg); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+        @media (max-width: 768px) {
+            .calendar-day { min-height: 60px; font-size: 0.75rem; }
+            .main-tabs .nav-link { padding: 0.5rem 0.75rem; font-size: 0.8rem; }
+        }
     </style>
 </head>
 <body>
     <div class="vintage-overlay"></div>
-    
+
     <header class="py-3 py-md-4">
         <div class="container">
             <div class="d-flex flex-column flex-md-row justify-content-between align-items-center position-relative gap-3">
@@ -41,12 +78,7 @@
                         </button>
                     </div>
                     <ul class="mb-0 d-flex flex-wrap gap-2 gap-md-3 list-unstyled justify-content-center">
-                        <li><a href="#timeline" class="text-uppercase small"><i class="fa-solid fa-clock me-1"></i><span class="d-none d-lg-inline">Timeline</span></a></li>
-                        <li><a href="#contributions" class="text-uppercase small"><i class="fa-solid fa-chart-pie me-1"></i><span class="d-none d-lg-inline">Activity</span></a></li>
-                        <li><a href="#gallery" class="text-uppercase small"><i class="fa-solid fa-images me-1"></i><span class="d-none d-lg-inline">Gallery</span></a></li>
-                        <li><a href="#map-view" class="text-uppercase small"><i class="fa-solid fa-map-location-dot me-1"></i><span class="d-none d-lg-inline">Map</span></a></li>
-                        <li><a href="/login.html" class="text-uppercase small"><i class="fa-solid fa-lock me-1"></i><span class="d-none d-lg-inline">Admin</span></a></li>
-                        <li><a href="/docs" class="text-uppercase small d-none d-lg-inline" target="_blank"><i class="fa-solid fa-book me-1"></i>Docs</a></li>
+                        <li><a href="/admin.html" class="text-uppercase small"><i class="fa-solid fa-lock me-1"></i><span class="d-none d-lg-inline">Admin</span></a></li>
                     </ul>
                     <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Theme">
                         <i class="fa-solid fa-moon"></i>
@@ -56,23 +88,20 @@
         </div>
     </header>
 
-    <main class="container my-5">
-        <section class="year-selector mb-5">
-            <div class="row align-items-center g-4">
+    <main class="container my-4">
+        <section class="year-selector mb-4">
+            <div class="row align-items-center g-3">
                 <div class="col-md-4">
                     <h2 class="mb-0"><i class="fa-solid fa-calendar me-2"></i>Year <span id="current-year">2026</span></h2>
                 </div>
                 <div class="col-md-8">
-                    <div class="d-flex gap-2 flex-wrap">
-                        <button class="btn btn-outline-primary" onclick="changeYear(2026)">2026</button>
-                        <button class="btn btn-outline-primary" onclick="changeYear(2025)">2025</button>
-                        <button class="btn btn-outline-primary" onclick="changeYear(2024)">2024</button>
+                    <div class="d-flex gap-2 flex-wrap" id="year-buttons">
                     </div>
                 </div>
             </div>
         </section>
 
-        <section class="contribution-hero mb-5" id="contributions">
+        <section class="contribution-hero mb-4" id="contributions">
             <div class="row align-items-stretch g-4">
                 <div class="col-lg-8">
                     <div class="contribution-card">
@@ -122,57 +151,117 @@
             </div>
         </section>
 
-        <section class="recent-activity mb-5" id="recent-activity">
-            <h2 class="mb-4"><i class="fa-solid fa-clock-rotate-left me-2"></i>Recent Activity</h2>
-            <div class="card">
-                <div class="card-body" id="recent-activity-list">
-                    <p class="text-muted text-center py-3">Loading recent activity...</p>
-                </div>
-            </div>
-        </section>
+        <div id="memories-section" class="memories-section mb-4" style="display:none"></div>
 
-        <section class="month-filter mb-4">
-            <div class="d-flex gap-2 flex-wrap">
-                <button class="btn btn-sm btn-dark active" onclick="filterMonth(0)">All Year</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(1)">Jan</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(2)">Feb</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(3)">Mar</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(4)">Apr</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(5)">May</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(6)">Jun</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(7)">Jul</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(8)">Aug</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(9)">Sep</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(10)">Oct</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(11)">Nov</button>
-                <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(12)">Dec</button>
-            </div>
-        </section>
+        <ul class="nav main-tabs" id="mainTabs" role="tablist">
+            <li class="nav-item"><button class="nav-link active" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timeline-pane" type="button"><i class="fa-solid fa-clock me-1"></i> Timeline</button></li>
+            <li class="nav-item"><button class="nav-link" id="calendar-tab" data-bs-toggle="tab" data-bs-target="#calendar-pane" type="button"><i class="fa-solid fa-calendar-days me-1"></i> Calendar</button></li>
+            <li class="nav-item"><button class="nav-link" id="gallery-tab" data-bs-toggle="tab" data-bs-target="#gallery-pane" type="button"><i class="fa-solid fa-images me-1"></i> Photos</button></li>
+            <li class="nav-item"><button class="nav-link" id="map-tab" data-bs-toggle="tab" data-bs-target="#map-pane" type="button"><i class="fa-solid fa-map-location-dot me-1"></i> Map</button></li>
+            <li class="nav-item"><button class="nav-link" id="compare-tab" data-bs-toggle="tab" data-bs-target="#compare-pane" type="button"><i class="fa-solid fa-chart-bar me-1"></i> Compare</button></li>
+        </ul>
 
-        <section id="timeline" class="timeline-section mb-5">
-            <div class="timeline" id="timeline-container">
-            </div>
-        </section>
+        <div class="tab-content">
+            <div class="tab-pane fade show active" id="timeline-pane">
+                <section class="month-filter mb-4">
+                    <div class="d-flex gap-2 flex-wrap">
+                        <button class="btn btn-sm btn-dark active" onclick="filterMonth(0)">All Year</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(1)">Jan</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(2)">Feb</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(3)">Mar</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(4)">Apr</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(5)">May</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(6)">Jun</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(7)">Jul</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(8)">Aug</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(9)">Sep</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(10)">Oct</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(11)">Nov</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(12)">Dec</button>
+                    </div>
+                </section>
 
-        <section id="gallery" class="gallery-section mb-5">
-            <h2 class="mb-4"><i class="fa-solid fa-images me-2"></i>Media Gallery</h2>
-            <div class="row g-4" id="gallery-container">
+                <section id="timeline" class="timeline-section mb-4">
+                    <div class="timeline" id="timeline-container"></div>
+                </section>
             </div>
-        </section>
 
-        <section id="map-view" class="map-section mb-5">
-            <h2 class="mb-4"><i class="fa-solid fa-map-location-dot me-2"></i>Event Map</h2>
-            <div class="card">
-                <div class="card-body p-2">
-                    <div id="map-container">
-                        <div class="text-center text-muted py-5" id="map-placeholder">
-                            <i class="fa-solid fa-map-location-dot fa-3x mb-3"></i>
-                            <p>Loading map...</p>
+            <div class="tab-pane fade" id="calendar-pane">
+                <section class="calendar-section mb-4">
+                    <div class="calendar-nav">
+                        <button class="btn btn-outline-primary btn-sm" onclick="calendarPrevMonth()"><i class="fa-solid fa-chevron-left"></i></button>
+                        <h3 id="calendar-title"></h3>
+                        <button class="btn btn-outline-primary btn-sm" onclick="calendarNextMonth()"><i class="fa-solid fa-chevron-right"></i></button>
+                        <button class="btn btn-outline-secondary btn-sm ms-auto" onclick="calendarToday()">Today</button>
+                    </div>
+                    <div class="calendar-grid" id="calendar-grid"></div>
+                    <div class="mt-3" id="calendar-selected-day" style="display:none">
+                        <h5 id="calendar-selected-date" class="fw-bold"></h5>
+                        <div class="calendar-event-list" id="calendar-event-list"></div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="tab-pane fade" id="gallery-pane">
+                <section class="gallery-section mb-4">
+                    <h4 class="mb-3"><i class="fa-solid fa-images me-2"></i>Media Gallery</h4>
+                    <div class="row g-4" id="gallery-container"></div>
+                    <div class="text-center mt-4">
+                        <button class="btn btn-outline-primary" onclick="loadMoreGallery()" id="load-more-btn">Load More</button>
+                    </div>
+                </section>
+            </div>
+
+            <div class="tab-pane fade" id="map-pane">
+                <section class="map-section mb-4">
+                    <h4 class="mb-3"><i class="fa-solid fa-map-location-dot me-2"></i>Event Map</h4>
+                    <div class="card">
+                        <div class="card-body p-2">
+                            <div id="map-container">
+                                <div class="text-center text-muted py-5" id="map-placeholder">
+                                    <i class="fa-solid fa-map-location-dot fa-3x mb-3"></i>
+                                    <p>Loading map...</p>
+                                </div>
+                            </div>
                         </div>
                     </div>
-                </div>
+                </section>
             </div>
-        </section>
+
+            <div class="tab-pane fade" id="compare-pane">
+                <section class="compare-section mb-4">
+                    <h4 class="mb-3"><i class="fa-solid fa-chart-bar me-2"></i>Year Comparison</h4>
+                    <div class="row g-4">
+                        <div class="col-md-5">
+                            <div class="card">
+                                <div class="card-body">
+                                    <select class="form-select mb-3" id="compare-year-1" onchange="updateCompare()"></select>
+                                    <div id="compare-stats-1"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-md-2 d-flex align-items-center justify-content-center">
+                            <div class="text-center">
+                                <i class="fa-solid fa-arrows-left-right fa-2x text-muted"></i>
+                            </div>
+                        </div>
+                        <div class="col-md-5">
+                            <div class="card">
+                                <div class="card-body">
+                                    <select class="form-select mb-3" id="compare-year-2" onchange="updateCompare()"></select>
+                                    <div id="compare-stats-2"></div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="col-12">
+                            <div class="card">
+                                <div class="card-body" id="compare-result"></div>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+            </div>
+        </div>
     </main>
 
     <div class="modal fade" id="mediaModal" tabindex="-1">
@@ -202,5 +291,10 @@
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script src="/static/app.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+    <script>
+    if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.register('/sw.js').catch(() => {});
+    }
+    </script>
 </body>
 </html>

@@ -17,6 +17,9 @@ interface TimelineEvent {
   person_id?: number;
   latitude?: number;
   longitude?: number;
+  recurring: string;
+  weather_data: string;
+  user_id: number;
   person?: {
     id: number;
     name: string;
@@ -26,18 +29,30 @@ interface TimelineEvent {
     color: string;
     created_at: string;
   };
+  user?: {
+    id: number;
+    username: string;
+    display_name: string;
+    color: string;
+    avatar_url: string;
+  };
+}
+
+interface CalendarDay {
+  date: string;
+  events: TimelineEvent[];
+  count: number;
 }
 
 interface ContributionMap {
   [date: string]: number;
 }
 
-interface EventStats {
-  total: number;
-  images: number;
-  videos: number;
-  audio: number;
-  locations: number;
+interface Weather {
+  temperature: number;
+  condition: string;
+  icon: string;
+  wind_speed: number;
 }
 
 type Theme = 'light' | 'dark';
@@ -50,6 +65,7 @@ let galleryPage: number = 1;
 const galleryLimit: number = 12;
 let map: any = null;
 let markers: any[] = [];
+let users: any[] = [];
 
 const monthNames: string[] = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -82,6 +98,10 @@ function changeYear(year: number): void {
   currentYear = year;
   const yearEl = document.getElementById('current-year');
   if (yearEl) yearEl.textContent = String(year);
+  document.querySelectorAll('.year-selector .btn').forEach(b => b.classList.remove('btn-primary'));
+  document.querySelectorAll('.year-selector .btn').forEach(b => b.classList.add('btn-outline-primary'));
+  const btn = document.querySelector(`.year-selector .btn[data-year="${year}"]`);
+  if (btn) { btn.classList.remove('btn-outline-primary'); btn.classList.add('btn-primary'); }
   loadData();
 }
 
@@ -109,7 +129,6 @@ async function loadContributions(): Promise<void> {
   try {
     const res = await fetch('/api/contributions?year=' + currentYear);
     if (!res.ok) {
-      console.error('Contributions API error:', res.status, await res.text());
       contributions = {};
     } else {
       contributions = await res.json() as ContributionMap;
@@ -194,7 +213,6 @@ async function loadEvents(): Promise<void> {
     }
     const res = await fetch(url);
     if (!res.ok) {
-      console.error('Events API error:', res.status, await res.text());
       events = [];
     } else {
       events = await res.json() as TimelineEvent[];
@@ -203,14 +221,39 @@ async function loadEvents(): Promise<void> {
     renderTimeline();
     renderGallery();
     renderMap();
+    renderCalendar();
   } catch (err) {
     console.error('Failed to load events:', err);
   }
 }
 
+async function loadUsers(): Promise<void> {
+  try {
+    const res = await fetch('/api/users');
+    users = await res.json();
+    if (!Array.isArray(users)) users = [];
+  } catch (e) { users = []; }
+}
+
 async function loadData(): Promise<void> {
-  await Promise.all([loadEvents(), loadContributions()]);
+  await Promise.all([loadEvents(), loadContributions(), loadUsers()]);
+  populateYearButtons();
   galleryPage = 1;
+}
+
+function populateYearButtons(): void {
+  const container = document.getElementById('year-buttons');
+  if (!container) return;
+  const years = new Set<number>();
+  events.forEach(e => {
+    const y = parseInt(e.date.slice(0, 4));
+    if (!isNaN(y)) years.add(y);
+  });
+  years.add(currentYear);
+  const sorted = Array.from(years).sort((a, b) => b - a);
+  container.innerHTML = sorted.map(y =>
+    `<button class="btn ${y === currentYear ? 'btn-primary' : 'btn-outline-primary'}" data-year="${y}" onclick="changeYear(${y})">${y}</button>`
+  ).join('');
 }
 
 function renderTimeline(): void {
@@ -262,14 +305,32 @@ function renderTimeline(): void {
     const hasMedia = e.media_url;
     const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
 
+    let weatherHtml = '';
+    if (e.weather_data) {
+      try {
+        const w = JSON.parse(e.weather_data) as Weather;
+        weatherHtml = `<span class="weather-badge ms-2"><i class="fa-solid fa-${w.icon}"></i> ${Math.round(w.temperature)}°C ${w.condition}</span>`;
+      } catch (_) {}
+    }
+
+    let userHtml = '';
+    if (e.user_id && users.length) {
+      const u = users.find(u => u.id === e.user_id);
+      if (u) {
+        userHtml = `<span class="user-badge ms-1" style="background:${u.color || '#7c3aed'}"><i class="fa-solid fa-user"></i> ${escapeHtml(u.display_name || u.username)}</span>`;
+      }
+    }
+
+    const recurringBadge = e.recurring ? `<span class="badge bg-info ms-1"><i class="fa-solid fa-rotate"></i> ${e.recurring}</span>` : '';
+
     html += `
       <div class="timeline-item ${index % 2 === 0 ? 'left' : 'right'}" id="event-${e.id}">
         <div class="timeline-content" onclick="${hasMedia ? 'showMedia(' + e.id + ')' : ''}">
-          <div class="timeline-date">${formatDate(e.date)}</div>
-          <div class="timeline-title">${escapeHtml(e.title)}</div>
-          <div class="timeline-location"><i class="fa-solid fa-location-dot me-1"></i>${escapeHtml(e.location)}</div>
+          <div class="timeline-date">${formatDate(e.date)} ${recurringBadge}</div>
+          <div class="timeline-title">${escapeHtml(e.title)} ${weatherHtml}</div>
+          <div class="timeline-location"><i class="fa-solid fa-location-dot me-1"></i>${escapeHtml(e.location)} ${userHtml}</div>
           ${tagList.length > 0 ? '<div class="timeline-people mb-2"><i class="fa-solid fa-tags me-1"></i>' + tagList.map(t => '<span class="badge bg-secondary me-1">' + escapeHtml(t) + '</span>').join('') + '</div>' : ''}
-          ${e.description ? '<p class="timeline-desc">' + escapeHtml(e.description) + '</p>' : ''}
+          ${e.description ? '<div class="timeline-desc md-content">' + renderMarkdown(e.description) + '</div>' : ''}
           ${hasMedia ? '<div class="timeline-media-badge"><i class="' + mediaIcon + '"></i> ' + e.media_type + '</div>' : ''}
         </div>
       </div>
@@ -277,6 +338,23 @@ function renderTimeline(): void {
   });
 
   container.innerHTML = html;
+}
+
+function renderMarkdown(text: string): string {
+  if (!text) return '';
+  let html = escapeHtml(text);
+  html = html.replace(/### (.+)/g, '<h3>$1</h3>');
+  html = html.replace(/## (.+)/g, '<h2>$1</h2>');
+  html = html.replace(/# (.+)/g, '<h1>$1</h1>');
+  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
+  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
+  html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
+  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
+  html = html.replace(/(<li>.*<\/li>\n?)/s, '<ul>$1</ul>');
+  html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>');
+  html = html.replace(/\n/g, '<br>');
+  return html;
 }
 
 function getMediaIcon(mediaType: string): string {
@@ -323,7 +401,6 @@ function renderGallery(): void {
   }
 
   container.innerHTML = mediaEvents.slice(0, galleryLimit).map(e => {
-    const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
     return `
       <div class="col-md-4 col-lg-3">
         <div class="gallery-item" onclick="showMedia(${e.id})">
@@ -336,12 +413,16 @@ function renderGallery(): void {
           <div class="gallery-overlay">
             <i class="${getMediaIcon(e.media_type)}"></i>
           </div>
-          ${tagList.length > 0 ? '<div class="gallery-people"><i class="fa-solid fa-tags"></i> ' + tagList.length + '</div>' : ''}
         </div>
         <div class="mt-2 text-center small">${escapeHtml(e.title)}</div>
       </div>
     `;
   }).join('');
+
+  const loadMoreBtn = document.getElementById('load-more-btn');
+  if (loadMoreBtn) {
+    loadMoreBtn.style.display = mediaEvents.length > galleryLimit ? '' : 'none';
+  }
 }
 
 function renderMap(): void {
@@ -383,10 +464,17 @@ function renderMap(): void {
 
   geoEvents.forEach(e => {
     const m = L.marker([e.latitude!, e.longitude!], {icon: markerIcon}).addTo(map);
+    let weatherHtml = '';
+    if (e.weather_data) {
+      try {
+        const w = JSON.parse(e.weather_data);
+        weatherHtml = `<br><small><i class="fa-solid fa-${w.icon}"></i> ${Math.round(w.temperature)}°C ${w.condition}</small>`;
+      } catch(_) {}
+    }
     m.bindPopup(`
       <div class="map-popup">
         <h6>${escapeHtml(e.title)}</h6>
-        <p>${formatDate(e.date)} — ${escapeHtml(e.location)}</p>
+        <p>${formatDate(e.date)} — ${escapeHtml(e.location)}${weatherHtml}</p>
       </div>
     `);
     markers.push(m);
@@ -411,7 +499,7 @@ function showMedia(id: number): void {
   if (titleEl) titleEl.textContent = event.title;
   if (descEl) {
     descEl.innerHTML = `
-      ${event.description || ''}
+      ${event.description ? renderMarkdown(event.description) : ''}
       <div class="mt-2 small opacity-75">
         <i class="fa-solid fa-calendar me-1"></i>${event.date}
         ${event.location ? '<i class="fa-solid fa-location-dot ms-2 me-1"></i>' + event.location : ''}
@@ -451,7 +539,6 @@ async function loadMoreGallery(): Promise<void> {
     const res = await fetch(url);
     let moreEvents: TimelineEvent[];
     if (!res.ok) {
-      console.error('Load more gallery API error:', res.status, await res.text());
       moreEvents = [];
     } else {
       moreEvents = await res.json() as TimelineEvent[];
@@ -462,31 +549,28 @@ async function loadMoreGallery(): Promise<void> {
     const mediaEvents = moreEvents.filter(e => e.media_url);
 
     if (mediaEvents.length === 0) {
-      if (container) container.innerHTML += '<div class="col-12 text-center text-muted py-3">No more media to load</div>';
+      const btn = document.getElementById('load-more-btn');
+      if (btn) btn.style.display = 'none';
       return;
     }
 
     if (container) {
-      container.innerHTML += mediaEvents.map(e => {
-        const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
-        return `
-          <div class="col-md-4 col-lg-3">
-            <div class="gallery-item" onclick="showMedia(${e.id})">
-              ${e.media_type === 'video'
-                ? '<video src="' + e.media_url + '" muted></video>'
-                : e.media_type === 'audio'
-                ? '<div class="audio-placeholder"><i class="fa-solid fa-music fa-3x"></i></div>'
-                : '<img src="' + (e.thumbnail || e.media_url) + '" alt="' + escapeHtml(e.title) + '">'
-              }
-              <div class="gallery-overlay">
-                <i class="${getMediaIcon(e.media_type)}"></i>
-              </div>
-              ${tagList.length > 0 ? '<div class="gallery-people"><i class="fa-solid fa-tags"></i> ' + tagList.length + '</div>' : ''}
+      container.innerHTML += mediaEvents.map(e => `
+        <div class="col-md-4 col-lg-3">
+          <div class="gallery-item" onclick="showMedia(${e.id})">
+            ${e.media_type === 'video'
+              ? '<video src="' + e.media_url + '" muted></video>'
+              : e.media_type === 'audio'
+              ? '<div class="audio-placeholder"><i class="fa-solid fa-music fa-3x"></i></div>'
+              : '<img src="' + (e.thumbnail || e.media_url) + '" alt="' + escapeHtml(e.title) + '">'
+            }
+            <div class="gallery-overlay">
+              <i class="${getMediaIcon(e.media_type)}"></i>
             </div>
-            <div class="mt-2 text-center small">${escapeHtml(e.title)}</div>
           </div>
-        `;
-      }).join('');
+          <div class="mt-2 text-center small">${escapeHtml(e.title)}</div>
+        </div>
+      `).join('');
     }
 
     events = [...events, ...moreEvents];
@@ -495,63 +579,16 @@ async function loadMoreGallery(): Promise<void> {
   }
 }
 
-async function loadRecentActivity(): Promise<void> {
-  try {
-    const res = await fetch('/api/events?limit=5&sort=desc');
-    let recentEvents: TimelineEvent[];
-    if (!res.ok) {
-      console.error('Recent activity API error:', res.status, await res.text());
-      recentEvents = [];
-    } else {
-      recentEvents = await res.json() as TimelineEvent[];
-      if (!Array.isArray(recentEvents)) recentEvents = [];
-    }
-    renderRecentActivity(recentEvents);
-  } catch (err) {
-    console.error('Failed to load recent activity:', err);
-  }
-}
-
-function renderRecentActivity(recentEvents: TimelineEvent[]): void {
-  const container = document.getElementById('recent-activity-list');
-  if (!container) return;
-
-  if (!recentEvents || recentEvents.length === 0) {
-    container.innerHTML = '<div class="text-center text-muted py-4"><p>No recent activity</p></div>';
-    return;
-  }
-
-  container.innerHTML = recentEvents.map(e => `
-    <div class="d-flex align-items-center p-2 border-bottom">
-      <div class="me-3">
-        <i class="${getMediaIcon(e.media_type)} fa-2x text-primary"></i>
-      </div>
-      <div class="flex-grow-1">
-        <div class="fw-bold">${escapeHtml(e.title)}</div>
-        <div class="small text-muted">
-          <i class="fa-solid fa-calendar me-1"></i>${e.date}
-          ${e.location ? '<i class="fa-solid fa-location-dot ms-2 me-1"></i>' + escapeHtml(e.location) : ''}
-        </div>
-      </div>
-      <div>
-        <button class="btn btn-sm btn-outline-primary" onclick="showMedia(${e.id})">
-          <i class="fa-solid fa-eye"></i>
-        </button>
-      </div>
-    </div>
-  `).join('');
-}
-
-async function getYearStats(year: string): Promise<EventStats> {
+async function getYearStats(year: string): Promise<any> {
   try {
     const res = await fetch('/api/events?year=' + year);
     const yearEvents = await res.json() as TimelineEvent[];
     return {
       total: yearEvents.length,
-      images: yearEvents.filter(e => e.media_type === 'image').length,
-      videos: yearEvents.filter(e => e.media_type === 'video').length,
-      audio: yearEvents.filter(e => e.media_type === 'audio').length,
-      locations: new Set(yearEvents.map(e => e.location).filter(l => l)).size
+      images: yearEvents.filter((e: TimelineEvent) => e.media_type === 'image').length,
+      videos: yearEvents.filter((e: TimelineEvent) => e.media_type === 'video').length,
+      audio: yearEvents.filter((e: TimelineEvent) => e.media_type === 'audio').length,
+      locations: new Set(yearEvents.map((e: TimelineEvent) => e.location).filter(l => l)).size
     };
   } catch (err) {
     return { total: 0, images: 0, videos: 0, audio: 0, locations: 0 };
@@ -594,7 +631,7 @@ async function updateCompare(): Promise<void> {
   }
 }
 
-function renderCompareStats(stats: EventStats): string {
+function renderCompareStats(stats: any): string {
   return `
     <div class="small">
       <div><strong>Total:</strong> ${stats.total} events</div>
@@ -606,11 +643,164 @@ function renderCompareStats(stats: EventStats): string {
   `;
 }
 
+// Calendar
+let calendarYear: number = new Date().getFullYear();
+let calendarMonth: number = new Date().getMonth() + 1;
+let calendarEventList: TimelineEvent[] = [];
+
+function renderCalendar(): void {
+  const filtered = Array.isArray(events) ? events : [];
+  calendarEventList = filtered;
+}
+
+function renderCalendarView(): void {
+  const grid = document.getElementById('calendar-grid');
+  const title = document.getElementById('calendar-title');
+  if (!grid || !title) return;
+
+  title.textContent = monthNames[calendarMonth - 1] + ' ' + calendarYear;
+
+  const firstDay = new Date(calendarYear, calendarMonth - 1, 1);
+  const lastDay = new Date(calendarYear, calendarMonth, 0);
+  const startDay = firstDay.getDay();
+  const daysInMonth = lastDay.getDate();
+
+  const prevMonth = new Date(calendarYear, calendarMonth - 1, 0);
+  const daysInPrevMonth = prevMonth.getDate();
+
+  let html = '';
+  const dayNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+  dayNames.forEach(d => {
+    html += '<div class="calendar-header">' + d + '</div>';
+  });
+
+  for (let i = startDay - 1; i >= 0; i--) {
+    const day = daysInPrevMonth - i;
+    html += '<div class="calendar-day other-month"><span class="day-num">' + day + '</span></div>';
+  }
+
+  const today = new Date();
+  const todayStr = today.toISOString().split('T')[0];
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    const dateStr = calendarYear + '-' + String(calendarMonth).padStart(2, '0') + '-' + String(day).padStart(2, '0');
+    const dayEvents = calendarEventList.filter(e => e.date === dateStr);
+    const isToday = dateStr === todayStr;
+
+    html += '<div class="calendar-day' + (isToday ? ' today' : '') + '" onclick="showCalendarDay(\'' + dateStr + '\')">';
+    html += '<span class="day-num">' + day + '</span>';
+    if (dayEvents.length > 0) {
+      html += '<div class="event-dots">';
+      dayEvents.slice(0, 5).forEach(() => {
+        html += '<span class="event-dot"></span>';
+      });
+      if (dayEvents.length > 5) {
+        html += '<span class="event-dot" style="background:var(--text-muted)"></span>';
+      }
+      html += '</div>';
+    }
+    html += '</div>';
+  }
+
+  const remainingCells = 7 - ((startDay + daysInMonth) % 7);
+  if (remainingCells < 7) {
+    for (let day = 1; day <= remainingCells; day++) {
+      html += '<div class="calendar-day other-month"><span class="day-num">' + day + '</span></div>';
+    }
+  }
+
+  grid.innerHTML = html;
+}
+
+function calendarPrevMonth(): void {
+  calendarMonth--;
+  if (calendarMonth < 1) { calendarMonth = 12; calendarYear--; }
+  renderCalendarView();
+}
+
+function calendarNextMonth(): void {
+  calendarMonth++;
+  if (calendarMonth > 12) { calendarMonth = 1; calendarYear++; }
+  renderCalendarView();
+}
+
+function calendarToday(): void {
+  calendarYear = new Date().getFullYear();
+  calendarMonth = new Date().getMonth() + 1;
+  renderCalendarView();
+}
+
+function showCalendarDay(dateStr: string): void {
+  const dayEvents = calendarEventList.filter(e => e.date === dateStr);
+  const section = document.getElementById('calendar-selected-day');
+  const dateEl = document.getElementById('calendar-selected-date');
+  const listEl = document.getElementById('calendar-event-list');
+  if (!section || !dateEl || !listEl) return;
+
+  const d = new Date(dateStr + 'T12:00:00');
+  dateEl.textContent = d.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' });
+
+  if (dayEvents.length === 0) {
+    listEl.innerHTML = '<p class="text-muted text-center py-3">No events on this day</p>';
+  } else {
+    listEl.innerHTML = dayEvents.map(e => {
+      const mediaIcon = getMediaIcon(e.media_type);
+      return '<div class="calendar-event-item" onclick="showMedia(' + e.id + ')">'
+        + '<div class="fw-bold">' + escapeHtml(e.title) + '</div>'
+        + '<div class="text-muted small">' + escapeHtml(e.location)
+        + (e.media_url ? ' <i class="' + mediaIcon + ' ms-1"></i>' : '')
+        + '</div>'
+        + '</div>';
+    }).join('');
+  }
+  section.style.display = 'block';
+}
+
+// Memories
+async function loadMemories(): Promise<void> {
+  try {
+    const res = await fetch('/api/memories');
+    const memories = await res.json();
+    const section = document.getElementById('memories-section');
+    if (!section) return;
+    if (!memories || !memories.length) { section.style.display = 'none'; return; }
+    memories.sort((a: any, b: any) => a.years_ago - b.years_ago);
+    section.style.display = 'block';
+    section.innerHTML = '<h5 class="mb-3"><i class="fa-solid fa-clock-rotate-left me-2 text-primary"></i>On This Day</h5>'
+      + memories.map((m: any) => '<div class="memories-item"><div class="fw-bold">' + escapeHtml(m.title) + '</div><div class="small text-muted">' + m.years_ago + ' year' + (m.years_ago > 1 ? 's' : '') + ' ago &middot; ' + m.date + '</div></div>').join('');
+  } catch (_) { }
+}
+
 function initApp(): void {
   initTheme();
+
+  const params = new URLSearchParams(window.location.search);
+  const q = params.get('q');
+  if (q) {
+    const input = document.getElementById('search-input') as HTMLInputElement;
+    if (input) input.value = q;
+  }
+
   loadData();
-  loadRecentActivity();
+  loadMemories();
   updateCompare();
+  renderCalendarView();
+
+  const compareYear1 = document.getElementById('compare-year-1') as HTMLSelectElement;
+  const compareYear2 = document.getElementById('compare-year-2') as HTMLSelectElement;
+  if (compareYear1 && compareYear2) {
+    const y = new Date().getFullYear();
+    for (let i = y + 1; i >= y - 10; i--) {
+      const o1 = document.createElement('option');
+      o1.value = String(i); o1.textContent = String(i);
+      if (i === y) o1.selected = true;
+      compareYear1.appendChild(o1);
+      const o2 = document.createElement('option');
+      o2.value = String(i); o2.textContent = String(i);
+      if (i === y - 1) o2.selected = true;
+      compareYear2.appendChild(o2);
+    }
+  }
 
   fetch('/api/version').then(r => r.json()).then(d => {
     const versionEl = document.getElementById('version-display');
@@ -628,3 +818,7 @@ document.addEventListener('DOMContentLoaded', initApp);
 (window as any).filterMonth = filterMonth;
 (window as any).showMedia = showMedia;
 (window as any).loadMoreGallery = loadMoreGallery;
+(window as any).calendarPrevMonth = calendarPrevMonth;
+(window as any).calendarNextMonth = calendarNextMonth;
+(window as any).calendarToday = calendarToday;
+(window as any).showCalendarDay = showCalendarDay;
