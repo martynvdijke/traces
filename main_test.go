@@ -467,3 +467,345 @@ func TestEmailConfigRoundTrip(t *testing.T) {
 		t.Errorf("to = %q", toAddr)
 	}
 }
+
+func TestPersonCRUD(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		avatar_url TEXT DEFAULT '',
+		bio TEXT DEFAULT '',
+		birth_date TEXT DEFAULT '',
+		color TEXT DEFAULT '#7c3aed',
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	t.Run("create_person", func(t *testing.T) {
+		_, err := db.Exec("INSERT INTO persons (name, avatar_url, bio, color) VALUES (?, ?, ?, ?)",
+			"John Doe", "/media/avatar.jpg", "A test person", "#ff0000")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM persons").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 person, got %d", count)
+		}
+	})
+
+	t.Run("fetch_person", func(t *testing.T) {
+		var name, avatar, bio, color string
+		err := db.QueryRow("SELECT name, avatar_url, bio, color FROM persons WHERE id = 1").Scan(&name, &avatar, &bio, &color)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if name != "John Doe" {
+			t.Errorf("name = %q, want John Doe", name)
+		}
+		if avatar != "/media/avatar.jpg" {
+			t.Errorf("avatar = %q", avatar)
+		}
+		if color != "#ff0000" {
+			t.Errorf("color = %q", color)
+		}
+	})
+
+	t.Run("update_person", func(t *testing.T) {
+		_, err := db.Exec("UPDATE persons SET name=?, color=? WHERE id=?", "Jane Doe", "#00ff00", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var name, color string
+		db.QueryRow("SELECT name, color FROM persons WHERE id = 1").Scan(&name, &color)
+		if name != "Jane Doe" {
+			t.Errorf("name = %q, want Jane Doe", name)
+		}
+		if color != "#00ff00" {
+			t.Errorf("color = %q, want #00ff00", color)
+		}
+	})
+
+	t.Run("delete_person", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM persons WHERE id = 1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM persons").Scan(&count)
+		if count != 0 {
+			t.Errorf("expected 0 persons, got %d", count)
+		}
+	})
+}
+
+func TestEventCRUD(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL
+	)`)
+
+	t.Run("create_event", func(t *testing.T) {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, tags, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"Test Event", "A test description", "2026-06-15", "Test Location", "image", "/media/test.jpg", "tag1, tag2", 40.7128, -74.0060)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 event, got %d", count)
+		}
+	})
+
+	t.Run("fetch_event", func(t *testing.T) {
+		var title, description, date, location, mediaType, mediaURL, tags string
+		var latitude, longitude float64
+		err := db.QueryRow("SELECT title, description, event_date, location, media_type, media_url, tags, latitude, longitude FROM timeline_events WHERE id = 1").
+			Scan(&title, &description, &date, &location, &mediaType, &mediaURL, &tags, &latitude, &longitude)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if title != "Test Event" {
+			t.Errorf("title = %q", title)
+		}
+		if date != "2026-06-15" {
+			t.Errorf("date = %q", date)
+		}
+		if tags != "tag1, tag2" {
+			t.Errorf("tags = %q", tags)
+		}
+		if latitude != 40.7128 {
+			t.Errorf("latitude = %f", latitude)
+		}
+	})
+
+	t.Run("query_by_year", func(t *testing.T) {
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", "2026").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 event in 2026, got %d", count)
+		}
+		var count2 int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", "2025").Scan(&count2)
+		if count2 != 0 {
+			t.Errorf("expected 0 events in 2025, got %d", count2)
+		}
+	})
+
+	t.Run("query_by_tag_like", func(t *testing.T) {
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE tags LIKE ?", "%tag1%").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 event with tag1, got %d", count)
+		}
+	})
+
+	t.Run("update_event", func(t *testing.T) {
+		_, err := db.Exec("UPDATE timeline_events SET title=?, location=? WHERE id=?", "Updated Event", "New Location", 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var title, location string
+		db.QueryRow("SELECT title, location FROM timeline_events WHERE id = 1").Scan(&title, &location)
+		if title != "Updated Event" || location != "New Location" {
+			t.Errorf("got %q / %q", title, location)
+		}
+	})
+
+	t.Run("delete_event", func(t *testing.T) {
+		_, err := db.Exec("DELETE FROM timeline_events WHERE id = 1")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&count)
+		if count != 0 {
+			t.Errorf("expected 0 events, got %d", count)
+		}
+	})
+}
+
+func TestTagAutocomplete(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		tags TEXT
+	)`)
+
+	db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('Event 1', 'nature, photography')")
+	db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('Event 2', 'nature, hiking')")
+	db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('Event 3', 'food, cooking')")
+
+	t.Run("distinct_tags", func(t *testing.T) {
+		rows, err := db.Query("SELECT DISTINCT tags FROM timeline_events WHERE tags != ''")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var rawTags []string
+		for rows.Next() {
+			var t string
+			rows.Scan(&t)
+			rawTags = append(rawTags, t)
+		}
+		// Flatten comma-separated tags
+		tagSet := make(map[string]bool)
+		for _, rt := range rawTags {
+			for _, tag := range strings.Split(rt, ",") {
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					tagSet[tag] = true
+				}
+			}
+		}
+		expected := []string{"nature", "photography", "hiking", "food", "cooking"}
+		for _, e := range expected {
+			if !tagSet[e] {
+				t.Errorf("missing tag: %s", e)
+			}
+		}
+		if len(tagSet) != len(expected) {
+			t.Errorf("expected %d unique tags, got %d", len(expected), len(tagSet))
+		}
+	})
+
+	t.Run("tag_search", func(t *testing.T) {
+		rows, err := db.Query("SELECT DISTINCT tags FROM timeline_events WHERE tags LIKE ?", "%nature%")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 2 {
+			t.Errorf("expected 2 tag rows matching 'nature', got %d", count)
+		}
+	})
+}
+
+func TestContributions(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		event_date TEXT
+	)`)
+
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 1', '2026-01-15')")
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 2', '2026-01-15')")
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 3', '2026-03-20')")
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 4', '2026-03-20')")
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 5', '2026-07-04')")
+
+	t.Run("contributions_by_year", func(t *testing.T) {
+		rows, err := db.Query("SELECT event_date FROM timeline_events WHERE strftime('%Y', event_date) = ?", "2026")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		contributions := make(map[string]int)
+		for rows.Next() {
+			var date string
+			if err := rows.Scan(&date); err == nil {
+				contributions[date]++
+			}
+		}
+
+		if contributions["2026-01-15"] != 2 {
+			t.Errorf("expected 2 events on 2026-01-15, got %d", contributions["2026-01-15"])
+		}
+		if contributions["2026-07-04"] != 1 {
+			t.Errorf("expected 1 event on 2026-07-04, got %d", contributions["2026-07-04"])
+		}
+		if len(contributions) != 3 {
+			t.Errorf("expected 3 unique dates, got %d", len(contributions))
+		}
+	})
+}
+
+func TestUniqueStrings(t *testing.T) {
+	tests := []struct {
+		input    []string
+		expected []string
+	}{
+		{[]string{"a", "b", "a", "c"}, []string{"a", "b", "c"}},
+		{[]string{}, []string{}},
+		{[]string{"same", "same", "same"}, []string{"same"}},
+	}
+	for _, tt := range tests {
+		result := uniqueStrings(tt.input)
+		if len(result) != len(tt.expected) {
+			t.Errorf("uniqueStrings(%v) = %v, want %v", tt.input, result, tt.expected)
+			continue
+		}
+		for i, v := range result {
+			if v != tt.expected[i] {
+				t.Errorf("uniqueStrings(%v) = %v, want %v", tt.input, result, tt.expected)
+				break
+			}
+		}
+	}
+}

@@ -56,7 +56,13 @@ function filterMonth(month) {
 async function loadContributions() {
     try {
         const res = await fetch('/api/contributions?year=' + currentYear);
-        contributions = await res.json();
+        if (!res.ok) {
+            console.error('Contributions API error:', res.status, await res.text());
+            contributions = {};
+        }
+        else {
+            contributions = await res.json();
+        }
         renderContributionGraph();
         updateStats();
     }
@@ -98,8 +104,9 @@ function renderContributionGraph() {
     graph.innerHTML = html;
 }
 function updateStats() {
-    const filtered = events && events.length > 0
-        ? (currentMonth > 0 ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth) : events)
+    const eventList = Array.isArray(events) ? events : [];
+    const filtered = eventList.length > 0
+        ? (currentMonth > 0 ? eventList.filter(e => new Date(e.date).getMonth() + 1 === currentMonth) : eventList)
         : [];
     const totalEl = document.getElementById('total-events');
     if (totalEl)
@@ -128,7 +135,15 @@ async function loadEvents() {
             url += '&month=' + String(currentMonth).padStart(2, '0');
         }
         const res = await fetch(url);
-        events = await res.json();
+        if (!res.ok) {
+            console.error('Events API error:', res.status, await res.text());
+            events = [];
+        }
+        else {
+            events = await res.json();
+            if (!Array.isArray(events))
+                events = [];
+        }
         renderTimeline();
         renderGallery();
         renderMap();
@@ -145,7 +160,8 @@ function renderTimeline() {
     const container = document.getElementById('timeline-container');
     if (!container)
         return;
-    if (!events || events.length === 0) {
+    const eventList = Array.isArray(events) ? events : [];
+    if (eventList.length === 0) {
         container.innerHTML = `
       <div class="text-center text-muted py-5">
         <i class="fa-solid fa-clock fa-3x mb-3"></i>
@@ -155,8 +171,8 @@ function renderTimeline() {
         return;
     }
     const filteredEvents = currentMonth > 0
-        ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
-        : events;
+        ? eventList.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
+        : eventList;
     if (filteredEvents.length === 0) {
         container.innerHTML = `
       <div class="text-center text-muted py-5">
@@ -212,7 +228,8 @@ function renderGallery() {
     const container = document.getElementById('gallery-container');
     if (!container)
         return;
-    if (!events || events.length === 0) {
+    const eventList = Array.isArray(events) ? events : [];
+    if (eventList.length === 0) {
         container.innerHTML = `
       <div class="col-12 text-center text-muted py-5">
         <i class="fa-solid fa-images fa-3x mb-3"></i>
@@ -222,8 +239,8 @@ function renderGallery() {
         return;
     }
     const filtered = currentMonth > 0
-        ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
-        : events;
+        ? eventList.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
+        : eventList;
     const mediaEvents = filtered.filter(e => e.media_url);
     if (mediaEvents.length === 0) {
         container.innerHTML = `
@@ -255,9 +272,10 @@ function renderGallery() {
     }).join('');
 }
 function renderMap() {
+    const eventList = Array.isArray(events) ? events : [];
     const filtered = currentMonth > 0
-        ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
-        : events;
+        ? eventList.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
+        : eventList;
     const geoEvents = filtered.filter(e => e.latitude && e.longitude && (e.latitude !== 0 || e.longitude !== 0));
     const placeholder = document.getElementById('map-placeholder');
     if (placeholder)
@@ -303,7 +321,7 @@ function renderMap() {
     setTimeout(() => map.invalidateSize(), 100);
 }
 function showMedia(id) {
-    const event = events.find(e => e.id === id);
+    const event = Array.isArray(events) ? events.find(e => e.id === id) : null;
     if (!event)
         return;
     const titleEl = document.getElementById('mediaModalTitle');
@@ -345,22 +363,31 @@ function escapeHtml(text) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
-async function loadMoreGallery() {
-    galleryPage++;
-    const skip = (galleryPage - 1) * galleryLimit;
-    try {
-        const url = '/api/events?year=' + currentYear + '&limit=' + galleryLimit + '&skip=' + skip;
-        const res = await fetch(url);
-        const moreEvents = await res.json();
-        const container = document.getElementById('gallery-container');
-        const mediaEvents = moreEvents.filter(e => e.media_url);
-        if (mediaEvents.length === 0) {
-            if (container)
-                container.innerHTML += '<div class="col-12 text-center text-muted py-3">No more media to load</div>';
-            return;
-        }
-        if (container) {
-            container.innerHTML += mediaEvents.map(e => {
+    async function loadMoreGallery() {
+        galleryPage++;
+        const skip = (galleryPage - 1) * galleryLimit;
+        try {
+            const url = '/api/events?year=' + currentYear + '&limit=' + galleryLimit + '&skip=' + skip;
+            const res = await fetch(url);
+            let moreEvents;
+            if (!res.ok) {
+                console.error('Load more gallery API error:', res.status, await res.text());
+                moreEvents = [];
+            }
+            else {
+                moreEvents = await res.json();
+                if (!Array.isArray(moreEvents))
+                    moreEvents = [];
+            }
+            const container = document.getElementById('gallery-container');
+            const mediaEvents = moreEvents.filter(e => e.media_url);
+            if (mediaEvents.length === 0) {
+                if (container)
+                    container.innerHTML += '<div class="col-12 text-center text-muted py-3">No more media to load</div>';
+                return;
+            }
+            if (container) {
+                container.innerHTML += mediaEvents.map(e => {
                 const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
                 return `
           <div class="col-md-4 col-lg-3">
@@ -389,7 +416,16 @@ async function loadMoreGallery() {
 async function loadRecentActivity() {
     try {
         const res = await fetch('/api/events?limit=5&sort=desc');
-        const recentEvents = await res.json();
+        let recentEvents;
+        if (!res.ok) {
+            console.error('Recent activity API error:', res.status, await res.text());
+            recentEvents = [];
+        }
+        else {
+            recentEvents = await res.json();
+            if (!Array.isArray(recentEvents))
+                recentEvents = [];
+        }
         renderRecentActivity(recentEvents);
     }
     catch (err) {

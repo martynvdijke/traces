@@ -766,20 +766,23 @@
                             </div>
                         </div>
 
-                        <!-- Inline Photo Upload -->
+                        <!-- Inline Media Upload -->
                         <div class="mb-3 p-3 border rounded" style="border-color: var(--border) !important">
-                            <label class="form-label fw-bold"><i class="fa-solid fa-camera me-1"></i>Photo <span class="text-muted">(optional)</span></label>
+                            <label class="form-label fw-bold"><i class="fa-solid fa-camera me-1"></i>Media <span class="text-muted">(optional)</span></label>
                             <div class="upload-zone" id="event-upload-zone" style="border:2px dashed var(--border);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s;background:var(--bg)">
                                 <i class="fa-solid fa-cloud-arrow-up" style="font-size:2rem;color:var(--text-muted)"></i>
-                                <p class="mt-2 mb-1 text-muted">Tap to pick a photo or drop one here</p>
-                                <input type="file" id="event-photo-input" accept="image/*" capture="environment" style="display:none">
-                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('event-photo-input').click()"><i class="fa-solid fa-image me-1"></i> Choose Photo</button>
+                                <p class="mt-2 mb-1 text-muted">Tap to pick a file or drop one here</p>
+                                <input type="file" id="event-media-input" accept="image/*,video/*,audio/*" style="display:none">
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('event-media-input').click()"><i class="fa-solid fa-folder-open me-1"></i> Choose File</button>
                             </div>
-                            <div id="event-photo-preview" class="mt-2" style="display:none">
-                                <img id="event-photo-img" class="img-fluid rounded" style="max-height:200px" alt="Preview">
-                                <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearEventPhoto()"><i class="fa-solid fa-xmark me-1"></i> Remove</button>
+                            <div id="event-media-preview" class="mt-2 text-center" style="display:none">
+                                <img id="event-media-img" class="img-fluid rounded shadow-sm" style="max-height:200px" alt="Preview">
+                                <video id="event-media-video" class="img-fluid rounded shadow-sm" style="max-height:200px;display:none" controls></video>
+                                <div id="event-media-audio" class="p-3 bg-light rounded" style="display:none"><i class="fa-solid fa-music fa-3x text-muted"></i></div>
+                                <p class="mt-1 text-muted small" id="event-media-name"></p>
+                                <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearEventMedia()"><i class="fa-solid fa-xmark me-1"></i> Remove</button>
                             </div>
-                            <div id="event-photo-result" class="mt-2"></div>
+                            <div id="event-media-result" class="mt-2"></div>
                         </div>
 
                         <div class="mb-3">
@@ -788,7 +791,23 @@
                                 <select class="form-select" name="person_id" id="event-person">
                                     <option value="0">None</option>
                                 </select>
-                                <input type="text" class="form-control mt-1" id="person-search-input" placeholder="Search person..." oninput="filterPersonSelect()">
+                                <div class="d-flex gap-2 mt-1">
+                                    <input type="text" class="form-control" id="person-search-input" placeholder="Search person..." oninput="filterPersonSelect()">
+                                    <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0" onclick="showInlinePersonForm()" title="Add new person"><i class="fa-solid fa-plus"></i></button>
+                                </div>
+                                <div id="inline-person-form" class="mt-2 p-3 border rounded bg-light" style="display:none">
+                                    <div class="mb-2">
+                                        <input type="text" class="form-control form-control-sm" id="inline-person-name" placeholder="Person name">
+                                    </div>
+                                    <div class="mb-2">
+                                        <input type="color" class="form-control form-control-color" id="inline-person-color" value="#7c3aed" style="width:60px;height:32px">
+                                    </div>
+                                    <div class="d-flex gap-2">
+                                        <button type="button" class="btn btn-sm btn-success" onclick="saveInlinePerson()"><i class="fa-solid fa-check me-1"></i> Add</button>
+                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideInlinePersonForm()">Cancel</button>
+                                    </div>
+                                    <div id="inline-person-result" class="mt-1 small"></div>
+                                </div>
                             </div>
                         </div>
                         <div class="row g-3 mb-3">
@@ -801,17 +820,15 @@
                                 </select>
                             </div>
                             <div class="col-sm-4">
-                                <label class="form-label">Media URL <span class="text-muted">(optional)</span></label>
-                                <div class="autocomplete-wrapper">
-                                    <input type="text" class="form-control" name="media_url" id="event-media-url" placeholder="/media/..." autocomplete="off">
-                                    <div class="autocomplete-dropdown" id="media-autocomplete"></div>
-                                </div>
-                            </div>
-                            <div class="col-sm-4">
                                 <label class="form-label">Tags <span class="text-muted">(optional)</span></label>
                                 <div class="autocomplete-wrapper">
-                                    <input type="text" class="form-control" name="tags" id="event-tags" placeholder="tag1, tag2..." autocomplete="off">
+                                    <div id="selected-tags" class="d-flex flex-wrap gap-1 mb-1"></div>
+                                    <div class="d-flex gap-1">
+                                        <input type="text" class="form-control" id="event-tags" placeholder="Type tag and press Enter..." autocomplete="off">
+                                        <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0" id="add-tag-btn" title="Add tag"><i class="fa-solid fa-plus"></i></button>
+                                    </div>
                                     <div class="autocomplete-dropdown" id="tags-autocomplete"></div>
+                                    <input type="hidden" name="tags" id="event-tags-hidden">
                                 </div>
                             </div>
                         </div>
@@ -857,9 +874,20 @@
                             <label class="form-label">Name</label>
                             <input type="text" class="form-control" name="name" id="person-name" required>
                         </div>
-                        <div class="mb-3">
-                            <label class="form-label">Avatar URL</label>
-                            <input type="text" class="form-control" name="avatar_url" id="person-avatar" placeholder="/media/...">
+                        <div class="mb-3 p-3 border rounded" style="border-color: var(--border) !important">
+                            <label class="form-label fw-bold"><i class="fa-solid fa-camera me-1"></i>Avatar</label>
+                            <div class="upload-zone" id="person-upload-zone" style="border:2px dashed var(--border);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s;background:var(--bg)">
+                                <i class="fa-solid fa-cloud-arrow-up" style="font-size:2rem;color:var(--text-muted)"></i>
+                                <p class="mt-2 mb-1 text-muted">Tap to pick a photo or drop one here</p>
+                                <input type="file" id="person-avatar-input" accept="image/*" style="display:none">
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('person-avatar-input').click()"><i class="fa-solid fa-image me-1"></i> Choose Photo</button>
+                            </div>
+                            <div id="person-avatar-preview" class="mt-2 text-center" style="display:none">
+                                <img id="person-avatar-img" class="img-fluid rounded shadow-sm" style="max-height:150px;max-width:150px;object-fit:cover;border-radius:50%" alt="Avatar preview">
+                                <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearPersonAvatar()"><i class="fa-solid fa-xmark me-1"></i> Remove</button>
+                            </div>
+                            <div id="person-avatar-result" class="mt-2"></div>
+                            <input type="hidden" name="avatar_url" id="person-avatar">
                         </div>
                         <div class="mb-3">
                             <label class="form-label">Bio</label>
@@ -906,8 +934,7 @@
             loadMemories();
             initLocationMap();
             initAutocomplete('event-location', 'location-autocomplete', 'location');
-            initAutocomplete('event-tags', 'tags-autocomplete', 'tag');
-            initAutocomplete('event-media-url', 'media-autocomplete', 'media');
+            initTagAutocomplete();
         }
 
         function populateYearFilter() {
@@ -1188,7 +1215,9 @@
             document.getElementById('event-form').reset();
             document.getElementById('event-id').value = '0';
             document.getElementById('eventModalLabel').textContent = 'Add Event';
-            clearEventPhoto();
+            selectedTags = [];
+            renderTags();
+            clearEventMedia();
 
             if (event) {
                 document.getElementById('eventModalLabel').textContent = 'Edit Event';
@@ -1199,13 +1228,28 @@
                 document.getElementById('event-location').value = event.location || '';
                 document.getElementById('event-person').value = event.person_id || 0;
                 document.getElementById('event-media-type').value = event.media_type || 'image';
-                document.getElementById('event-media-url').value = event.media_url || '';
-                document.getElementById('event-thumbnail').value = event.thumbnail || '';
-                document.getElementById('event-tags').value = event.tags || '';
+                document.getElementById('event-tags-hidden').value = event.tags || '';
+                selectedTags = event.tags ? event.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+                renderTags();
                 document.getElementById('event-latitude').value = event.latitude || '';
                 document.getElementById('event-longitude').value = event.longitude || '';
-                if (event.thumbnail) { document.getElementById('event-photo-img').src = event.thumbnail; document.getElementById('event-photo-preview').style.display = 'block'; eventPhotoUrl = event.media_url; eventPhotoThumb = event.thumbnail; }
-                else clearEventPhoto();
+                if (event.media_url) {
+                    eventPhotoUrl = event.media_url;
+                    eventPhotoThumb = event.thumbnail || event.media_url;
+                    document.getElementById('event-media-type').value = event.media_type || 'image';
+                    document.getElementById('event-upload-zone').style.display = 'none';
+                    document.getElementById('event-media-preview').style.display = 'block';
+                    document.getElementById('event-media-name').textContent = event.media_url;
+                    const img = document.getElementById('event-media-img');
+                    const video = document.getElementById('event-media-video');
+                    const audio = document.getElementById('event-media-audio');
+                    img.style.display = 'none'; video.style.display = 'none'; audio.style.display = 'none';
+                    if (event.media_type === 'video') { video.src = event.media_url; video.style.display = ''; }
+                    else if (event.media_type === 'audio') { audio.style.display = ''; }
+                    else { img.src = eventPhotoThumb; img.style.display = ''; }
+                } else {
+                    clearEventMedia();
+                }
                 if (event.latitude && event.longitude) setMapMarker(event.latitude, event.longitude);
                 else { if (locationMarker) locationMap.removeLayer(locationMarker); locationMarker = null; locationMap.setView([40.7128, -74.0060], 5); }
             } else {
@@ -1243,7 +1287,7 @@
                 media_type: document.getElementById('event-media-type').value,
                 media_url: eventPhotoUrl || '',
                 thumbnail: eventPhotoThumb || '',
-                tags: document.getElementById('event-tags').value,
+                tags: document.getElementById('event-tags-hidden').value,
                 latitude: parseFloat(document.getElementById('event-latitude').value) || null,
                 longitude: parseFloat(document.getElementById('event-longitude').value) || null
             };
@@ -1267,6 +1311,7 @@
             document.getElementById('person-id').value = '0';
             document.getElementById('person-color').value = '#7c3aed';
             document.getElementById('personModalLabel').textContent = 'Add Person';
+            clearPersonAvatar();
 
             if (person) {
                 document.getElementById('personModalLabel').textContent = 'Edit Person';
@@ -1276,8 +1321,77 @@
                 document.getElementById('person-bio').value = person.bio || '';
                 document.getElementById('person-birth').value = person.birth_date || '';
                 document.getElementById('person-color').value = person.color || '#7c3aed';
+                if (person.avatar_url) {
+                    document.getElementById('person-avatar-img').src = person.avatar_url;
+                    document.getElementById('person-avatar-preview').style.display = 'block';
+                    document.getElementById('person-upload-zone').style.display = 'none';
+                }
             }
             personModal.show();
+        }
+
+        // Person modal avatar upload
+        const personUploadZone = document.getElementById('person-upload-zone');
+        if (personUploadZone) {
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
+                personUploadZone.addEventListener(evt, function(e) { e.preventDefault(); e.stopPropagation(); });
+            });
+            ['dragenter', 'dragover'].forEach(evt => {
+                personUploadZone.addEventListener(evt, function() {
+                    personUploadZone.style.borderColor = 'var(--primary)';
+                    personUploadZone.style.background = 'var(--primary-glow)';
+                });
+            });
+            ['dragleave', 'drop'].forEach(evt => {
+                personUploadZone.addEventListener(evt, function() {
+                    personUploadZone.style.borderColor = 'var(--border)';
+                    personUploadZone.style.background = 'var(--bg)';
+                });
+            });
+            personUploadZone.addEventListener('drop', async function(e) {
+                const file = e.dataTransfer.files[0];
+                if (!file) return;
+                await uploadPersonAvatar(file);
+            });
+            personUploadZone.addEventListener('click', function(e) {
+                if (!e.target.closest('button')) {
+                    document.getElementById('person-avatar-input').click();
+                }
+            });
+        }
+
+        document.getElementById('person-avatar-input').addEventListener('change', async function() {
+            if (this.files[0]) await uploadPersonAvatar(this.files[0]);
+        });
+
+        async function uploadPersonAvatar(file) {
+            const result = document.getElementById('person-avatar-result');
+            const preview = document.getElementById('person-avatar-preview');
+            const img = document.getElementById('person-avatar-img');
+            result.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Uploading avatar...</div>';
+            const fd = new FormData();
+            fd.append('image', file);
+            fd.append('media_type', 'image');
+            const res = await fetch('/api/upload', { method: 'POST', body: fd });
+            const data = await res.json();
+            if (res.ok) {
+                document.getElementById('person-avatar').value = data.url;
+                img.src = data.thumbnail || data.url;
+                preview.style.display = 'block';
+                document.getElementById('person-upload-zone').style.display = 'none';
+                result.innerHTML = '';
+            } else {
+                result.innerHTML = '<div class="alert alert-danger py-1">Upload failed: ' + (data.error || '') + '</div>';
+            }
+        }
+
+        function clearPersonAvatar() {
+            document.getElementById('person-avatar').value = '';
+            document.getElementById('person-avatar-preview').style.display = 'none';
+            document.getElementById('person-avatar-img').src = '';
+            document.getElementById('person-avatar-input').value = '';
+            document.getElementById('person-avatar-result').innerHTML = '';
+            document.getElementById('person-upload-zone').style.display = '';
         }
 
         async function deletePerson(id) {
@@ -1310,15 +1424,129 @@
             } else alert('Failed to save person');
         });
 
-        function clearEventPhoto() {
+        function clearEventMedia() {
             eventPhotoUrl = '';
             eventPhotoThumb = '';
-            document.getElementById('event-photo-preview').style.display = 'none';
-            document.getElementById('event-photo-img').src = '';
-            document.getElementById('event-photo-input').value = '';
-            document.getElementById('event-photo-result').innerHTML = '';
+            document.getElementById('event-media-preview').style.display = 'none';
+            document.getElementById('event-media-img').src = '';
+            document.getElementById('event-media-img').style.display = 'none';
+            document.getElementById('event-media-video').src = '';
+            document.getElementById('event-media-video').style.display = 'none';
+            document.getElementById('event-media-audio').style.display = 'none';
+            document.getElementById('event-media-name').textContent = '';
+            document.getElementById('event-media-input').value = '';
+            document.getElementById('event-media-result').innerHTML = '';
             document.getElementById('event-upload-zone').style.display = '';
             document.getElementById('event-media-type').value = 'image';
+        }
+
+        // Inline person creation
+        let inlinePersonSavedCallback = null;
+
+        function showInlinePersonForm() {
+            document.getElementById('inline-person-name').value = '';
+            document.getElementById('inline-person-color').value = '#7c3aed';
+            document.getElementById('inline-person-result').innerHTML = '';
+            document.getElementById('inline-person-form').style.display = '';
+            document.getElementById('inline-person-name').focus();
+        }
+
+        function hideInlinePersonForm() {
+            document.getElementById('inline-person-form').style.display = 'none';
+            document.getElementById('inline-person-result').innerHTML = '';
+        }
+
+        async function saveInlinePerson() {
+            const name = document.getElementById('inline-person-name').value.trim();
+            if (!name) { document.getElementById('inline-person-result').innerHTML = '<span class="text-danger">Name is required</span>'; return; }
+            const res = await fetch('/api/persons', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ id: 0, name: name, color: document.getElementById('inline-person-color').value })
+            });
+            if (res.ok) {
+                const person = await res.json();
+                await loadPersons();
+                document.getElementById('event-person').value = person.id;
+                hideInlinePersonForm();
+            } else {
+                const err = await res.json();
+                document.getElementById('inline-person-result').innerHTML = '<span class="text-danger">Failed: ' + (err.error || '') + '</span>';
+            }
+        }
+
+        // Tag selector
+        let selectedTags = [];
+
+        function renderTags() {
+            const container = document.getElementById('selected-tags');
+            container.innerHTML = selectedTags.map(t =>
+                '<span class="badge bg-primary d-inline-flex align-items-center gap-1" style="cursor:pointer" onclick="removeTag(\'' + escapeHtml(t) + '\')">' + escapeHtml(t) + ' <i class="fa-solid fa-xmark"></i></span>'
+            ).join('');
+            document.getElementById('event-tags-hidden').value = selectedTags.join(', ');
+        }
+
+        function addTag(tag) {
+            tag = tag.trim().replace(/,$/, '').trim();
+            if (!tag || selectedTags.includes(tag)) return;
+            selectedTags.push(tag);
+            renderTags();
+            document.getElementById('event-tags').value = '';
+            document.getElementById('tags-autocomplete').classList.remove('show');
+        }
+
+        function removeTag(tag) {
+            selectedTags = selectedTags.filter(t => t !== tag);
+            renderTags();
+        }
+
+        function initTagAutocomplete() {
+            const input = document.getElementById('event-tags');
+            const dropdown = document.getElementById('tags-autocomplete');
+            let timeout, selectedIdx = -1, items = [];
+
+            input.addEventListener('input', function() {
+                clearTimeout(timeout);
+                const q = this.value.trim().replace(/,.*$/, '');
+                if (q.length < 1) { dropdown.classList.remove('show'); return; }
+                timeout = setTimeout(async () => {
+                    try {
+                        const res = await fetch('/api/autocomplete?field=tag&q=' + encodeURIComponent(q));
+                        items = await res.json();
+                        selectedIdx = -1;
+                        let html = items.filter(v => !selectedTags.includes(v)).map((v, i) =>
+                            '<div class="autocomplete-item" data-index="' + i + '" onclick="addTag(\'' + escapeHtml(v) + '\');document.getElementById(\'event-tags\').focus()"><i class="fa-solid fa-tag"></i>' + escapeHtml(v) + '</div>'
+                        ).join('');
+                        html += '<div class="autocomplete-item text-success fw-bold" onclick="addTag(document.getElementById(\'event-tags\').value);document.getElementById(\'event-tags\').focus()"><i class="fa-solid fa-plus"></i> Add "' + escapeHtml(q) + '"</div>';
+                        dropdown.innerHTML = html;
+                        dropdown.classList.add('show');
+                    } catch(e) { dropdown.classList.remove('show'); }
+                }, 200);
+            });
+
+            input.addEventListener('keydown', function(e) {
+                if (e.key === 'Enter' || e.key === ',') {
+                    e.preventDefault();
+                    addTag(this.value);
+                } else if (e.key === 'Backspace' && this.value === '' && selectedTags.length) {
+                    selectedTags.pop();
+                    renderTags();
+                }
+                const items = dropdown.querySelectorAll('.autocomplete-item');
+                if (e.key === 'ArrowDown') { e.preventDefault(); selectedIdx = Math.min(selectedIdx + 1, items.length - 1); highlightItem(items, selectedIdx); }
+                else if (e.key === 'ArrowUp') { e.preventDefault(); selectedIdx = Math.max(selectedIdx - 1, 0); highlightItem(items, selectedIdx); }
+                else if (e.key === 'Enter' && selectedIdx >= 0 && items[selectedIdx]) { e.preventDefault(); items[selectedIdx].click(); }
+                else if (e.key === 'Escape') { dropdown.classList.remove('show'); }
+            });
+
+            document.addEventListener('click', function(e) {
+                if (!input.contains(e.target) && !dropdown.contains(e.target)) dropdown.classList.remove('show');
+            });
+
+            document.getElementById('add-tag-btn').addEventListener('click', function() {
+                addTag(input.value);
+                input.focus();
+            });
         }
 
         function updateUploadField() {
@@ -1425,7 +1653,7 @@
             } else el.innerHTML = '<div class="alert alert-danger">Upload failed: ' + (data.error || '') + '</div>';
         });
 
-        // Event modal: inline photo upload
+        // Event modal: inline media upload
         const eventUploadZone = document.getElementById('event-upload-zone');
         if (eventUploadZone) {
             ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
@@ -1446,34 +1674,52 @@
             eventUploadZone.addEventListener('drop', async function(e) {
                 const file = e.dataTransfer.files[0];
                 if (!file) return;
-                await uploadEventPhoto(file);
+                await uploadEventMedia(file);
             });
             eventUploadZone.addEventListener('click', function(e) {
                 if (!e.target.closest('button')) {
-                    document.getElementById('event-photo-input').click();
+                    document.getElementById('event-media-input').click();
                 }
             });
         }
 
-        document.getElementById('event-photo-input').addEventListener('change', async function() {
-            if (this.files[0]) await uploadEventPhoto(this.files[0]);
+        document.getElementById('event-media-input').addEventListener('change', async function() {
+            if (this.files[0]) await uploadEventMedia(this.files[0]);
         });
 
-        async function uploadEventPhoto(file) {
-            const result = document.getElementById('event-photo-result');
-            const preview = document.getElementById('event-photo-preview');
-            const img = document.getElementById('event-photo-img');
-            result.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Uploading photo...</div>';
+        async function uploadEventMedia(file) {
+            const result = document.getElementById('event-media-result');
+            const preview = document.getElementById('event-media-preview');
+            const img = document.getElementById('event-media-img');
+            const video = document.getElementById('event-media-video');
+            const audio = document.getElementById('event-media-audio');
+            const nameEl = document.getElementById('event-media-name');
+            result.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Uploading...</div>';
             const fd = new FormData();
-            fd.append('image', file);
-            fd.append('media_type', 'image');
+            let mediaType = 'image';
+            if (file.type.startsWith('video/')) mediaType = 'video';
+            else if (file.type.startsWith('audio/')) mediaType = 'audio';
+            fd.append(mediaType, file);
+            fd.append('media_type', mediaType);
             const res = await fetch('/api/upload', { method: 'POST', body: fd });
             const data = await res.json();
             if (res.ok) {
                 eventPhotoUrl = data.url;
                 eventPhotoThumb = data.thumbnail || data.url;
-                document.getElementById('event-media-type').value = 'image';
-                img.src = eventPhotoThumb;
+                document.getElementById('event-media-type').value = mediaType;
+                img.style.display = 'none';
+                video.style.display = 'none';
+                audio.style.display = 'none';
+                if (mediaType === 'video') {
+                    video.src = data.url;
+                    video.style.display = '';
+                } else if (mediaType === 'audio') {
+                    audio.style.display = '';
+                } else {
+                    img.src = eventPhotoThumb;
+                    img.style.display = '';
+                }
+                nameEl.textContent = file.name;
                 preview.style.display = 'block';
                 document.getElementById('event-upload-zone').style.display = 'none';
                 result.innerHTML = '';

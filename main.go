@@ -106,7 +106,7 @@ type EmailConfig struct {
 	ToAddr   string `json:"to_addr"`
 }
 
-const currentSchemaVersion = 4
+const currentSchemaVersion = 5
 const currentVersion = "1.6.1"
 
 var (
@@ -1884,6 +1884,13 @@ func runMigration(fromVersion int) {
 			to_addr TEXT DEFAULT ''
 		)`)
 		_, _ = db.Exec(`INSERT OR IGNORE INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)`)
+	case 4:
+		for _, col := range []string{"person_id", "latitude", "longitude", "media_caption", "tags", "sort_order", "is_public"} {
+			_, err := db.Exec(fmt.Sprintf("ALTER TABLE timeline_events ADD COLUMN %s", col))
+			if err == nil {
+				log.Printf("[DB] Added missing column: %s", col)
+			}
+		}
 	}
 }
 
