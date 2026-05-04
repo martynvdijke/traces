@@ -441,7 +441,12 @@ function renderRecentActivity(recentEvents) {
         return;
     }
     container.innerHTML = recentEvents.map(e => `
-    <div class="d-flex align-items-center p-2 border-bottom">
+    <div class="d-flex align-items-center p-2 border-bottom recent-activity-item"
+         style="cursor:pointer;transition:background 0.15s"
+         onmouseover="this.style.background='var(--bs-light, #f8f9fa)'"
+         onmouseout="this.style.background=''"
+         onclick="navigateToActivity(${e.id})"
+         title="Click to view this activity">
       <div class="me-3">
         <i class="${getMediaIcon(e.media_type)} fa-2x text-primary"></i>
       </div>
@@ -453,12 +458,20 @@ function renderRecentActivity(recentEvents) {
         </div>
       </div>
       <div>
-        <button class="btn btn-sm btn-outline-primary" onclick="showMedia(${e.id})">
-          <i class="fa-solid fa-eye"></i>
-        </button>
+        <span class="text-primary"><i class="fa-solid fa-arrow-right"></i></span>
       </div>
     </div>
   `).join('');
+}
+
+function navigateToActivity(id) {
+    const target = document.getElementById('event-' + id);
+    if (target) {
+        target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        target.style.transition = 'background 0.5s';
+        target.style.background = 'rgba(124, 58, 237, 0.15)';
+        setTimeout(function () { target.style.background = ''; }, 2000);
+    }
 }
 async function getYearStats(year) {
     try {
@@ -519,13 +532,26 @@ function renderCompareStats(stats) {
     </div>
   `;
 }
+function loadAnalytics() {
+    fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg) {
+        if (cfg.umami_url && cfg.umami_site) {
+            var s = document.createElement('script');
+            s.async = true;
+            s.defer = true;
+            s.src = cfg.umami_url + '/script.js';
+            s.setAttribute('data-website-id', cfg.umami_site);
+            document.head.appendChild(s);
+        }
+    }).catch(function () {});
+}
 function initApp() {
     initTheme();
     loadData();
     loadRecentActivity();
     updateCompare();
-    fetch('/api/version').then(r => r.json()).then(d => {
-        const versionEl = document.getElementById('version-display');
+    loadAnalytics();
+    fetch('/api/version').then(function (r) { return r.json(); }).then(function (d) {
+        var versionEl = document.getElementById('version-display');
         if (versionEl)
             versionEl.textContent = 'v' + d.version;
     }).catch(() => {
@@ -534,7 +560,11 @@ function initApp() {
             versionEl.textContent = 'v1.0.0';
     });
 }
-document.addEventListener('DOMContentLoaded', initApp);
+if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', initApp);
+} else {
+    initApp();
+}
 window.changeYear = changeYear;
 window.searchEvents = searchEvents;
 window.filterMonth = filterMonth;

@@ -19,6 +19,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/crypto/bcrypt"
 )
 
 func setupTestRouter() *gin.Engine {
@@ -39,26 +40,35 @@ func setupTestRouter() *gin.Engine {
 func TestHashPassword(t *testing.T) {
 	tests := []struct {
 		password string
-		wantLen  int
 	}{
-		{"password123", 64},
-		{"", 64},
-		{"verylongpasswordthat exceeds the normal length", 64},
+		{"password123"},
+		{""},
+		{"verylongpasswordthat exceeds the normal length"},
 	}
 
 	for _, tt := range tests {
 		t.Run("hash_"+tt.password, func(t *testing.T) {
-			got := hashPassword(tt.password)
-			if len(got) != tt.wantLen {
-				t.Errorf("hashPassword(%q) len = %d, want %d", tt.password, len(got), tt.wantLen)
+			hash, err := bcrypt.GenerateFromPassword([]byte(tt.password), bcrypt.DefaultCost)
+			if err != nil {
+				t.Fatalf("bcrypt.GenerateFromPassword(%q) failed: %v", tt.password, err)
+			}
+			if len(hash) == 0 {
+				t.Errorf("bcrypt hash is empty for %q", tt.password)
 			}
 		})
 	}
 
-	t.Run("consistent", func(t *testing.T) {
+	t.Run("verify", func(t *testing.T) {
 		pwd := "testpassword"
-		if hashPassword(pwd) != hashPassword(pwd) {
-			t.Error("hashPassword not consistent")
+		hash, err := bcrypt.GenerateFromPassword([]byte(pwd), bcrypt.DefaultCost)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if err := bcrypt.CompareHashAndPassword(hash, []byte(pwd)); err != nil {
+			t.Error("bcrypt verification failed")
+		}
+		if err := bcrypt.CompareHashAndPassword(hash, []byte("wrong")); err == nil {
+			t.Error("bcrypt should reject wrong password")
 		}
 	})
 }
@@ -285,7 +295,7 @@ func BenchmarkResizeImage(b *testing.B) {
 func BenchmarkHashPassword(b *testing.B) {
 	password := "benchmark_password"
 	for i := 0; i < b.N; i++ {
-		hashPassword(password)
+		bcrypt.GenerateFromPassword([]byte(password), bcrypt.DefaultCost)
 	}
 }
 

@@ -10,7 +10,7 @@
   },
   "servers": [
     {
-      "url": "http://localhost:6270",,
+      "url": "http://localhost:6270",
       "description": "Local development server"
     }
   ],
@@ -93,6 +93,29 @@
               "type": "string",
               "example": "01"
             }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "limit",
+            "in": "query",
+            "schema": {
+              "type": "integer",
+              "example": 10
+            }
+          },
+          {
+            "name": "sort",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "enum": ["asc", "desc"]
+            }
           }
         ],
         "responses": {
@@ -147,6 +170,7 @@
           {
             "name": "id",
             "in": "query",
+            "required": true,
             "schema": {
               "type": "integer"
             }
@@ -156,6 +180,136 @@
           "200": {
             "description": "Event deleted"
           }
+        }
+      }
+    },
+    "/api/events/search": {
+      "get": {
+        "summary": "Search events",
+        "tags": ["Events"],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": { "type": "string" },
+            "description": "Search query"
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "tag",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "person",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "media_type",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "location",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "month",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Search results",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TimelineEvent" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/full": {
+      "get": {
+        "summary": "Get all events with full fields",
+        "tags": ["Events"],
+        "responses": {
+          "200": {
+            "description": "All events with all fields",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TimelineEvent" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/events/export": {
+      "get": {
+        "summary": "Export events as JSON or CSV",
+        "tags": ["Events"],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "format",
+            "in": "query",
+            "schema": { "type": "string", "enum": ["json", "csv"] }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Exported events" }
+        }
+      }
+    },
+    "/api/events/clone": {
+      "post": {
+        "summary": "Clone an event to a new date",
+        "tags": ["Events"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "id": { "type": "integer" },
+                  "date": { "type": "string" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Event cloned" }
+        }
+      }
+    },
+    "/api/events/import": {
+      "post": {
+        "summary": "Import events from JSON or CSV",
+        "tags": ["Events"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": { "description": "Events imported" }
         }
       }
     },
@@ -178,10 +332,249 @@
             "description": "Map of date to event count",
             "content": {
               "application/json": {
-                "type": "object",
-                "additionalProperties": {
-                  "type": "integer"
+                "schema": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": "integer"
+                  }
                 }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/stats": {
+      "get": {
+        "summary": "Get event statistics",
+        "tags": ["Events"],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Event statistics",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EventStats" }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/tags": {
+      "get": {
+        "summary": "Get all unique tags",
+        "tags": ["Events"],
+        "parameters": [
+          {
+            "name": "year",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "List of tags",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "type": "string" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/public": {
+      "get": {
+        "summary": "Get public events",
+        "tags": ["Events"],
+        "parameters": [
+          {
+            "name": "share",
+            "in": "query",
+            "schema": { "type": "string" }
+          },
+          {
+            "name": "year",
+            "in": "query",
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Public events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TimelineEvent" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/share": {
+      "get": {
+        "summary": "Access a share link",
+        "tags": ["Sharing"],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "query",
+            "required": true,
+            "schema": { "type": "string" }
+          }
+        ],
+        "responses": {
+          "200": { "description": "Redirect to shared view" }
+        }
+      }
+    },
+    "/api/share/create": {
+      "post": {
+        "summary": "Create a share link",
+        "tags": ["Sharing"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "event_ids": {
+                    "type": "array",
+                    "items": { "type": "integer" }
+                  },
+                  "year": { "type": "string" },
+                  "days": { "type": "integer" }
+                }
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Share link created" }
+        }
+      }
+    },
+    "/api/map": {
+      "get": {
+        "summary": "Get events with map coordinates",
+        "tags": ["Events"],
+        "parameters": [
+          { "name": "year", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "GeoJSON feature collection",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "object",
+                  "properties": {
+                    "type": { "type": "string" },
+                    "features": { "type": "array" }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/persons": {
+      "get": {
+        "summary": "List all persons",
+        "tags": ["Persons"],
+        "responses": {
+          "200": {
+            "description": "List of persons",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/Person" }
+                }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Create or update a person",
+        "tags": ["Persons"],
+        "security": [{ "SessionCookie": [] }],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": { "$ref": "#/components/schemas/Person" }
+            }
+          }
+        },
+        "responses": {
+          "200": { "description": "Person saved" }
+        }
+      },
+      "delete": {
+        "summary": "Delete a person",
+        "tags": ["Persons"],
+        "security": [{ "SessionCookie": [] }],
+        "parameters": [
+          { "name": "id", "in": "query", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": { "description": "Person deleted" }
+        }
+      }
+    },
+    "/api/persons/{id}/events": {
+      "get": {
+        "summary": "Get events for a person",
+        "tags": ["Persons"],
+        "security": [{ "SessionCookie": [] }],
+        "parameters": [
+          { "name": "id", "in": "path", "required": true, "schema": { "type": "integer" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Person events",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "type": "array",
+                  "items": { "$ref": "#/components/schemas/TimelineEvent" }
+                }
+              }
+            }
+          }
+        }
+      }
+    },
+    "/api/autocomplete": {
+      "get": {
+        "summary": "Autocomplete suggestions",
+        "tags": ["Events"],
+        "parameters": [
+          { "name": "field", "in": "query", "schema": { "type": "string", "enum": ["location", "person", "tag", "media"] } },
+          { "name": "q", "in": "query", "schema": { "type": "string" } }
+        ],
+        "responses": {
+          "200": {
+            "description": "Suggestions",
+            "content": {
+              "application/json": {
+                "schema": { "type": "array", "items": { "type": "string" } }
               }
             }
           }
@@ -192,11 +585,7 @@
       "post": {
         "summary": "Upload media file",
         "tags": ["Media"],
-        "security": [
-          {
-            "SessionCookie": []
-          }
-        ],
+        "security": [{ "SessionCookie": [] }],
         "requestBody": {
           "required": true,
           "content": {
@@ -204,22 +593,10 @@
               "schema": {
                 "type": "object",
                 "properties": {
-                  "image": {
-                    "type": "string",
-                    "format": "binary"
-                  },
-                  "video": {
-                    "type": "string",
-                    "format": "binary"
-                  },
-                  "audio": {
-                    "type": "string",
-                    "format": "binary"
-                  },
-                  "media_type": {
-                    "type": "string",
-                    "enum": ["image", "video", "audio"]
-                  }
+                  "image": { "type": "string", "format": "binary" },
+                  "video": { "type": "string", "format": "binary" },
+                  "audio": { "type": "string", "format": "binary" },
+                  "media_type": { "type": "string", "enum": ["image", "video", "audio"] }
                 }
               }
             }
@@ -233,12 +610,9 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "url": {
-                      "type": "string"
-                    },
-                    "media_type": {
-                      "type": "string"
-                    }
+                    "url": { "type": "string" },
+                    "media_type": { "type": "string" },
+                    "thumbnail": { "type": "string" }
                   }
                 }
               }
@@ -259,9 +633,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "version": {
-                      "type": "string"
-                    }
+                    "version": { "type": "string" }
                   }
                 }
               }
@@ -282,9 +654,7 @@
                 "schema": {
                   "type": "object",
                   "properties": {
-                    "setup": {
-                      "type": "boolean"
-                    }
+                    "setup": { "type": "boolean" }
                   }
                 }
               }
@@ -292,103 +662,18 @@
           }
         }
       }
-    }
-  },
-  "components": {
-    "schemas": {
-      "TimelineEvent": {
-        "type": "object",
-        "properties": {
-          "id": {
-            "type": "integer"
-          },
-          "title": {
-            "type": "string"
-          },
-          "description": {
-            "type": "string"
-          },
-          "date": {
-            "type": "string",
-            "format": "date"
-          },
-          "location": {
-            "type": "string"
-          },
-          "media_type": {
-            "type": "string",
-            "enum": ["image", "video", "audio"]
-          },
-          "media_url": {
-            "type": "string"
-          },
-          "thumbnail": {
-            "type": "string"
-          },
-          "created_at": {
-            "type": "string",
-            "format": "date-time"
-          }
-        }
-      }
-    },
-    "/api/persons": {
-      "get": {
-        "summary": "List all persons",
-        "tags": ["Persons"],
-        "security": [{"SessionCookie": []}],
-        "responses": {
-          "200": {
-            "description": "List of persons",
-            "content": {
-              "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {"$ref": "#/components/schemas/Person"}
-                }
-              }
-            }
-          }
-        }
-      },
-      "post": {
-        "summary": "Create or update a person",
-        "tags": ["Persons"],
-        "security": [{"SessionCookie": []}],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {"$ref": "#/components/schemas/Person"}
-            }
-          }
-        },
-        "responses": {
-          "200": {"description": "Person saved"}
-        }
-      },
-      "delete": {
-        "summary": "Delete a person",
-        "tags": ["Persons"],
-        "security": [{"SessionCookie": []}],
-        "parameters": [
-          {"name": "id", "in": "query", "required": true, "schema": {"type": "integer"}}
-        ],
-        "responses": {
-          "200": {"description": "Person deleted"}
-        }
-      }
     },
     "/api/gotify/config": {
       "get": {
         "summary": "Get Gotify configuration",
         "tags": ["Notifications"],
-        "security": [{"SessionCookie": []}],
+        "security": [{ "SessionCookie": [] }],
         "responses": {
           "200": {
             "description": "Gotify config",
             "content": {
               "application/json": {
-                "schema": {"$ref": "#/components/schemas/GotifyConfig"}
+                "schema": { "$ref": "#/components/schemas/GotifyConfig" }
               }
             }
           }
@@ -397,16 +682,16 @@
       "post": {
         "summary": "Save Gotify configuration",
         "tags": ["Notifications"],
-        "security": [{"SessionCookie": []}],
+        "security": [{ "SessionCookie": [] }],
         "requestBody": {
           "content": {
             "application/json": {
-              "schema": {"$ref": "#/components/schemas/GotifyConfig"}
+              "schema": { "$ref": "#/components/schemas/GotifyConfig" }
             }
           }
         },
         "responses": {
-          "200": {"description": "Config saved"}
+          "200": { "description": "Config saved" }
         }
       }
     },
@@ -414,27 +699,25 @@
       "post": {
         "summary": "Send a test Gotify notification",
         "tags": ["Notifications"],
-        "security": [{"SessionCookie": []}],
+        "security": [{ "SessionCookie": [] }],
         "responses": {
-          "200": {"description": "Test notification sent"}
+          "200": { "description": "Test notification sent" }
         }
       }
     },
-    "/api/events/map": {
+    "/api/memories": {
       "get": {
-        "summary": "Get events with map coordinates",
-        "tags": ["Events"],
-        "parameters": [
-          {"name": "year", "in": "query", "schema": {"type": "string"}}
-        ],
+        "summary": "Get memory events",
+        "tags": ["Memories"],
+        "security": [{ "SessionCookie": [] }],
         "responses": {
           "200": {
-            "description": "Events with latitude/longitude",
+            "description": "Memory events",
             "content": {
               "application/json": {
                 "schema": {
                   "type": "array",
-                  "items": {"$ref": "#/components/schemas/TimelineEvent"}
+                  "items": { "$ref": "#/components/schemas/TimelineEvent" }
                 }
               }
             }
@@ -442,22 +725,73 @@
         }
       }
     },
-    "/api/events/full": {
+    "/api/memories/config": {
       "get": {
-        "summary": "Get all events with full fields",
-        "tags": ["Events"],
+        "summary": "Get memories settings",
+        "tags": ["Memories"],
+        "security": [{ "SessionCookie": [] }],
         "responses": {
           "200": {
-            "description": "All events with all fields",
+            "description": "Memories config",
             "content": {
               "application/json": {
-                "schema": {
-                  "type": "array",
-                  "items": {"$ref": "#/components/schemas/TimelineEvent"}
-                }
+                "schema": { "$ref": "#/components/schemas/MemoriesConfig" }
               }
             }
           }
+        }
+      },
+      "post": {
+        "summary": "Save memories settings",
+        "tags": ["Memories"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": { "description": "Config saved" }
+        }
+      }
+    },
+    "/api/memories/send": {
+      "post": {
+        "summary": "Send memories email",
+        "tags": ["Memories"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": { "description": "Email sent" }
+        }
+      }
+    },
+    "/api/email/config": {
+      "get": {
+        "summary": "Get email settings",
+        "tags": ["Email"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": {
+            "description": "Email config",
+            "content": {
+              "application/json": {
+                "schema": { "$ref": "#/components/schemas/EmailConfig" }
+              }
+            }
+          }
+        }
+      },
+      "post": {
+        "summary": "Save email settings",
+        "tags": ["Email"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": { "description": "Config saved" }
+        }
+      }
+    },
+    "/api/email/test": {
+      "post": {
+        "summary": "Send a test email",
+        "tags": ["Email"],
+        "security": [{ "SessionCookie": [] }],
+        "responses": {
+          "200": { "description": "Test email sent" }
         }
       }
     }
@@ -467,57 +801,76 @@
       "TimelineEvent": {
         "type": "object",
         "properties": {
-          "id": {"type": "integer"},
-          "title": {"type": "string"},
-          "description": {"type": "string"},
-          "date": {"type": "string", "format": "date"},
-          "location": {"type": "string"},
-          "latitude": {"type": "number", "format": "float"},
-          "longitude": {"type": "number", "format": "float"},
-          "media_type": {"type": "string", "enum": ["image", "video", "audio"]},
-          "media_url": {"type": "string"},
-          "thumbnail": {"type": "string"},
-          "media_caption": {"type": "string"},
-          "tags": {"type": "string"},
-          "sort_order": {"type": "integer"},
-          "is_public": {"type": "boolean"},
-          "person_id": {"type": "integer"},
-          "created_at": {"type": "string", "format": "date-time"}
+          "id": { "type": "integer" },
+          "title": { "type": "string" },
+          "description": { "type": "string" },
+          "date": { "type": "string", "format": "date" },
+          "location": { "type": "string" },
+          "latitude": { "type": "number", "format": "float" },
+          "longitude": { "type": "number", "format": "float" },
+          "media_type": { "type": "string", "enum": ["image", "video", "audio"] },
+          "media_url": { "type": "string" },
+          "thumbnail": { "type": "string" },
+          "media_caption": { "type": "string" },
+          "tags": { "type": "string" },
+          "sort_order": { "type": "integer" },
+          "is_public": { "type": "boolean" },
+          "person_id": { "type": "integer" },
+          "created_at": { "type": "string", "format": "date-time" }
         }
       },
       "Person": {
         "type": "object",
         "properties": {
-          "id": {"type": "integer"},
-          "name": {"type": "string"},
-          "avatar_url": {"type": "string"},
-          "bio": {"type": "string"},
-          "birth_date": {"type": "string", "format": "date"},
-          "color": {"type": "string"},
-          "created_at": {"type": "string", "format": "date-time"}
+          "id": { "type": "integer" },
+          "name": { "type": "string" },
+          "avatar_url": { "type": "string" },
+          "bio": { "type": "string" },
+          "birth_date": { "type": "string", "format": "date" },
+          "color": { "type": "string" },
+          "created_at": { "type": "string", "format": "date-time" }
         }
       },
       "GotifyConfig": {
         "type": "object",
         "properties": {
-          "url": {"type": "string"},
-          "token": {"type": "string"},
-          "enabled": {"type": "boolean"}
+          "url": { "type": "string" },
+          "token": { "type": "string" },
+          "enabled": { "type": "boolean" }
         }
       },
       "EventStats": {
         "type": "object",
         "properties": {
-          "total": {"type": "integer"},
-          "by_month": {"type": "object"},
-          "by_tag": {"type": "object"},
-          "by_media": {"type": "object"},
-          "locations": {"type": "integer"},
-          "with_media": {"type": "integer"},
-          "with_geo": {"type": "integer"},
-          "by_year": {"type": "object"},
-          "total_years": {"type": "integer"},
-          "person_count": {"type": "integer"}
+          "total": { "type": "integer" },
+          "by_month": { "type": "object" },
+          "by_tag": { "type": "object" },
+          "by_media": { "type": "object" },
+          "locations": { "type": "integer" },
+          "with_media": { "type": "integer" },
+          "with_geo": { "type": "integer" },
+          "by_year": { "type": "object" },
+          "total_years": { "type": "integer" },
+          "person_count": { "type": "integer" }
+        }
+      },
+      "MemoriesConfig": {
+        "type": "object",
+        "properties": {
+          "enabled": { "type": "boolean" },
+          "days_window": { "type": "integer" },
+          "email_enabled": { "type": "boolean" }
+        }
+      },
+      "EmailConfig": {
+        "type": "object",
+        "properties": {
+          "smtp_host": { "type": "string" },
+          "smtp_port": { "type": "integer" },
+          "smtp_user": { "type": "string" },
+          "smtp_pass": { "type": "string" },
+          "from_addr": { "type": "string" },
+          "to_addr": { "type": "string" }
         }
       }
     },

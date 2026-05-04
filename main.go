@@ -2,10 +2,12 @@ package main
 
 import (
 	"bytes"
+	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
 	"database/sql"
 	"encoding/csv"
+	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"image"
@@ -19,10 +21,12 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/image/draw"
 )
 
@@ -117,11 +121,14 @@ var (
 var (
 	db           *sql.DB
 	sessionStore = make(map[string]int64)
+	sessionMu    sync.RWMutex
 	basePath     = "/app"
 	dbPath       = "/db/traces.db"
 	mediaPath    = "/app/media"
 	gotifyURL    = ""
 	gotifyToken  = ""
+	umamiURL     = ""
+	umamiSiteID  = ""
 )
 
 func main() {
@@ -136,6 +143,9 @@ func main() {
 	if os.Getenv("GOTIFY_ENABLED") == "true" {
 		gotifyEnabled = true
 	}
+
+	umamiURL = os.Getenv("UMAMI_URL")
+	umamiSiteID = os.Getenv("UMAMI_SITE_ID")
 
 	if err := os.MkdirAll(mediaPath, 0755); err != nil {
 		log.Printf("Warning: could not create media directory: %v", err)
@@ -200,12 +210,16 @@ func main() {
 			auth.POST("/email/config", saveEmailConfig)
 			auth.POST("/email/test", testEmail)
 		}
+
+	api.GET("/config", getPublicConfig)
 	}
 
 	r.GET("/admin.html", func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
 		if err == nil {
+			sessionMu.RLock()
 			expiry, ok := sessionStore[cookie]
+			sessionMu.RUnlock()
 			if ok && time.Now().Unix() <= expiry {
 				c.File(filepath.Join(basePath, "static/admin.html"))
 				return
@@ -217,7 +231,9 @@ func main() {
 	r.GET("/login.html", func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
 		if err == nil {
+			sessionMu.RLock()
 			expiry, ok := sessionStore[cookie]
+			sessionMu.RUnlock()
 			if ok && time.Now().Unix() <= expiry {
 				c.Redirect(http.StatusFound, "/admin.html")
 				return
@@ -298,18 +314,29 @@ func authMiddlewareGin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
+		sessionMu.RLock()
 		expiry, ok := sessionStore[cookie]
+		sessionMu.RUnlock()
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
 			return
 		}
 		if time.Now().Unix() > expiry {
+			sessionMu.Lock()
 			delete(sessionStore, cookie)
+			sessionMu.Unlock()
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
 			return
 		}
 		c.Next()
 	}
+}
+
+func getPublicConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"umami_url":  umamiURL,
+		"umami_site": umamiSiteID,
+	})
 }
 
 func handleCheckSetup(c *gin.Context) {
@@ -338,15 +365,35 @@ func handleLogin(c *gin.Context) {
 	}
 
 	if count == 0 {
-		hashed := hashPassword(input.Password)
-		_, err := db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", input.Username, hashed)
+		hashed, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
 			return
 		}
-		sessionID := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%s-%d", 1, input.Username, time.Now().Unix()))))
+		_, dbErr := db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", input.Username, string(hashed))
+		if dbErr != nil {
+			log.Printf("Error creating admin user: %v", dbErr)
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
+			return
+		}
+		sessionID, err := generateSessionID()
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate session"})
+			return
+		}
+		sessionMu.Lock()
 		sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
-		c.SetCookie("session", sessionID, 86400, "/", "", false, true)
+		sessionMu.Unlock()
+		c.SetCookie("session", sessionID, 86400, "/", "", true, true)
+		http.SetCookie(c.Writer, &http.Cookie{
+			Name:     "session",
+			Value:    sessionID,
+			Path:     "/",
+			MaxAge:   86400,
+			Secure:   true,
+			HttpOnly: true,
+			SameSite: http.SameSiteLaxMode,
+		})
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		return
 	}
@@ -358,23 +405,47 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	if hashPassword(input.Password) != user.Password {
+	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
-	sessionID := fmt.Sprintf("%x", sha256.Sum256([]byte(fmt.Sprintf("%d-%s-%d", user.ID, input.Username, time.Now().Unix()))))
+	sessionID, err := generateSessionID()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate session"})
+		return
+	}
+	sessionMu.Lock()
 	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
-	c.SetCookie("session", sessionID, 86400, "/", "", false, true)
+	sessionMu.Unlock()
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    sessionID,
+		Path:     "/",
+		MaxAge:   86400,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func handleLogout(c *gin.Context) {
 	cookie, err := c.Cookie("session")
 	if err == nil {
+		sessionMu.Lock()
 		delete(sessionStore, cookie)
+		sessionMu.Unlock()
 	}
-	c.SetCookie("session", "", -1, "/", "", false, true)
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1,
+		Secure:   true,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+	})
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -409,7 +480,11 @@ func getEvents(c *gin.Context) {
 	}
 	if limit != "" {
 		query += " LIMIT ?"
-		l, _ := strconv.Atoi(limit)
+		l, err := strconv.Atoi(limit)
+		if err != nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid limit parameter"})
+			return
+		}
 		args = append(args, l)
 	}
 
@@ -463,9 +538,22 @@ func getPublicEvents(c *gin.Context) {
 	var args []interface{}
 
 	if eventIDs != "" {
+		idStrs := strings.Split(eventIDs, ",")
+		placeholders := make([]string, len(idStrs))
+		idArgs := make([]interface{}, len(idStrs))
+		for i, idStr := range idStrs {
+			id, err := strconv.Atoi(strings.TrimSpace(idStr))
+			if err != nil {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid share token"})
+				return
+			}
+			placeholders[i] = "?"
+			idArgs[i] = id
+		}
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.id IN (` + eventIDs + `) ORDER BY e.event_date ASC`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
+		args = idArgs
 	} else {
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
@@ -560,12 +648,16 @@ func saveEvent(c *gin.Context) {
 
 func deleteEvent(c *gin.Context) {
 	idStr := c.Query("id")
-	id, _ := strconv.Atoi(idStr)
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		return
+	}
 
 	var title string
 	db.QueryRow("SELECT title FROM timeline_events WHERE id=?", id).Scan(&title)
 
-	_, err := db.Exec("DELETE FROM timeline_events WHERE id=?", id)
+	_, err = db.Exec("DELETE FROM timeline_events WHERE id=?", id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 		return
@@ -1096,8 +1188,11 @@ func createShareLink(c *gin.Context) {
 		input.Days = 7
 	}
 
-	nowStr := time.Now().Format("2006-01-02T15:04:05")
-	token := fmt.Sprintf("%x", sha256.Sum256([]byte(nowStr)))
+	token, err := generateSessionID()
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
+		return
+	}
 
 	eventIDsStr := ""
 	for idx, idVal := range input.EventIDs {
@@ -1109,10 +1204,10 @@ func createShareLink(c *gin.Context) {
 
 	expires := time.Now().Add(time.Duration(input.Days) * 24 * time.Hour)
 
-	_, err := db.Exec(`INSERT INTO share_tokens (token, event_ids, year, expires_at) VALUES (?, ?, ?, ?)`,
+	_, err = db.Exec(`INSERT INTO share_tokens (token, event_ids, year, expires_at) VALUES (?, ?, ?, ?)`,
 		token, eventIDsStr, input.Year, expires.Format("2006-01-02"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create share link"})
 		return
 	}
 
@@ -1228,15 +1323,19 @@ func savePerson(c *gin.Context) {
 
 func deletePerson(c *gin.Context) {
 	idStr := c.Query("id")
-	id, _ := strconv.Atoi(idStr)
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid person ID"})
+		return
+	}
 
 	var name string
 	db.QueryRow("SELECT name FROM persons WHERE id=?", id).Scan(&name)
 
 	db.Exec("UPDATE timeline_events SET person_id = NULL WHERE person_id = ?", id)
-	_, err := db.Exec("DELETE FROM persons WHERE id=?", id)
+	_, err = db.Exec("DELETE FROM persons WHERE id=?", id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete person"})
 		return
 	}
 
@@ -1344,12 +1443,13 @@ func testGotify(c *gin.Context) {
 	}
 
 	body := fmt.Sprintf(`{"title":"TRACES Test","message":"This is a test notification from TRACES","priority":5}`)
-	req, err := http.NewRequest("POST", gotifyURL+"/message?token="+gotifyToken, strings.NewReader(body))
+	req, err := http.NewRequest("POST", gotifyURL+"/message", strings.NewReader(body))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
 		return
 	}
 	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("X-Gotify-Key", gotifyToken)
 
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
@@ -1932,9 +2032,12 @@ func seedEvents() {
 	}
 }
 
-func hashPassword(password string) string {
-	hash := sha256.Sum256([]byte(password))
-	return fmt.Sprintf("%x", hash)
+func generateSessionID() (string, error) {
+	b := make([]byte, 32)
+	if _, err := rand.Read(b); err != nil {
+		return "", err
+	}
+	return hex.EncodeToString(b), nil
 }
 
 func sendGotifyNotification(title, message string) {
@@ -1952,11 +2055,18 @@ func sendGotifyNotification(title, message string) {
 	}
 
 	body, _ := json.Marshal(payload)
-	url := strings.TrimSuffix(gotifyURL, "/") + "/message?token=" + gotifyToken
+	url := strings.TrimSuffix(gotifyURL, "/") + "/message"
 
 	go func() {
 		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Post(url, "application/json", bytes.NewReader(body))
+		req, err := http.NewRequest("POST", url, bytes.NewReader(body))
+		if err != nil {
+			log.Printf("[GOTIFY] Notification failed: %v", err)
+			return
+		}
+		req.Header.Set("Content-Type", "application/json")
+		req.Header.Set("X-Gotify-Key", gotifyToken)
+		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("[GOTIFY] Notification failed: %v", err)
 			return
