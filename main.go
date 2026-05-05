@@ -386,7 +386,14 @@ func main() {
 	}
 
 	log.Printf("Server starting on port %s...", port)
-	log.Fatal(r.Run(":" + port))
+	srv := &http.Server{
+		Addr:         ":" + port,
+		Handler:      r,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 60 * time.Second,
+		IdleTimeout:  120 * time.Second,
+	}
+	log.Fatal(srv.ListenAndServe())
 }
 
 func authMiddlewareGin() gin.HandlerFunc {
@@ -490,6 +497,10 @@ func handleLogin(c *gin.Context) {
 	}
 
 	if count == 0 {
+		if len(input.Password) < 8 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
+			return
+		}
 		hashed, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
 		if err != nil {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
@@ -905,6 +916,10 @@ func handleUpload(c *gin.Context) {
 		img, format, err := image.Decode(bytes.NewReader(data))
 		if err == nil {
 			size := img.Bounds().Size()
+			if size.X > 10000 || size.Y > 10000 {
+				c.JSON(http.StatusBadRequest, gin.H{"error": "Image dimensions too large (max 10000x10000)"})
+				return
+			}
 			if size.X > 1920 || size.Y > 1920 {
 				img = resizeImage(img, 1920)
 			}
