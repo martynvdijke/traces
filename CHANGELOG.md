@@ -1,3 +1,10 @@
+## [1.8.2](https://github.com/martynvdijke/traces/compare/v1.8.1...v1.8.2) (2026-05-05)
+
+
+### Bug Fixes
+
+* **admin:** add db backup ([265c78d](https://github.com/martynvdijke/traces/commit/265c78d244eec2b751fd33773929f4405804514e))
+
 ## [1.8.1](https://github.com/martynvdijke/traces/compare/v1.8.0...v1.8.1) (2026-05-05)
 
 
