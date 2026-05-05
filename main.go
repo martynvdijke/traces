@@ -204,6 +204,22 @@ func main() {
 	r := gin.Default()
 	r.MaxMultipartMemory = 32 << 20
 
+	r.Use(func(c *gin.Context) {
+		c.Header("X-Frame-Options", "DENY")
+		c.Header("X-Content-Type-Options", "nosniff")
+		c.Header("Referrer-Policy", "same-origin")
+		c.Header("Permissions-Policy", "camera=(), microphone=(), geolocation=(self)")
+		if c.Request.TLS != nil {
+			c.Header("Strict-Transport-Security", "max-age=31536000; includeSubDomains")
+		}
+		if c.Request.Method == "POST" || c.Request.Method == "PUT" {
+			if !strings.Contains(c.Request.Header.Get("Content-Type"), "multipart/form-data") {
+				c.Request.Body = http.MaxBytesReader(c.Writer, c.Request.Body, 1<<20)
+			}
+		}
+		c.Next()
+	})
+
 	api := r.Group("/api")
 	{
 		api.GET("/version", func(c *gin.Context) {
@@ -347,6 +363,22 @@ func main() {
 	r.GET("/", func(c *gin.Context) {
 		c.File(filepath.Join(basePath, "static/index.html"))
 	})
+
+	// Session cleanup goroutine
+	go func() {
+		for {
+			time.Sleep(10 * time.Minute)
+			sessionMu.Lock()
+			now := time.Now().Unix()
+			for k, v := range sessionStore {
+				if now > v {
+					delete(sessionStore, k)
+					delete(csrfTokens, k)
+				}
+			}
+			sessionMu.Unlock()
+		}
+	}()
 
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -836,6 +868,21 @@ func handleUpload(c *gin.Context) {
 	data, err := io.ReadAll(src)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to read file"})
+		return
+	}
+
+	// MIME type verification
+	mimeType := http.DetectContentType(data)
+	if mediaType == "image" && !strings.HasPrefix(mimeType, "image/") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File content does not match image type"})
+		return
+	}
+	if mediaType == "video" && !strings.HasPrefix(mimeType, "video/") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File content does not match video type"})
+		return
+	}
+	if mediaType == "audio" && !strings.HasPrefix(mimeType, "audio/") {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "File content does not match audio type"})
 		return
 	}
 
@@ -2171,6 +2218,15 @@ func autoTagEvent(c *gin.Context) {
 		return
 	}
 
+	if len(input.Title) > 500 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Title too long"})
+		return
+	}
+	if len(input.Description) > 2000 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Description too long"})
+		return
+	}
+
 	var ollamaURL, ollamaModel string
 	var enabledInt int
 	err := db.QueryRow("SELECT url, model, enabled FROM ollama_settings WHERE id = 1").Scan(&ollamaURL, &ollamaModel, &enabledInt)
@@ -2185,11 +2241,20 @@ func autoTagEvent(c *gin.Context) {
 		}
 	}
 
-	prompt := fmt.Sprintf(`Given the following event, suggest 3-5 relevant tags (comma-separated, single words only):
+	sanitizePrompt := func(s string) string {
+		s = strings.ReplaceAll(s, "\n", " ")
+		s = strings.ReplaceAll(s, "\r", " ")
+		if len(s) > 200 {
+			s = s[:200]
+		}
+		return s
+	}
+
+	prompt := fmt.Sprintf(`Suggest 3-5 single-word tags for this event (comma-separated):
 Title: %s
 Description: %s
 Location: %s
-Tags:`, input.Title, input.Description, input.Location)
+Tags:`, sanitizePrompt(input.Title), sanitizePrompt(input.Description), sanitizePrompt(input.Location))
 
 	reqBody, _ := json.Marshal(map[string]interface{}{
 		"model":  ollamaModel,
@@ -2197,7 +2262,15 @@ Tags:`, input.Title, input.Description, input.Location)
 		"stream": false,
 	})
 
-	resp, err := http.Post(ollamaURL+"/api/generate", "application/json", bytes.NewReader(reqBody))
+	client := &http.Client{Timeout: 30 * time.Second}
+	req, err := http.NewRequestWithContext(c.Request.Context(), "POST", ollamaURL+"/api/generate", bytes.NewReader(reqBody))
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Ollama"})
+		return
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := client.Do(req)
 	if err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Ollama"})
 		return
@@ -2218,8 +2291,11 @@ Tags:`, input.Title, input.Description, input.Location)
 		t = strings.TrimSpace(t)
 		t = strings.TrimPrefix(t, "- ")
 		t = strings.TrimPrefix(t, "* ")
-		if t != "" && !strings.HasPrefix(t, "Tags:") {
+		if t != "" && !strings.HasPrefix(t, "Tags:") && len(t) < 50 {
 			cleanTags = append(cleanTags, t)
+		}
+		if len(cleanTags) >= 10 {
+			break
 		}
 	}
 
@@ -2328,8 +2404,8 @@ func generateRecurringEvents(c *gin.Context) {
 	}
 
 	var e TimelineEvent
-	err := db.QueryRow(`SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id FROM timeline_events WHERE id = ?`, input.EventID).
-		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.Tags, &e.SortOrder, &e.Recurring, &e.WeatherData, &e.UserID)
+	err := db.QueryRow(`SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id FROM timeline_events WHERE id = ?`, input.EventID).
+		Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.Tags, &e.SortOrder, &e.Recurring, &e.WeatherData, &e.UserID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
 		return
@@ -2351,11 +2427,23 @@ func generateRecurringEvents(c *gin.Context) {
 		return
 	}
 
+	if end.Sub(start).Hours() > 365*24 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Date range exceeds 365 days"})
+		return
+	}
+
 	originalDate, err := time.Parse("2006-01-02", e.Date)
 	if err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event date"})
 		return
 	}
+
+	tx, err := db.Begin()
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer tx.Rollback()
 
 	generated := 0
 	for d := start; !d.After(end); d = d.AddDate(0, 0, 1) {
@@ -2373,13 +2461,20 @@ func generateRecurringEvents(c *gin.Context) {
 
 		if shouldGenerate {
 			var existing int
-			db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE title = ? AND event_date = ? AND user_id = ?", e.Title, d.Format("2006-01-02"), e.UserID).Scan(&existing)
+			tx.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE event_date = ? AND user_id = ? AND id = ?", d.Format("2006-01-02"), e.UserID, e.ID).Scan(&existing)
 			if existing == 0 {
-				db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				_, err := tx.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 					e.Title, e.Description, d.Format("2006-01-02"), e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Recurring, e.WeatherData, e.UserID)
-				generated++
+				if err == nil {
+					generated++
+				}
 			}
 		}
+	}
+
+	if err := tx.Commit(); err != nil {
+		serverError(c, err)
+		return
 	}
 
 	c.JSON(http.StatusOK, gin.H{"generated": generated})
