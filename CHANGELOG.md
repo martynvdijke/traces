@@ -1,3 +1,10 @@
+## [1.8.4](https://github.com/martynvdijke/traces/compare/v1.8.3...v1.8.4) (2026-05-05)
+
+
+### Bug Fixes
+
+* add SHA256 password migration tests for login handler ([4566ac6](https://github.com/martynvdijke/traces/commit/4566ac6f1ef2cefa5965658a37f04a4e35f83442))
+
 ## [1.8.3](https://github.com/martynvdijke/traces/compare/v1.8.2...v1.8.3) (2026-05-05)
 
 
