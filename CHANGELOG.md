@@ -1,3 +1,15 @@
+# [1.8.0](https://github.com/martynvdijke/traces/compare/v1.7.1...v1.8.0) (2026-05-05)
+
+
+### Bug Fixes
+
+* Playwright E2E test failures and scanEventsWithPerson column mismatch ([47f49e5](https://github.com/martynvdijke/traces/commit/47f49e515c896a955689af90a3dd11f970c6dbc2)), closes [#timeline-tab](https://github.com/martynvdijke/traces/issues/timeline-tab)
+
+
+### Features
+
+* calendar view, recurring events, weather enrichment, AI auto-tagging, multi-user, markdown, PWA, and tabbed UI ([fe56391](https://github.com/martynvdijke/traces/commit/fe56391584d22c2f114c6f37f033f1d3929e0e91))
+
 ## [1.7.1](https://github.com/martynvdijke/traces/compare/v1.7.0...v1.7.1) (2026-05-04)
 
 
