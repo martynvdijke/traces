@@ -157,6 +157,7 @@ var (
 var (
 	db           *sql.DB
 	sessionStore = make(map[string]int64)
+	csrfTokens   = make(map[string]string)
 	sessionMu    sync.RWMutex
 	basePath     = "/app"
 	dbPath       = "/db/traces.db"
@@ -211,24 +212,27 @@ func main() {
 		api.GET("/check-setup", handleCheckSetup)
 		api.POST("/login", handleLogin)
 		api.POST("/logout", handleLogout)
-		api.GET("/events", getEvents)
-		api.GET("/events/full", getEventsFull)
-		api.GET("/events/search", searchEvents)
-		api.GET("/events/export", exportEvents)
-		api.GET("/contributions", getContributions)
-		api.GET("/stats", getEventStats)
-		api.GET("/tags", getTags)
 		api.GET("/public", getPublicEvents)
 		api.GET("/share", getShareLink)
-		api.GET("/map", getMapData)
-		api.GET("/persons", getPersons)
-		api.GET("/autocomplete", getAutocomplete)
-		api.GET("/calendar", getCalendar)
-		api.GET("/users", getUsers)
+		api.GET("/config", getPublicConfig)
+		api.GET("/manifest.json", serveManifest)
+		api.GET("/sw.js", serveServiceWorker)
 
 		auth := api.Group("")
-		auth.Use(authMiddlewareGin())
+		auth.Use(authMiddlewareGin(), csrfMiddleware())
 		{
+			auth.GET("/events", getEvents)
+			auth.GET("/events/full", getEventsFull)
+			auth.GET("/events/search", searchEvents)
+			auth.GET("/events/export", exportEvents)
+			auth.GET("/contributions", getContributions)
+			auth.GET("/stats", getEventStats)
+			auth.GET("/tags", getTags)
+			auth.GET("/map", getMapData)
+			auth.GET("/persons", getPersons)
+			auth.GET("/autocomplete", getAutocomplete)
+			auth.GET("/calendar", getCalendar)
+			auth.GET("/users", getUsers)
 			auth.POST("/events", saveEvent)
 			auth.DELETE("/events", deleteEvent)
 			auth.POST("/upload", handleUpload)
@@ -256,11 +260,8 @@ func main() {
 			auth.POST("/events/recurring/generate", generateRecurringEvents)
 			auth.GET("/ollama/config", getOllamaConfig)
 			auth.POST("/ollama/config", saveOllamaConfig)
+			auth.GET("/csrf-token", getCSRFToken)
 		}
-
-		api.GET("/config", getPublicConfig)
-		api.GET("/manifest.json", serveManifest)
-		api.GET("/sw.js", serveServiceWorker)
 	}
 
 	r.GET("/admin.html", func(c *gin.Context) {
@@ -373,12 +374,55 @@ func authMiddlewareGin() gin.HandlerFunc {
 		if time.Now().Unix() > expiry {
 			sessionMu.Lock()
 			delete(sessionStore, cookie)
+			delete(csrfTokens, cookie)
 			sessionMu.Unlock()
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
 			return
 		}
+		c.Set("session_id", cookie)
 		c.Next()
 	}
+}
+
+func csrfMiddleware() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if c.Request.Method == "GET" || c.Request.Method == "HEAD" {
+			c.Next()
+			return
+		}
+		token := c.GetHeader("X-CSRF-Token")
+		if token == "" {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "CSRF token required"})
+			return
+		}
+		cookie, _ := c.Cookie("session")
+		sessionMu.RLock()
+		stored, ok := csrfTokens[cookie]
+		sessionMu.RUnlock()
+		if !ok || token != stored {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Invalid CSRF token"})
+			return
+		}
+		c.Next()
+	}
+}
+
+func getCSRFToken(c *gin.Context) {
+	cookie, _ := c.Cookie("session")
+	if cookie == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
+		return
+	}
+	sessionMu.Lock()
+	token := fmt.Sprintf("%x", sha256.Sum256([]byte(cookie+time.Now().String())))
+	csrfTokens[cookie] = token
+	sessionMu.Unlock()
+	c.JSON(http.StatusOK, gin.H{"token": token})
+}
+
+func serverError(c *gin.Context, err error) {
+	log.Printf("[ERROR] %v", err)
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 }
 
 func getPublicConfig(c *gin.Context) {
@@ -558,7 +602,7 @@ func getEvents(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -574,7 +618,7 @@ func getEventsFull(c *gin.Context) {
 
 	rows, err := db.Query(query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -585,21 +629,18 @@ func getEventsFull(c *gin.Context) {
 
 func getPublicEvents(c *gin.Context) {
 	shareToken := c.Query("share")
-	if shareToken == "" && !publicMode {
-		c.JSON(http.StatusNotFound, gin.H{"error": "Not found"})
-		return
-	}
+	year := c.Query("year")
 
 	var eventIDs string
-	var year string
+	var shareYear string
 
 	if shareToken != "" {
-		db.QueryRow("SELECT event_ids, year FROM share_tokens WHERE token = ?", shareToken).Scan(&eventIDs, &year)
-	} else {
-		year = c.Query("year")
+		db.QueryRow("SELECT event_ids, year FROM share_tokens WHERE token = ?", shareToken).Scan(&eventIDs, &shareYear)
 		if year == "" {
-			year = fmt.Sprintf("%d", time.Now().Year())
+			year = shareYear
 		}
+	} else if year == "" {
+		year = fmt.Sprintf("%d", time.Now().Year())
 	}
 
 	var query string
@@ -622,6 +663,15 @@ func getPublicEvents(c *gin.Context) {
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
 		args = idArgs
+	} else if publicMode {
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
+		if year != "" {
+			query += " AND strftime('%Y', e.event_date) = ?"
+			args = append(args, year)
+		}
+		query += " ORDER BY e.event_date ASC"
 	} else {
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
@@ -635,7 +685,7 @@ func getPublicEvents(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -652,7 +702,7 @@ func getContributions(c *gin.Context) {
 
 	rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE strftime('%Y', event_date) = ?`, year)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -693,7 +743,7 @@ func saveEvent(c *gin.Context) {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			serverError(c, err)
 			return
 		}
 		id, _ := result.LastInsertId()
@@ -704,7 +754,7 @@ func saveEvent(c *gin.Context) {
 			WHERE id=?`,
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID, e.ID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			serverError(c, err)
 			return
 		}
 		action = "updated"
@@ -727,7 +777,7 @@ func deleteEvent(c *gin.Context) {
 
 	_, err = db.Exec("DELETE FROM timeline_events WHERE id=?", id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 
@@ -927,7 +977,7 @@ func searchEvents(c *gin.Context) {
 
 	rows, err := db.Query(sqlStr, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1031,7 +1081,7 @@ func getPersonEvents(c *gin.Context) {
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.person_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1064,7 +1114,7 @@ func cloneEvent(c *gin.Context) {
 	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Recurring, e.WeatherData, e.UserID)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 
@@ -1090,7 +1140,7 @@ func importEvents(c *gin.Context) {
 		reader := csv.NewReader(file)
 		records, err := reader.ReadAll()
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			serverError(c, err)
 			return
 		}
 
@@ -1171,7 +1221,7 @@ func exportEvents(c *gin.Context) {
 
 	rows, err := db.Query(sqlStr, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1342,7 +1392,7 @@ func getTags(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1364,7 +1414,7 @@ func getPersons(c *gin.Context) {
 
 	rows, err := db.Query(query)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1393,7 +1443,7 @@ func savePerson(c *gin.Context) {
 		result, err := db.Exec("INSERT INTO persons (name, avatar_url, bio, birth_date, color) VALUES (?, ?, ?, ?, ?)",
 			p.Name, p.AvatarURL, p.Bio, p.BirthDate, p.Color)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			serverError(c, err)
 			return
 		}
 		id, _ := result.LastInsertId()
@@ -1403,7 +1453,7 @@ func savePerson(c *gin.Context) {
 		_, err := db.Exec("UPDATE persons SET name=?, avatar_url=?, bio=?, birth_date=?, color=? WHERE id=?",
 			p.Name, p.AvatarURL, p.Bio, p.BirthDate, p.Color, p.ID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			serverError(c, err)
 			return
 		}
 		sendGotifyNotification(fmt.Sprintf("Person updated: %s", p.Name), p.Bio)
@@ -1448,7 +1498,7 @@ func getMapData(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1516,7 +1566,7 @@ func saveGotifyConfig(c *gin.Context) {
 
 	_, err := db.Exec(`UPDATE gotify_settings SET url=?, token=?, enabled=? WHERE id=1`, cfg.URL, cfg.Token, enabledInt)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 
@@ -1545,7 +1595,7 @@ func testGotify(c *gin.Context) {
 	client := &http.Client{Timeout: 10 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Gotify: " + err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Gotify"})
 		return
 	}
 	defer resp.Body.Close()
@@ -1595,7 +1645,7 @@ func getMemories(c *gin.Context) {
 	}
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1672,7 +1722,7 @@ func saveMemoriesConfig(c *gin.Context) {
 	}
 	_, err := db.Exec(`UPDATE memories_settings SET enabled=?, days_window=?, email_enabled=? WHERE id=1`, enabledInt, cfg.DaysWindow, emailInt)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -1702,7 +1752,7 @@ func saveEmailConfig(c *gin.Context) {
 	_, err := db.Exec(`UPDATE email_settings SET smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=?, from_addr=?, to_addr=? WHERE id=1`,
 		cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.FromAddr, cfg.ToAddr)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -1721,7 +1771,7 @@ func testEmail(c *gin.Context) {
 	subject := "TRACES Test Email"
 	body := "This is a test email from TRACES. If you receive this, your email settings are working correctly."
 	if err := sendEmail(cfg, subject, body); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email: " + err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Test email sent successfully"})
@@ -1819,7 +1869,7 @@ func sendMemoriesEmailHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1842,7 +1892,7 @@ func sendMemoriesEmailHandler(c *gin.Context) {
 	body := "You have " + strconv.Itoa(len(memories)) + " memory/memories from this date in past years:\n\n" + strings.Join(memories, "\n")
 
 	if err := sendEmail(emailCfg, subject, body); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email: " + err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email"})
 		return
 	}
 
@@ -1904,17 +1954,28 @@ func getCalendar(c *gin.Context) {
 		month = fmt.Sprintf("%02d", time.Now().Month())
 	}
 
-	startDate := fmt.Sprintf("%s-%s-01", year, month)
-	firstDay, _ := time.Parse("2006-01-02", startDate)
+	y, errY := strconv.Atoi(year)
+	m, errM := strconv.Atoi(month)
+	if errY != nil || errM != nil || m < 1 || m > 12 || y < 1900 || y > 2100 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid year or month"})
+		return
+	}
+
+	startDate := fmt.Sprintf("%04d-%02d-01", y, m)
+	firstDay, err := time.Parse("2006-01-02", startDate)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date"})
+		return
+	}
 	lastDay := firstDay.AddDate(0, 1, -1)
 
 	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id
 		WHERE e.event_date BETWEEN ? AND ?
-		ORDER BY e.event_date ASC`, startDate, lastDay.Format("2006-01-02"))
+		ORDER BY e.event_date ASC, e.id ASC`, startDate, lastDay.Format("2006-01-02"))
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 		return
 	}
 	defer rows.Close()
@@ -1931,7 +1992,10 @@ func getCalendar(c *gin.Context) {
 		dateStr := d.Format("2006-01-02")
 		dayEvents := daysMap[dateStr]
 		sort.Slice(dayEvents, func(i, j int) bool {
-			return dayEvents[i].SortOrder < dayEvents[j].SortOrder
+			if dayEvents[i].SortOrder != dayEvents[j].SortOrder {
+				return dayEvents[i].SortOrder < dayEvents[j].SortOrder
+			}
+			return dayEvents[i].ID < dayEvents[j].ID
 		})
 		calendar = append(calendar, CalendarDay{
 			Date:   dateStr,
@@ -1955,12 +2019,31 @@ func fetchWeather(c *gin.Context) {
 		return
 	}
 
-	url := fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&daily=temperature_2m_max,temperature_2m_min,weathercode,wind_speed_10m_max&timezone=auto&start_date=%s&end_date=%s",
-		input.Latitude, input.Longitude, input.Date, input.Date)
-
-	resp, err := http.Get(url)
+	eventDate, err := time.Parse("2006-01-02", input.Date)
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch weather: " + err.Error()})
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid date"})
+		return
+	}
+
+	var apiURL string
+	if time.Since(eventDate) < 16*24*time.Hour {
+		apiURL = fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&daily=temperature_2m_max,temperature_2m_min,weathercode,wind_speed_10m_max,relative_humidity_2m&timezone=auto&start_date=%s&end_date=%s",
+			input.Latitude, input.Longitude, input.Date, input.Date)
+	} else {
+		apiURL = fmt.Sprintf("https://archive-api.open-meteo.com/v1/archive?latitude=%.4f&longitude=%.4f&daily=temperature_2m_max,temperature_2m_min,weathercode,wind_speed_10m_max,relative_humidity_2m&timezone=auto&start_date=%s&end_date=%s",
+			input.Latitude, input.Longitude, input.Date, input.Date)
+	}
+
+	client := &http.Client{Timeout: 15 * time.Second}
+	req, err := http.NewRequestWithContext(c.Request.Context(), "GET", apiURL, nil)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to create request"})
+		return
+	}
+
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch weather data"})
 		return
 	}
 	defer resp.Body.Close()
@@ -1972,6 +2055,7 @@ func fetchWeather(c *gin.Context) {
 			TemperatureMin   []float64 `json:"temperature_2m_min"`
 			WeatherCode      []int     `json:"weathercode"`
 			WindSpeedMax     []float64 `json:"wind_speed_10m_max"`
+			Humidity         []float64 `json:"relative_humidity_2m"`
 		} `json:"daily"`
 	}
 
@@ -1985,15 +2069,39 @@ func fetchWeather(c *gin.Context) {
 		return
 	}
 
-	condition := weatherCodeToCondition(weatherResp.Daily.WeatherCode[0])
-	icon := weatherCodeToIcon(weatherResp.Daily.WeatherCode[0])
-	temp := (weatherResp.Daily.TemperatureMax[0] + weatherResp.Daily.TemperatureMin[0]) / 2
+	weatherCode := 0
+	if len(weatherResp.Daily.WeatherCode) > 0 {
+		weatherCode = weatherResp.Daily.WeatherCode[0]
+	}
+
+	tempMax := 0.0
+	if len(weatherResp.Daily.TemperatureMax) > 0 {
+		tempMax = weatherResp.Daily.TemperatureMax[0]
+	}
+	tempMin := 0.0
+	if len(weatherResp.Daily.TemperatureMin) > 0 {
+		tempMin = weatherResp.Daily.TemperatureMin[0]
+	}
+
+	windSpeed := 0.0
+	if len(weatherResp.Daily.WindSpeedMax) > 0 {
+		windSpeed = weatherResp.Daily.WindSpeedMax[0]
+	}
+
+	humidity := 0.0
+	if len(weatherResp.Daily.Humidity) > 0 {
+		humidity = weatherResp.Daily.Humidity[0]
+	}
+
+	condition := weatherCodeToCondition(weatherCode)
+	icon := weatherCodeToIcon(weatherCode)
 
 	weather := WeatherData{
-		Temperature: temp,
+		Temperature: (tempMax + tempMin) / 2,
 		Condition:   condition,
 		Icon:        icon,
-		WindSpeed:   weatherResp.Daily.WindSpeedMax[0],
+		WindSpeed:   windSpeed,
+		Humidity:    humidity,
 		FetchedAt:   time.Now().UTC().Format(time.RFC3339),
 	}
 
@@ -2091,7 +2199,7 @@ Tags:`, input.Title, input.Description, input.Location)
 
 	resp, err := http.Post(ollamaURL+"/api/generate", "application/json", bytes.NewReader(reqBody))
 	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Ollama: " + err.Error()})
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Ollama"})
 		return
 	}
 	defer resp.Body.Close()
@@ -2123,7 +2231,7 @@ func getUsers(c *gin.Context) {
 		(SELECT COUNT(*) FROM timeline_events WHERE user_id = users.id) as event_count
 		FROM users ORDER BY display_name ASC`)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2152,7 +2260,7 @@ func saveUser(c *gin.Context) {
 		result, err := db.Exec("INSERT INTO users (username, display_name, color, avatar_url) VALUES (?, ?, ?, ?)",
 			u.Username, u.DisplayName, u.Color, u.AvatarURL)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			serverError(c, err)
 			return
 		}
 		id, _ := result.LastInsertId()
@@ -2161,7 +2269,7 @@ func saveUser(c *gin.Context) {
 		_, err := db.Exec("UPDATE users SET username=?, display_name=?, color=?, avatar_url=? WHERE id=?",
 			u.Username, u.DisplayName, u.Color, u.AvatarURL, u.ID)
 		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			serverError(c, err)
 			return
 		}
 	}
@@ -2199,7 +2307,7 @@ func getUserEvents(c *gin.Context) {
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.user_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2307,7 +2415,7 @@ func saveOllamaConfig(c *gin.Context) {
 	}
 	_, err := db.Exec(`UPDATE ollama_settings SET url=?, model=?, enabled=? WHERE id=1`, cfg.URL, cfg.Model, enabledInt)
 	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+		serverError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})

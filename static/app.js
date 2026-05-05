@@ -8,7 +8,11 @@ const galleryLimit = 12;
 let map = null;
 let markers = [];
 let users = [];
+let isAuthenticated = false;
 const monthNames = [
+    'January', 'February', 'March', 'April', 'May', 'June',
+    'July', 'August', 'September', 'October', 'November', 'December'
+];
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
 ];
@@ -67,6 +71,31 @@ async function loadContributions() {
         if (!res.ok) {
             contributions = {};
         }
+        else {
+            contributions = await res.json();
+        }
+        renderContributionGraph();
+        updateStats();
+    }
+    catch (err) {
+        console.error('Failed to load contributions:', err);
+    }
+}
+async function loadUsers() {
+    try {
+        const res = await fetch('/api/users');
+        if (res.ok) {
+            users = await res.json();
+        } else {
+            users = [];
+        }
+        if (!Array.isArray(users))
+            users = [];
+    }
+    catch (e) {
+        users = [];
+    }
+}
         else {
             contributions = await res.json();
         }
@@ -142,14 +171,22 @@ async function loadEvents() {
             url += '&month=' + String(currentMonth).padStart(2, '0');
         }
         const res = await fetch(url);
-        if (!res.ok) {
-            events = [];
-        }
-        else {
-            events = await res.json();
-            if (!Array.isArray(events))
+        if (res.status === 401) {
+            isAuthenticated = false;
+            const pubRes = await fetch('/api/public?year=' + currentYear);
+            if (pubRes.ok) {
+                events = await pubRes.json();
+            } else {
                 events = [];
+            }
+        } else if (!res.ok) {
+            events = [];
+        } else {
+            isAuthenticated = true;
+            events = await res.json();
         }
+        if (!Array.isArray(events))
+            events = [];
         renderTimeline();
         renderGallery();
         renderMap();
@@ -446,7 +483,16 @@ async function loadMoreGallery() {
         const url = '/api/events?year=' + currentYear + '&limit=' + galleryLimit + '&skip=' + skip;
         const res = await fetch(url);
         let moreEvents;
-        if (!res.ok) {
+        if (res.status === 401) {
+            const pubRes = await fetch('/api/public?year=' + currentYear);
+            moreEvents = pubRes.ok ? await pubRes.json() : [];
+        } else if (!res.ok) {
+            moreEvents = [];
+        }
+        else {
+            moreEvents = await res.json();
+        }
+        if (!Array.isArray(moreEvents))
             moreEvents = [];
         }
         else {
@@ -488,7 +534,13 @@ async function loadMoreGallery() {
 async function getYearStats(year) {
     try {
         const res = await fetch('/api/events?year=' + year);
-        const yearEvents = await res.json();
+        let yearEvents;
+        if (res.status === 401) {
+            const pubRes = await fetch('/api/public?year=' + year);
+            yearEvents = pubRes.ok ? await pubRes.json() : [];
+        } else {
+            yearEvents = res.ok ? await res.json() : [];
+        }
         return {
             total: yearEvents.length,
             images: yearEvents.filter((e) => e.media_type === 'image').length,
@@ -651,6 +703,11 @@ function showCalendarDay(dateStr) {
 async function loadMemories() {
     try {
         const res = await fetch('/api/memories');
+        if (res.status === 401) {
+            const section = document.getElementById('memories-section');
+            if (section) section.style.display = 'none';
+            return;
+        }
         const memories = await res.json();
         const section = document.getElementById('memories-section');
         if (!section)

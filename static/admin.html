@@ -1015,6 +1015,7 @@
         let eventPhotoThumb = '';
 
         async function init() {
+            await ensureCSRF();
             populateYearFilter();
             await loadEvents();
             await loadPersons();
@@ -1022,11 +1023,7 @@
             loadMemoriesConfig();
             loadEmailConfig();
             loadMemories();
-            initLocationMap();
-            initAutocomplete('event-location', 'location-autocomplete', 'location');
-            initTagAutocomplete();
-            loadAdminAnalytics();
-            await loadAdminUsers();
+            loadUsers();
             loadOllamaConfig();
         }
 
@@ -1377,13 +1374,15 @@
 
         async function deleteEvent(id) {
             if (!confirm('Delete this event?')) return;
-            await fetch('/api/events?id=' + id, { method: 'DELETE' });
+            await ensureCSRF();
+            await fetch('/api/events?id=' + id, { method: 'DELETE', headers: csrfHeaders() });
             if (viewingPersonId) clearPersonFilter();
             await loadEvents();
         }
 
         document.getElementById('event-form').addEventListener('submit', async (e) => {
             e.preventDefault();
+            await ensureCSRF();
             const title = document.getElementById('event-title').value.trim();
             if (!title) { alert('Title is required'); return; }
             const data = {
@@ -1396,16 +1395,13 @@
                 media_type: document.getElementById('event-media-type').value,
                 media_url: eventPhotoUrl || '',
                 thumbnail: eventPhotoThumb || '',
-                tags: document.getElementById('event-tags-hidden').value,
+                tags: document.getElementById('event-tags').value,
                 latitude: parseFloat(document.getElementById('event-latitude').value) || null,
-                longitude: parseFloat(document.getElementById('event-longitude').value) || null,
-                recurring: document.getElementById('event-recurring').value || '',
-                user_id: parseInt(document.getElementById('event-user').value) || 0,
-                weather_data: document.getElementById('weather-display').dataset.weather || ''
+                longitude: parseFloat(document.getElementById('event-longitude').value) || null
             };
             const res = await fetch('/api/events', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders(),
                 body: JSON.stringify(data)
             });
             if (res.ok) {
@@ -1508,7 +1504,7 @@
 
         async function deletePerson(id) {
             if (!confirm('Delete this person? Events linked will be unlinked.')) return;
-            const res = await fetch('/api/persons?id=' + id, { method: 'DELETE' });
+            const res = await fetch('/api/persons?id=' + id, { method: 'DELETE', headers: csrfHeaders() });
             if (res.ok) {
                 if (viewingPersonId === id) clearPersonFilter();
                 await Promise.all([loadPersons(), loadEvents()]);
@@ -1527,7 +1523,7 @@
             };
             const res = await fetch('/api/persons', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders('application/json'),
                 body: JSON.stringify(data)
             });
             if (res.ok) {
@@ -1573,7 +1569,7 @@
             if (!name) { document.getElementById('inline-person-result').innerHTML = '<span class="text-danger">Name is required</span>'; return; }
             const res = await fetch('/api/persons', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders('application/json'),
                 body: JSON.stringify({ id: 0, name: name, color: document.getElementById('inline-person-color').value })
             });
             if (res.ok) {
@@ -1859,7 +1855,7 @@
             };
             const res = await fetch('/api/gotify/config', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders('application/json'),
                 body: JSON.stringify(data)
             });
             const result = await res.json();
@@ -1871,11 +1867,33 @@
         async function testGotify() {
             const el = document.getElementById('gotify-result');
             el.innerHTML = '<div class="alert alert-info">Sending test...</div>';
-            const res = await fetch('/api/gotify/test', { method: 'POST' });
+            await ensureCSRF();
+            const res = await fetch('/api/gotify/test', { method: 'POST', headers: csrfHeaders() });
             const data = await res.json();
             el.innerHTML = res.ok
                 ? '<div class="alert alert-success">Test notification sent!</div>'
                 : '<div class="alert alert-danger">Error: ' + (data.error || '') + '</div>';
+        }
+
+        let csrfToken = '';
+
+        async function ensureCSRF() {
+            if (csrfToken) return csrfToken;
+            try {
+                const res = await fetch('/api/csrf-token');
+                if (res.ok) {
+                    const data = await res.json();
+                    csrfToken = data.token;
+                }
+            } catch(e) {}
+            return csrfToken;
+        }
+
+        function csrfHeaders(contentType) {
+            const h = {};
+            if (csrfToken) h['X-CSRF-Token'] = csrfToken;
+            if (contentType) h['Content-Type'] = contentType;
+            return h;
         }
 
         function logout() {
@@ -1903,7 +1921,7 @@
             };
             const res = await fetch('/api/memories/config', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders('application/json'),
                 body: JSON.stringify(data)
             });
             const result = await res.json();
@@ -1946,7 +1964,8 @@
             const origText = btn.innerHTML;
             btn.disabled = true;
             btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Sending...';
-            const res = await fetch('/api/memories/send', { method: 'POST' });
+            await ensureCSRF();
+            const res = await fetch('/api/memories/send', { method: 'POST', headers: csrfHeaders() });
             const data = await res.json();
             document.getElementById('memories-config-result').innerHTML = res.ok
                 ? '<div class="alert alert-success">' + (data.message || 'Sent!') + '</div>'
@@ -1981,7 +2000,7 @@
             };
             const res = await fetch('/api/email/config', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders('application/json'),
                 body: JSON.stringify(data)
             });
             const result = await res.json();
@@ -1993,7 +2012,8 @@
         async function testEmailConfig() {
             const el = document.getElementById('email-result');
             el.innerHTML = '<div class="alert alert-info">Sending test email...</div>';
-            const res = await fetch('/api/email/test', { method: 'POST' });
+            await ensureCSRF();
+            const res = await fetch('/api/email/test', { method: 'POST', headers: csrfHeaders() });
             const data = await res.json();
             el.innerHTML = res.ok
                 ? '<div class="alert alert-success">Test email sent successfully!</div>'
@@ -2074,7 +2094,7 @@
             };
             const res = await fetch('/api/users', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders('application/json'),
                 body: JSON.stringify(data)
             });
             if (res.ok) {
@@ -2085,7 +2105,8 @@
 
         async function deleteAdminUser(id) {
             if (!confirm('Delete this user? Their events will be unlinked.')) return;
-            const res = await fetch('/api/users?id=' + id, { method: 'DELETE' });
+            await ensureCSRF();
+            const res = await fetch('/api/users?id=' + id, { method: 'DELETE', headers: csrfHeaders() });
             if (res.ok) await loadAdminUsers();
             else alert('Failed to delete user');
         }
@@ -2110,7 +2131,7 @@
             };
             const res = await fetch('/api/ollama/config', {
                 method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
+                headers: csrfHeaders('application/json'),
                 body: JSON.stringify(data)
             });
             document.getElementById('ollama-result').innerHTML = res.ok
@@ -2130,7 +2151,7 @@
             try {
                 const res = await fetch('/api/weather/fetch', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: csrfHeaders('application/json'),
                     body: JSON.stringify({ event_id: id, latitude: parseFloat(lat), longitude: parseFloat(lng), date: date })
                 });
                 const data = await res.json();
@@ -2156,7 +2177,7 @@
             try {
                 const res = await fetch('/api/auto-tag', {
                     method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
+                    headers: csrfHeaders('application/json'),
                     body: JSON.stringify({ title, description: desc, location: loc })
                 });
                 const data = await res.json();
