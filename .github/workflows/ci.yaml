@@ -35,9 +35,6 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      - name: Run Tests
-        run: go test -v ./...
-
       - name: Setup Node.js
         uses: actions/setup-node@v6
         with:
@@ -49,6 +46,9 @@ jobs:
 
       - name: Build TypeScript
         run: npx tsc
+
+      - name: Run Tests
+        run: go test -v ./...
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium

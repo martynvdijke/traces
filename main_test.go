@@ -1138,6 +1138,10 @@ func TestWeatherDataStructure(t *testing.T) {
 }
 
 func TestTypeScriptBuildOutput(t *testing.T) {
+	if _, err := os.Stat("static/js/index.js"); os.IsNotExist(err) {
+		t.Skip("compiled JS not found; run 'npm run build:ts' first")
+	}
+
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
 
