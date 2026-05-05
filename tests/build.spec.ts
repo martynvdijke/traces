@@ -1,6 +1,43 @@
 import { test, expect } from '@playwright/test';
 
+let adminSessionCookie: string;
+
+async function getAdminCookie(request: any): Promise<string> {
+  if (adminSessionCookie) return adminSessionCookie;
+
+  const setupResp = await request.get('/api/check-setup');
+  const { setup } = await setupResp.json();
+
+  const loginData = setup
+    ? { username: 'admin', password: 'admin123' }
+    : { username: 'admin', password: 'admin123', setup: true };
+
+  const loginResp = await request.post('/api/login', { data: loginData });
+  expect(loginResp.ok()).toBeTruthy();
+
+  const cookies = loginResp.headers()['set-cookie'];
+  expect(cookies).toBeTruthy();
+
+  const match = cookies.match(/session=([^;]+)/);
+  expect(match).toBeTruthy();
+  adminSessionCookie = match![1];
+  return adminSessionCookie;
+}
+
+async function setAuthCookie(page: any) {
+  await page.context().addCookies([{
+    name: 'session',
+    value: adminSessionCookie,
+    domain: 'localhost',
+    path: '/',
+  }]);
+}
+
 test.describe('TypeScript Build Output', () => {
+  test.beforeAll(async ({ request }) => {
+    await getAdminCookie(request);
+  });
+
   test('should serve compiled index.js', async ({ request }) => {
     const resp = await request.get('/static/js/index.js');
     expect(resp.ok()).toBeTruthy();
@@ -71,9 +108,11 @@ test.describe('TypeScript Build Output', () => {
     expect(html).toContain('type="module" src="/static/js/index.js"');
   });
 
-  test('should have type="module" on admin page script', async ({ page }) => {
-    await page.goto('/admin.html');
-    const html = await page.content();
+  test('should have type="module" on admin page script', async ({ request }) => {
+    const resp = await request.get('/admin.html', {
+      headers: { Cookie: `session=${adminSessionCookie}` }
+    });
+    const html = await resp.text();
     expect(html).toContain('type="module" src="/static/js/admin.js"');
   });
 
@@ -85,6 +124,10 @@ test.describe('TypeScript Build Output', () => {
 });
 
 test.describe('Module Script Loading - No Errors', () => {
+  test.beforeAll(async ({ request }) => {
+    await getAdminCookie(request);
+  });
+
   test('main page loads without JS errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', err => errors.push(err.message));
@@ -120,6 +163,7 @@ test.describe('Module Script Loading - No Errors', () => {
   test('admin page loads without JS errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', err => errors.push(err.message));
+    await setAuthCookie(page);
     await page.goto('/admin.html');
     await page.waitForTimeout(1000);
     expect(errors).toHaveLength(0);
@@ -127,6 +171,10 @@ test.describe('Module Script Loading - No Errors', () => {
 });
 
 test.describe('Window Global Function Exports', () => {
+  test.beforeAll(async ({ request }) => {
+    await getAdminCookie(request);
+  });
+
   test('index page exports functions on window', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(500);
@@ -155,6 +203,7 @@ test.describe('Window Global Function Exports', () => {
   });
 
   test('admin page exports functions on window', async ({ page }) => {
+    await setAuthCookie(page);
     await page.goto('/admin.html');
     await page.waitForTimeout(500);
     const fns = await page.evaluate(() => ({

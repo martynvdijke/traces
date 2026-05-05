@@ -287,6 +287,8 @@ func main() {
 		}
 	}
 
+	r.GET("/sw.js", serveServiceWorker)
+
 	r.GET("/admin.html", func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
 		if err == nil {
