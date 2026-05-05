@@ -12,6 +12,7 @@ test.describe('TRACES Admin Backend', () => {
   test.describe.configure({ mode: 'serial' });
 
   let sessionCookie: string;
+  let csrfToken: string;
 
   test.beforeAll(async ({ request }) => {
     const setupResp = await request.get('/api/check-setup');
@@ -21,7 +22,6 @@ test.describe('TRACES Admin Backend', () => {
       const setupRes = await request.post('/api/login', {
         data: { username: 'admin', password: 'admin123', setup: true }
       });
-      const setupData = await setupRes.json();
       expect(setupRes.ok()).toBeTruthy();
       const cookies = setupRes.headers()['set-cookie'];
       if (cookies) {
@@ -32,19 +32,27 @@ test.describe('TRACES Admin Backend', () => {
       const loginRes = await request.post('/api/login', {
         data: { username: 'admin', password: 'admin123' }
       });
-      if (loginRes.ok()) {
-        const cookies = loginRes.headers()['set-cookie'];
-        if (cookies) {
-          const match = cookies.match(/session=([^;]+)/);
-          if (match) sessionCookie = match[1];
-        }
+      expect(loginRes.ok()).toBeTruthy();
+      const cookies = loginRes.headers()['set-cookie'];
+      if (cookies) {
+        const match = cookies.match(/session=([^;]+)/);
+        if (match) sessionCookie = match[1];
       }
     }
+
+    expect(sessionCookie).toBeTruthy();
+
+    const csrfResp = await request.get('/api/csrf-token', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    const csrfData = await csrfResp.json();
+    csrfToken = csrfData.token;
+    expect(csrfToken).toBeTruthy();
   });
 
   test('should create a new event via POST /api/events', async ({ request }) => {
     const resp = await request.post('/api/events', {
-      headers: { Cookie: `session=${sessionCookie}` },
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
       data: {
         title: 'E2E Test Event',
         description: 'Created by Playwright test',
@@ -68,7 +76,9 @@ test.describe('TRACES Admin Backend', () => {
   });
 
   test('should return created event in events list', async ({ request }) => {
-    const resp = await request.get('/api/events?year=2026&sort=desc&limit=10');
+    const resp = await request.get('/api/events?year=2026&sort=desc&limit=10', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(Array.isArray(data)).toBeTruthy();
@@ -78,7 +88,9 @@ test.describe('TRACES Admin Backend', () => {
   });
 
   test('should respect limit and sort params on /api/events', async ({ request }) => {
-    const resp = await request.get('/api/events?year=2026&sort=desc&limit=3');
+    const resp = await request.get('/api/events?year=2026&sort=desc&limit=3', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(Array.isArray(data)).toBeTruthy();
@@ -87,7 +99,7 @@ test.describe('TRACES Admin Backend', () => {
 
   test('should create a person via POST /api/persons', async ({ request }) => {
     const resp = await request.post('/api/persons', {
-      headers: { Cookie: `session=${sessionCookie}` },
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
       data: {
         name: 'E2E Test Person',
         bio: 'A test person created by Playwright',
@@ -101,7 +113,9 @@ test.describe('TRACES Admin Backend', () => {
   });
 
   test('should return persons list', async ({ request }) => {
-    const resp = await request.get('/api/persons');
+    const resp = await request.get('/api/persons', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(Array.isArray(data)).toBeTruthy();
@@ -117,24 +131,28 @@ test.describe('TRACES Admin Backend', () => {
   });
 
   test('should delete created test event', async ({ request }) => {
-    const listResp = await request.get('/api/events?year=2026&sort=desc&limit=10');
+    const listResp = await request.get('/api/events?year=2026&sort=desc&limit=10', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
     const events = await listResp.json();
     const testEvent = events.find((e: any) => e.title === 'E2E Test Event');
     if (testEvent) {
       const resp = await request.delete(`/api/events?id=${testEvent.id}`, {
-        headers: { Cookie: `session=${sessionCookie}` }
+        headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken }
       });
       expect(resp.ok()).toBeTruthy();
     }
   });
 
   test('should delete created test person', async ({ request }) => {
-    const listResp = await request.get('/api/persons');
+    const listResp = await request.get('/api/persons', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
     const persons = await listResp.json();
     const testPerson = persons.find((p: any) => p.name === 'E2E Test Person');
     if (testPerson) {
       const resp = await request.delete(`/api/persons?id=${testPerson.id}`, {
-        headers: { Cookie: `session=${sessionCookie}` }
+        headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken }
       });
       expect(resp.ok()).toBeTruthy();
     }

@@ -76,6 +76,35 @@ test.describe('TRACES Timeline', () => {
 });
 
 test.describe('TRACES API', () => {
+  let sessionCookie: string;
+
+  test.beforeAll(async ({ request }) => {
+    const setupResp = await request.get('/api/check-setup');
+    const { setup } = await setupResp.json();
+
+    if (!setup) {
+      const setupRes = await request.post('/api/login', {
+        data: { username: 'admin', password: 'admin123', setup: true }
+      });
+      const cookies = setupRes.headers()['set-cookie'];
+      if (cookies) {
+        const match = cookies.match(/session=([^;]+)/);
+        if (match) sessionCookie = match[1];
+      }
+    } else {
+      const loginRes = await request.post('/api/login', {
+        data: { username: 'admin', password: 'admin123' }
+      });
+      if (loginRes.ok()) {
+        const cookies = loginRes.headers()['set-cookie'];
+        if (cookies) {
+          const match = cookies.match(/session=([^;]+)/);
+          if (match) sessionCookie = match[1];
+        }
+      }
+    }
+  });
+
   test('should return version', async ({ request }) => {
     const resp = await request.get('/api/version');
     const data = await resp.json();
@@ -84,14 +113,18 @@ test.describe('TRACES API', () => {
   });
 
   test('should return events', async ({ request }) => {
-    const resp = await request.get('/api/events?year=2026');
+    const resp = await request.get('/api/events?year=2026', {
+      headers: sessionCookie ? { Cookie: `session=${sessionCookie}` } : {}
+    });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(Array.isArray(data)).toBeTruthy();
   });
 
   test('should return contributions', async ({ request }) => {
-    const resp = await request.get('/api/contributions?year=2026');
+    const resp = await request.get('/api/contributions?year=2026', {
+      headers: sessionCookie ? { Cookie: `session=${sessionCookie}` } : {}
+    });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(data).toBeDefined();
@@ -105,12 +138,16 @@ test.describe('TRACES API', () => {
   });
 
   test('should return tags', async ({ request }) => {
-    const resp = await request.get('/api/tags?year=2026');
+    const resp = await request.get('/api/tags?year=2026', {
+      headers: sessionCookie ? { Cookie: `session=${sessionCookie}` } : {}
+    });
     expect(resp.ok()).toBeTruthy();
   });
 
   test('should return map data', async ({ request }) => {
-    const resp = await request.get('/api/map');
+    const resp = await request.get('/api/map', {
+      headers: sessionCookie ? { Cookie: `session=${sessionCookie}` } : {}
+    });
     expect(resp.ok()).toBeTruthy();
     const data = await resp.json();
     expect(data.type).toBe('FeatureCollection');
@@ -134,10 +171,10 @@ test.describe('TRACES JavaScript Loading', () => {
   test('should load without JS errors', async ({ page }) => {
     const errors: string[] = [];
     page.on('pageerror', err => errors.push(err.message));
-    
+
     await page.goto('/');
     await page.waitForTimeout(1000);
-    
+
     expect(errors).toHaveLength(0);
   });
 

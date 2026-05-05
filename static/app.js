@@ -13,9 +13,6 @@ const monthNames = [
     'January', 'February', 'March', 'April', 'May', 'June',
     'July', 'August', 'September', 'October', 'November', 'December'
 ];
-    'January', 'February', 'March', 'April', 'May', 'June',
-    'July', 'August', 'September', 'October', 'November', 'December'
-];
 const themeToggle = document.getElementById('theme-toggle');
 const themeIcon = themeToggle?.querySelector('i');
 function setTheme(theme) {
@@ -68,7 +65,14 @@ function filterMonth(month) {
 async function loadContributions() {
     try {
         const res = await fetch('/api/contributions?year=' + currentYear);
-        if (!res.ok) {
+        if (res.status === 401 && events.length > 0) {
+            contributions = {};
+            events.forEach(e => {
+                if (e.date && e.date.startsWith(String(currentYear))) {
+                    contributions[e.date] = (contributions[e.date] || 0) + 1;
+                }
+            });
+        } else if (!res.ok) {
             contributions = {};
         }
         else {
@@ -96,16 +100,7 @@ async function loadUsers() {
         users = [];
     }
 }
-        else {
-            contributions = await res.json();
-        }
-        renderContributionGraph();
-        updateStats();
-    }
-    catch (err) {
-        console.error('Failed to load contributions:', err);
-    }
-}
+
 function renderContributionGraph() {
     const graph = document.getElementById('contribution-graph');
     if (!graph)
@@ -196,17 +191,7 @@ async function loadEvents() {
         console.error('Failed to load events:', err);
     }
 }
-async function loadUsers() {
-    try {
-        const res = await fetch('/api/users');
-        users = await res.json();
-        if (!Array.isArray(users))
-            users = [];
-    }
-    catch (e) {
-        users = [];
-    }
-}
+
 async function loadData() {
     await Promise.all([loadEvents(), loadContributions(), loadUsers()]);
     populateYearButtons();
@@ -494,12 +479,6 @@ async function loadMoreGallery() {
         }
         if (!Array.isArray(moreEvents))
             moreEvents = [];
-        }
-        else {
-            moreEvents = await res.json();
-            if (!Array.isArray(moreEvents))
-                moreEvents = [];
-        }
         const container = document.getElementById('gallery-container');
         const mediaEvents = moreEvents.filter(e => e.media_url);
         if (mediaEvents.length === 0) {

@@ -522,6 +522,7 @@ func handleLogin(c *gin.Context) {
 		}
 		sessionMu.Lock()
 		sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+		csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
 		sessionMu.Unlock()
 		c.SetCookie("session", sessionID, 86400, "/", "", true, true)
 		http.SetCookie(c.Writer, &http.Cookie{
@@ -567,6 +568,7 @@ func handleLogin(c *gin.Context) {
 	}
 	sessionMu.Lock()
 	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+	csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
 	sessionMu.Unlock()
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "session",
@@ -2834,7 +2836,7 @@ func seedEvents() {
 	}
 
 	for _, e := range events {
-		db.Exec("INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		db.Exec("INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, latitude, longitude, is_public) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Latitude, e.Longitude)
 
 		parts := strings.Split(e.MediaURL, "/")
