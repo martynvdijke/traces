@@ -1,3 +1,10 @@
+## [1.8.1](https://github.com/martynvdijke/traces/compare/v1.8.0...v1.8.1) (2026-05-05)
+
+
+### Bug Fixes
+
+* migrate legacy SHA256 passwords to bcrypt on login ([a8d3965](https://github.com/martynvdijke/traces/commit/a8d39654bc0b081d6922292789f874f91e490eee))
+
 # [1.8.0](https://github.com/martynvdijke/traces/compare/v1.7.1...v1.8.0) (2026-05-05)
 
 
