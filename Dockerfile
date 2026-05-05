@@ -1,3 +1,11 @@
+FROM node:24-alpine AS ts-builder
+
+WORKDIR /app
+COPY package.json package-lock.json tsconfig.json ./
+RUN npm ci
+COPY ts ./ts
+RUN npx tsc
+
 FROM golang:1.26.2-alpine AS builder
 
 RUN apk add --no-cache gcc musl-dev sqlite-dev
@@ -20,6 +28,7 @@ ENV DOCKER=true
 
 COPY --from=builder /app/traces-server .
 COPY --from=builder /app/static ./static
+COPY --from=ts-builder /app/static/js ./static/js
 
 RUN mkdir -p /db && chmod 777 /db
 RUN mkdir -p /app/media && chmod 777 /app/media
