@@ -132,18 +132,18 @@ type OllamaConfig struct {
 }
 
 type WeatherData struct {
-	Temperature  float64 `json:"temperature"`
-	Condition    string  `json:"condition"`
-	Icon         string  `json:"icon"`
-	Humidity     float64 `json:"humidity"`
-	WindSpeed    float64 `json:"wind_speed"`
-	FetchedAt    string  `json:"fetched_at"`
+	Temperature float64 `json:"temperature"`
+	Condition   string  `json:"condition"`
+	Icon        string  `json:"icon"`
+	Humidity    float64 `json:"humidity"`
+	WindSpeed   float64 `json:"wind_speed"`
+	FetchedAt   string  `json:"fetched_at"`
 }
 
 type CalendarDay struct {
-	Date   string         `json:"date"`
+	Date   string          `json:"date"`
 	Events []TimelineEvent `json:"events"`
-	Count  int            `json:"count"`
+	Count  int             `json:"count"`
 }
 
 const currentSchemaVersion = 7
@@ -155,17 +155,18 @@ var (
 )
 
 var (
-	db           *sql.DB
-	sessionStore = make(map[string]int64)
-	csrfTokens   = make(map[string]string)
-	sessionMu    sync.RWMutex
-	basePath     = "/app"
-	dbPath       = "/db/traces.db"
-	mediaPath    = "/app/media"
-	gotifyURL    = ""
-	gotifyToken  = ""
-	umamiURL     = ""
-	umamiSiteID  = ""
+	db            *sql.DB
+	sessionStore  = make(map[string]int64)
+	csrfTokens    = make(map[string]string)
+	sessionMu     sync.RWMutex
+	basePath      = "/app"
+	dbPath        = "/db/traces.db"
+	mediaPath     = "/app/media"
+	backupPath    = "/db/backups"
+	gotifyURL     = ""
+	gotifyToken   = ""
+	umamiURL      = ""
+	umamiSiteID   = ""
 	currentUserID int
 )
 
@@ -174,6 +175,7 @@ func main() {
 		basePath = "."
 		dbPath = "./traces.db"
 		mediaPath = filepath.Join(basePath, "media")
+		backupPath = filepath.Join(basePath, "backups")
 	}
 
 	gotifyURL = os.Getenv("GOTIFY_URL")
@@ -187,6 +189,9 @@ func main() {
 
 	if err := os.MkdirAll(mediaPath, 0755); err != nil {
 		log.Printf("Warning: could not create media directory: %v", err)
+	}
+	if err := os.MkdirAll(backupPath, 0755); err != nil {
+		log.Printf("Warning: could not create backup directory: %v", err)
 	}
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		log.Printf("Warning: could not create database directory: %v", err)
@@ -276,6 +281,8 @@ func main() {
 			auth.POST("/events/recurring/generate", generateRecurringEvents)
 			auth.GET("/ollama/config", getOllamaConfig)
 			auth.POST("/ollama/config", saveOllamaConfig)
+			auth.POST("/backup", handleBackup)
+			auth.GET("/backups", handleListBackups)
 			auth.GET("/csrf-token", getCSRFToken)
 		}
 	}
@@ -377,6 +384,26 @@ func main() {
 				}
 			}
 			sessionMu.Unlock()
+		}
+	}()
+
+	// Weekly backup goroutine
+	go func() {
+		for {
+			now := time.Now()
+			next := now.Truncate(24 * time.Hour).Add(24 * time.Hour)
+			weekday := next.Weekday()
+			if weekday != time.Sunday {
+				next = next.Add(time.Duration((7-weekday)%7) * 24 * time.Hour)
+			}
+			next = next.Add(3 * time.Hour)
+			time.Sleep(time.Until(next))
+			ticker := time.NewTicker(7 * 24 * time.Hour)
+			defer ticker.Stop()
+			for {
+				backupDatabase()
+				<-ticker.C
+			}
 		}
 	}()
 
@@ -2114,12 +2141,12 @@ func fetchWeather(c *gin.Context) {
 
 	var weatherResp struct {
 		Daily struct {
-			Time             []string  `json:"time"`
-			TemperatureMax   []float64 `json:"temperature_2m_max"`
-			TemperatureMin   []float64 `json:"temperature_2m_min"`
-			WeatherCode      []int     `json:"weathercode"`
-			WindSpeedMax     []float64 `json:"wind_speed_10m_max"`
-			Humidity         []float64 `json:"relative_humidity_2m"`
+			Time           []string  `json:"time"`
+			TemperatureMax []float64 `json:"temperature_2m_max"`
+			TemperatureMin []float64 `json:"temperature_2m_min"`
+			WeatherCode    []int     `json:"weathercode"`
+			WindSpeedMax   []float64 `json:"wind_speed_10m_max"`
+			Humidity       []float64 `json:"relative_humidity_2m"`
 		} `json:"daily"`
 	}
 
@@ -2531,6 +2558,67 @@ func saveOllamaConfig(c *gin.Context) {
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func backupDatabase() {
+	name := fmt.Sprintf("traces-backup-%s.db", time.Now().Format("2006-01-02-150405"))
+	dst := filepath.Join(backupPath, name)
+	src, err := os.Open(dbPath)
+	if err != nil {
+		log.Printf("[Backup] Failed to open source database: %v", err)
+		return
+	}
+	defer src.Close()
+	out, err := os.Create(dst)
+	if err != nil {
+		log.Printf("[Backup] Failed to create backup file: %v", err)
+		return
+	}
+	defer out.Close()
+	_, err = io.Copy(out, src)
+	if err != nil {
+		log.Printf("[Backup] Failed to copy database: %v", err)
+		os.Remove(dst)
+		return
+	}
+	log.Printf("[Backup] Database backed up to %s", dst)
+}
+
+func handleBackup(c *gin.Context) {
+	backupDatabase()
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+type BackupInfo struct {
+	Name string `json:"name"`
+	Size int64  `json:"size"`
+	Date string `json:"date"`
+}
+
+func handleListBackups(c *gin.Context) {
+	entries, err := os.ReadDir(backupPath)
+	if err != nil {
+		c.JSON(http.StatusOK, []BackupInfo{})
+		return
+	}
+	var backups []BackupInfo
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "traces-backup-") {
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			backups = append(backups, BackupInfo{
+				Name: e.Name(),
+				Size: info.Size(),
+				Date: info.ModTime().Format(time.RFC3339),
+			})
+		}
+	}
+	if backups == nil {
+		backups = []BackupInfo{}
+	}
+	c.JSON(http.StatusOK, backups)
 }
 
 func serveManifest(c *gin.Context) {
