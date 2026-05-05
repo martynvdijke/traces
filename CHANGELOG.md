@@ -1,3 +1,5 @@
+## [1.8.5](https://github.com/martynvdijke/traces/compare/v1.8.4...v1.8.5) (2026-05-05)
+
 ## [1.8.4](https://github.com/martynvdijke/traces/compare/v1.8.3...v1.8.4) (2026-05-05)
 
 
