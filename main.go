@@ -457,7 +457,18 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
+	// Check if the stored password is a legacy SHA256 hash (64-char hex string)
+	if len(user.Password) == 64 && isHexString(user.Password) {
+		if hashPassword(input.Password) != user.Password {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
+		// Migrate to bcrypt on successful login
+		bcryptHash, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
+		if err == nil {
+			db.Exec("UPDATE admin_users SET password = ? WHERE id = ?", string(bcryptHash), user.ID)
+		}
+	} else if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
@@ -2626,6 +2637,23 @@ func generateSessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+func hashPassword(password string) string {
+	h := sha256.Sum256([]byte(password))
+	return fmt.Sprintf("%x", h)
+}
+
+func isHexString(s string) bool {
+	if len(s) == 0 {
+		return false
+	}
+	for _, c := range s {
+		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f') || (c >= 'A' && c <= 'F')) {
+			return false
+		}
+	}
+	return true
 }
 
 func sendGotifyNotification(title, message string) {
