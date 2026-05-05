@@ -35,9 +35,14 @@ test.describe('TRACES Timeline', () => {
     await expect(page.locator('#timeline-tab')).toContainText('Timeline');
   });
 
-  test('should have version in footer', async ({ page }) => {
+  test('should show loaded version in footer', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('#version-display')).toBeVisible();
+    const versionEl = page.locator('#version-display');
+    await expect(versionEl).toBeVisible();
+    // Wait for version to actually load (not the placeholder text)
+    await expect(versionEl).not.toHaveText('Version loading...', { timeout: 10000 });
+    const text = await versionEl.textContent();
+    expect(text).toMatch(/^v\d+\.\d+\.\d+/);
   });
 
   test('should toggle theme', async ({ page }) => {
@@ -107,9 +112,10 @@ test.describe('TRACES API', () => {
 
   test('should return version', async ({ request }) => {
     const resp = await request.get('/api/version');
-    const data = await resp.json();
     expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
     expect(data.version).toBeDefined();
+    expect(data.version).toMatch(/^\d+\.\d+\.\d+/);
   });
 
   test('should return events', async ({ request }) => {
