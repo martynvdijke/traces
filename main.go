@@ -1848,7 +1848,7 @@ func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
 		var pID sql.NullInt64
 		var pName, pAvatar, pBio, pBirth, pColor, pCreated sql.NullString
 
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt, &personID, &lat, &lng,
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt, &personID, &lat, &lng, &e.Recurring, &e.WeatherData, &e.UserID,
 			&pID, &pName, &pAvatar, &pBio, &pBirth, &pColor, &pCreated)
 		if err != nil {
 			continue
@@ -2607,6 +2607,16 @@ func seedEvents() {
 	for _, e := range events {
 		db.Exec("INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, latitude, longitude) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Latitude, e.Longitude)
+
+		parts := strings.Split(e.MediaURL, "/")
+		if len(parts) > 2 {
+			filePath := filepath.Join(basePath, parts[1], parts[2])
+			if _, err := os.Stat(filePath); os.IsNotExist(err) {
+				if f, err := os.Create(filePath); err == nil {
+					f.Close()
+				}
+			}
+		}
 	}
 }
 

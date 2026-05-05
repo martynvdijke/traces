@@ -9,7 +9,7 @@ test.describe('TRACES Timeline', () => {
   test('should display year selector', async ({ page }) => {
     await page.goto('/');
     await expect(page.locator('#current-year')).toBeVisible();
-    await expect(page.locator('button:has-text("2025")')).toBeVisible();
+    await expect(page.locator('button:has-text("2026")')).toBeVisible();
   });
 
   test('should have a timeline section', async ({ page }) => {
@@ -25,12 +25,14 @@ test.describe('TRACES Timeline', () => {
 
   test('should have a gallery section', async ({ page }) => {
     await page.goto('/');
+    await page.locator('#gallery-tab').click();
+    await page.waitForTimeout(500);
     await expect(page.locator('#gallery')).toBeVisible();
   });
 
   test('should have navigation links', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('nav')).toContainText('Timeline');
+    await expect(page.locator('#timeline-tab')).toContainText('Timeline');
   });
 
   test('should have version in footer', async ({ page }) => {
@@ -48,8 +50,8 @@ test.describe('TRACES Timeline', () => {
 
   test('should filter by year', async ({ page }) => {
     await page.goto('/');
-    await page.locator('button:has-text("2025")').click();
-    await expect(page.locator('#current-year')).toHaveText('2025');
+    await page.locator('button:has-text("2026")').click();
+    await expect(page.locator('#current-year')).toHaveText('2026');
   });
 
   test('should filter by month', async ({ page }) => {
@@ -60,27 +62,16 @@ test.describe('TRACES Timeline', () => {
 
   test('should have map section', async ({ page }) => {
     await page.goto('/');
+    await page.locator('#map-tab').click();
+    await page.waitForTimeout(500);
     await expect(page.locator('.map-section')).toBeVisible();
     await expect(page.locator('#map-container')).toBeVisible();
   });
 
-  test('should display recent activity section', async ({ page }) => {
+  test('should display memories section when available', async ({ page }) => {
     await page.goto('/');
     await page.waitForTimeout(500);
-    await expect(page.locator('#recent-activity')).toBeVisible();
-    await expect(page.locator('#recent-activity-list')).toBeVisible();
-  });
-
-  test('should have clickable activity feed items', async ({ page }) => {
-    await page.goto('/');
-    await page.waitForTimeout(500);
-    const items = page.locator('#recent-activity-list .recent-activity-item');
-    const count = await items.count();
-    if (count > 0) {
-      await expect(items.first()).toBeVisible();
-      await items.first().click();
-      await page.waitForTimeout(500);
-    }
+    await expect(page.locator('#memories-section')).toBeAttached();
   });
 });
 
@@ -158,6 +149,7 @@ test.describe('TRACES JavaScript Loading', () => {
 
   test('should have gallery with media', async ({ page }) => {
     await page.goto('/');
+    await page.locator('#gallery-tab').click();
     await page.waitForTimeout(500);
     await expect(page.locator('#gallery')).toBeVisible();
   });

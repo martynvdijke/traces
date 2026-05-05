@@ -10,12 +10,14 @@ test.describe('TRACES Search', () => {
 test.describe('TRACES Map', () => {
   test('should load map container', async ({ page }) => {
     await page.goto('/');
+    await page.locator('#map-tab').click();
     await page.waitForTimeout(500);
     await expect(page.locator('#map-container')).toBeVisible();
   });
 
   test('should have map container or placeholder visible', async ({ page }) => {
     await page.goto('/');
+    await page.locator('#map-tab').click();
     await page.waitForTimeout(1000);
     const mapContainer = page.locator('#map-container');
     await expect(mapContainer).toBeVisible();
