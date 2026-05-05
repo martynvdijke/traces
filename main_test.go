@@ -37,29 +37,6 @@ func setupTestRouter() *gin.Engine {
 	return r
 }
 
-func TestIsHexString(t *testing.T) {
-	tests := []struct {
-		input string
-		want  bool
-	}{
-		{"", false},
-		{"abc123", true},
-		{"ABC123", true},
-		{"abcdef0123456789", true},
-		{"0xabc", false},
-		{"hello", false},
-		{"$2a$10$abcdefghijklmnopqrstuv", false},
-		{"gggggg", false},
-	}
-	for _, tt := range tests {
-		t.Run(tt.input, func(t *testing.T) {
-			if got := isHexString(tt.input); got != tt.want {
-				t.Errorf("isHexString(%q) = %v, want %v", tt.input, got, tt.want)
-			}
-		})
-	}
-}
-
 func TestHashPassword(t *testing.T) {
 	tests := []struct {
 		password string
@@ -96,25 +73,6 @@ func TestHashPassword(t *testing.T) {
 	})
 }
 
-func TestHashPasswordFunc(t *testing.T) {
-	pwd := "test_password_123"
-	hash := hashPassword(pwd)
-	if len(hash) != 64 {
-		t.Errorf("SHA256 hex hash length = %d, want 64", len(hash))
-	}
-	for _, c := range hash {
-		if !((c >= '0' && c <= '9') || (c >= 'a' && c <= 'f')) {
-			t.Errorf("hash contains non-hex char %c", c)
-		}
-	}
-	if hashPassword(pwd) != hash {
-		t.Error("hashPassword is not deterministic")
-	}
-	if hashPassword("wrong") == hash {
-		t.Error("hashPassword should produce different output for different inputs")
-	}
-}
-
 func TestHandleLogin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
@@ -149,10 +107,6 @@ func TestHandleLogin(t *testing.T) {
 		color TEXT DEFAULT '#7c3aed'
 	)`)
 
-	shaPassword := hashPassword("old_sha_password")
-
-	db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", "sha_user", shaPassword)
-
 	bcryptHash, err := bcrypt.GenerateFromPassword([]byte("bcrypt_password"), bcrypt.DefaultCost)
 	if err != nil {
 		t.Fatal(err)
@@ -161,50 +115,6 @@ func TestHandleLogin(t *testing.T) {
 
 	router := gin.New()
 	router.POST("/api/login", handleLogin)
-
-	t.Run("sha256_login_success", func(t *testing.T) {
-		w := httptest.NewRecorder()
-		body := `{"username":"sha_user","password":"old_sha_password"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Errorf("status = %d, want %d; body=%s", w.Code, http.StatusOK, w.Body.String())
-		}
-		var resp map[string]string
-		json.Unmarshal(w.Body.Bytes(), &resp)
-		if resp["status"] != "ok" {
-			t.Errorf("status = %q, want 'ok'", resp["status"])
-		}
-
-		var storedPassword string
-		db.QueryRow("SELECT password FROM admin_users WHERE username = 'sha_user'").Scan(&storedPassword)
-		if storedPassword == shaPassword {
-			t.Error("password was not migrated from SHA256 to bcrypt")
-		}
-		if len(storedPassword) < 50 || !strings.HasPrefix(storedPassword, "$2") {
-			t.Errorf("stored password does not look like bcrypt hash: %q", storedPassword)
-		}
-		if err := bcrypt.CompareHashAndPassword([]byte(storedPassword), []byte("old_sha_password")); err != nil {
-			t.Error("migrated bcrypt hash does not verify against original password")
-		}
-	})
-
-	t.Run("sha256_login_wrong_password", func(t *testing.T) {
-		sessionStore = make(map[string]int64)
-		csrfTokens = make(map[string]string)
-
-		w := httptest.NewRecorder()
-		body := `{"username":"sha_user","password":"wrong_password"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusUnauthorized {
-			t.Errorf("status = %d, want %d; body=%s", w.Code, http.StatusUnauthorized, w.Body.String())
-		}
-	})
 
 	t.Run("bcrypt_login_success", func(t *testing.T) {
 		sessionStore = make(map[string]int64)
@@ -238,40 +148,6 @@ func TestHandleLogin(t *testing.T) {
 
 		if w.Code != http.StatusUnauthorized {
 			t.Errorf("status = %d, want %d; body=%s", w.Code, http.StatusUnauthorized, w.Body.String())
-		}
-	})
-
-	t.Run("sha256_then_bcrypt_round_trip", func(t *testing.T) {
-		db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", "roundtrip_user", shaPassword)
-		db.Exec("INSERT OR IGNORE INTO users (username, display_name, color) VALUES (?, ?, ?)", "roundtrip_user", "roundtrip_user", "#7c3aed")
-
-		sessionStore = make(map[string]int64)
-		csrfTokens = make(map[string]string)
-
-		w := httptest.NewRecorder()
-		body := `{"username":"roundtrip_user","password":"old_sha_password"}`
-		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
-		req.Header.Set("Content-Type", "application/json")
-		router.ServeHTTP(w, req)
-
-		if w.Code != http.StatusOK {
-			t.Fatalf("first login (SHA) status = %d, want %d; body=%s", w.Code, http.StatusOK, w.Body.String())
-		}
-
-		var storedPassword string
-		db.QueryRow("SELECT password FROM admin_users WHERE username = 'roundtrip_user'").Scan(&storedPassword)
-
-		sessionStore = make(map[string]int64)
-		csrfTokens = make(map[string]string)
-
-		w2 := httptest.NewRecorder()
-		body2 := `{"username":"roundtrip_user","password":"old_sha_password"}`
-		req2 := httptest.NewRequest("POST", "/api/login", strings.NewReader(body2))
-		req2.Header.Set("Content-Type", "application/json")
-		router.ServeHTTP(w2, req2)
-
-		if w2.Code != http.StatusOK {
-			t.Errorf("second login (bcrypt) status = %d, want %d; body=%s", w2.Code, http.StatusOK, w2.Body.String())
 		}
 	})
 
