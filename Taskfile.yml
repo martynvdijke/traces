@@ -81,6 +81,32 @@ tasks:
       - rm -f traces-server
       - rm -f traces.db
 
+  prepush:
+    desc: Run all checks required before pushing (lint, build, test)
+    cmds:
+      - task: tidy
+      - task: lint
+      - task: build
+      - task: test
+
+  install-hooks:
+    desc: Install git pre-push hook that runs prepush checks
+    cmds:
+      - |
+        mkdir -p .git/hooks
+        cat > .git/hooks/pre-push << 'HOOK'
+        #!/bin/sh
+        echo "==> Running pre-push checks..."
+        task prepush 2>&1
+        if [ $? -ne 0 ]; then
+          echo "==> Pre-push checks FAILED. Fix errors before pushing."
+          exit 1
+        fi
+        echo "==> Pre-push checks PASSED."
+        HOOK
+        chmod +x .git/hooks/pre-push
+        echo "Pre-push hook installed at .git/hooks/pre-push"
+
   all:
     desc: Run build, test, and lint
     cmds:
