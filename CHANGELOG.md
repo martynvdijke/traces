@@ -1,3 +1,10 @@
+## [1.8.7](https://github.com/martynvdijke/traces/compare/v1.8.6...v1.8.7) (2026-05-05)
+
+
+### Bug Fixes
+
+* event creation broken by missing Content-Type and null map refs ([9073025](https://github.com/martynvdijke/traces/commit/9073025dea1dcc09b650002ba3eb1ab6b6a70617))
+
 ## [1.8.6](https://github.com/martynvdijke/traces/compare/v1.8.5...v1.8.6) (2026-05-05)
 
 
