@@ -1,3 +1,10 @@
+## [1.8.3](https://github.com/martynvdijke/traces/compare/v1.8.2...v1.8.3) (2026-05-05)
+
+
+### Bug Fixes
+
+* serve sw.js at root and add auth to admin page Playwright tests ([2e8731e](https://github.com/martynvdijke/traces/commit/2e8731e377f4d2d11f0e4faf6823ad02aa3da665))
+
 ## [1.8.2](https://github.com/martynvdijke/traces/compare/v1.8.1...v1.8.2) (2026-05-05)
 
 
