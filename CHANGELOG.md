@@ -1,3 +1,10 @@
+## [1.8.6](https://github.com/martynvdijke/traces/compare/v1.8.5...v1.8.6) (2026-05-05)
+
+
+### Bug Fixes
+
+* compile TypeScript in Docker build ([2a0270d](https://github.com/martynvdijke/traces/commit/2a0270d52edf46d76d14aad0de31356672f56419))
+
 ## [1.8.5](https://github.com/martynvdijke/traces/compare/v1.8.4...v1.8.5) (2026-05-05)
 
 ## [1.8.4](https://github.com/martynvdijke/traces/compare/v1.8.3...v1.8.4) (2026-05-05)
