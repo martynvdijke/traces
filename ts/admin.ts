@@ -198,6 +198,7 @@ function initLocationMap(): void {
 function setMapMarker(lat: number, lng: number): void {
   (document.getElementById('event-latitude') as HTMLInputElement).value = lat.toFixed(6);
   (document.getElementById('event-longitude') as HTMLInputElement).value = lng.toFixed(6);
+  if (!locationMap) return;
   if (locationMarker) locationMap.removeLayer(locationMarker);
   locationMarker = L.marker([lat, lng]).addTo(locationMap);
   locationMap.setView([lat, lng], 13);
@@ -319,7 +320,7 @@ function clearPersonFilter(): void {
 }
 
 function openEventModal(event?: any): void {
-  document.getElementById('event-form')!.querySelector('form')!.reset();
+  (document.getElementById('event-form') as HTMLFormElement).reset();
   (document.getElementById('event-id') as HTMLInputElement).value = '0';
   document.getElementById('eventModalLabel')!.textContent = 'Add Event';
   selectedTags = [];
@@ -363,12 +364,12 @@ function openEventModal(event?: any): void {
     if (event.latitude && event.longitude) setMapMarker(event.latitude, event.longitude);
     else { if (locationMarker) locationMap.removeLayer(locationMarker); locationMarker = null; locationMap.setView([40.7128, -74.0060], 5); }
   } else {
-    if (locationMarker) locationMap.removeLayer(locationMarker);
+    if (locationMarker && locationMap) locationMap.removeLayer(locationMarker);
     locationMarker = null;
-    locationMap.setView([40.7128, -74.0060], 5);
+    if (locationMap) locationMap.setView([40.7128, -74.0060], 5);
   }
   eventModal.show();
-  setTimeout(() => locationMap.invalidateSize(), 200);
+  setTimeout(() => { if (locationMap) locationMap.invalidateSize(); }, 200);
 }
 
 function editEvent(id: number): void {
@@ -405,7 +406,7 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
   };
   const res = await fetch('/api/events', {
     method: 'POST',
-    headers: csrfHeaders(),
+    headers: csrfHeaders('application/json'),
     body: JSON.stringify(data)
   });
   if (res.ok) {
