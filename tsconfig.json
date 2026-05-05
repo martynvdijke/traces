@@ -1,16 +1,13 @@
 {
-  "compilerOptions": {
-    "target": "ES2020",
-    "module": "ES2020",
-    "strict": true,
-    "esModuleInterop": true,
-    "skipLibCheck": true,
-    "forceConsistentCasingInFileNames": true,
-    "outDir": "./static",
-    "rootDir": "./static",
-    "declaration": false,
-    "moduleResolution": "bundler"
-  },
-  "include": ["static/app.ts"],
-  "exclude": ["node_modules"]
+    "compilerOptions": {
+        "target": "ES2020",
+        "module": "ES2020",
+        "outDir": "./static/js",
+        "rootDir": "./ts",
+        "strict": true,
+        "esModuleInterop": true,
+        "skipLibCheck": true,
+        "sourceMap": true
+    },
+    "include": ["ts/**/*.ts"]
 }

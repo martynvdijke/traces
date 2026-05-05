@@ -2641,7 +2641,7 @@ func serveManifest(c *gin.Context) {
 func serveServiceWorker(c *gin.Context) {
 	c.Header("Content-Type", "application/javascript")
 	c.String(http.StatusOK, `const CACHE = 'traces-v1';
-self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/','/static/style.css','/static/app.js']))); self.skipWaiting(); });
+self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/','/static/style.css','/static/js/index.js']))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(clients.claim()); });
 self.addEventListener('fetch', e => {
 	e.respondWith(

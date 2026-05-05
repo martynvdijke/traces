@@ -39,6 +39,8 @@ tasks:
 
   test-e2e:
     desc: Run Playwright e2e tests
+    deps:
+      - build-ts
     cmds:
       - npx playwright test
 

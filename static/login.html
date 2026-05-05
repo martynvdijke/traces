@@ -77,34 +77,6 @@
         </form>
     </div>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
-    <script>
-        document.getElementById('login-form').addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const formData = new FormData(e.target);
-            try {
-                const res = await fetch('/api/login', {
-                    method: 'POST',
-                    headers: {'Content-Type': 'application/json'},
-                    body: JSON.stringify({
-                        username: formData.get('username'),
-                        password: formData.get('password')
-                    })
-                });
-                if (res.ok) {
-                    window.location.href = '/admin.html';
-                } else {
-                    const data = await res.json();
-                    alert(data.error || 'Invalid credentials');
-                }
-            } catch (err) {
-                alert('Login failed: ' + err.message);
-            }
-        });
-    </script>
-    <script>
-        fetch('/api/config').then(function(r){return r.json();}).then(function(cfg){
-            if(cfg.umami_url&&cfg.umami_site){var s=document.createElement('script');s.async=true;s.defer=true;s.src=cfg.umami_url+'/script.js';s.setAttribute('data-website-id',cfg.umami_site);document.head.appendChild(s);}
-        }).catch(function(){});
-    </script>
+    <script type="module" src="/static/js/login.js"></script>
 </body>
 </html>

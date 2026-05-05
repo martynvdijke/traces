@@ -5,7 +5,9 @@
   "main": "index.js",
   "scripts": {
     "test": "go test ./...",
-    "test:e2e": "playwright test"
+    "test:e2e": "playwright test",
+    "build:ts": "tsc",
+    "typecheck": "tsc --noEmit"
   },
   "repository": {
     "type": "git",

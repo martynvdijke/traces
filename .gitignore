@@ -40,3 +40,6 @@ nodemodules/
 node_modules/
 playwright-report/
 test-results/
+
+# Compiled TypeScript output
+static/js/
