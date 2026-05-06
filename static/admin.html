@@ -516,6 +516,7 @@
                 <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button"><i class="fa-solid fa-upload me-2"></i>Upload</button></li>
                 <li class="nav-item"><button class="nav-link" id="gotify-tab" data-bs-toggle="tab" data-bs-target="#gotify-pane" type="button"><i class="fa-solid fa-bell me-2"></i>Notifications</button></li>
                 <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button"><i class="fa-solid fa-clock-rotate-left me-2"></i>Memories</button></li>
+                <li class="nav-item"><button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags-pane" type="button"><i class="fa-solid fa-tags me-2"></i>Tags</button></li>
                 <li class="nav-item"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button"><i class="fa-solid fa-people-group me-2"></i>Users</button></li>
                 <li class="nav-item"><button class="nav-link" id="ollama-tab" data-bs-toggle="tab" data-bs-target="#ollama-pane" type="button"><i class="fa-solid fa-robot me-2"></i>AI</button></li>
                 <li class="nav-item"><button class="nav-link" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup-pane" type="button"><i class="fa-solid fa-database me-2"></i>Backup</button></li>
@@ -730,6 +731,19 @@
                         <div id="memories-list">
                             <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading...</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- TAGS TAB -->
+            <div class="tab-pane fade" id="tags-pane">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-tags me-2 text-primary"></i>All Tags</h5>
+                </div>
+                <div class="card">
+                    <div class="card-header"><i class="fa-solid fa-filter me-2"></i>Tag Cloud</div>
+                    <div class="card-body">
+                        <div class="d-flex flex-wrap gap-2" id="tag-cloud"></div>
                     </div>
                 </div>
             </div>

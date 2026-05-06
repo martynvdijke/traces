@@ -231,6 +231,8 @@ test.describe('Window Global Function Exports', () => {
       removeTag: typeof (window as any).removeTag,
       applyFilters: typeof (window as any).applyFilters,
       updateUploadField: typeof (window as any).updateUploadField,
+      loadTags: typeof (window as any).loadTags,
+      filterEventsByTag: typeof (window as any).filterEventsByTag,
     }));
     expect(fns.logout).toBe('function');
     expect(fns.loadEvents).toBe('function');
@@ -256,6 +258,8 @@ test.describe('Window Global Function Exports', () => {
     expect(fns.removeTag).toBe('function');
     expect(fns.applyFilters).toBe('function');
     expect(fns.updateUploadField).toBe('function');
+    expect(fns.loadTags).toBe('function');
+    expect(fns.filterEventsByTag).toBe('function');
   });
 
   test('map page exports focusEvent on window', async ({ page }) => {

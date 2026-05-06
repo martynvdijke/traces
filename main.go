@@ -1470,7 +1470,7 @@ func getShareLink(c *gin.Context) {
 
 func getTags(c *gin.Context) {
 	year := c.Query("year")
-	query := "SELECT DISTINCT tags FROM timeline_events WHERE tags != ''"
+	query := "SELECT tags FROM timeline_events WHERE tags != ''"
 	args := []interface{}{}
 
 	if year != "" {
@@ -1485,14 +1485,31 @@ func getTags(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var tags []string
+	tagCounts := make(map[string]int)
 	for rows.Next() {
-		var t string
-		rows.Scan(&t)
-		tags = append(tags, t)
+		var tagsStr string
+		rows.Scan(&tagsStr)
+		for _, t := range strings.Split(tagsStr, ",") {
+			t = strings.TrimSpace(t)
+			if t != "" {
+				tagCounts[t]++
+			}
+		}
 	}
 
-	c.JSON(http.StatusOK, tags)
+	type TagItem struct {
+		Name  string `json:"name"`
+		Count int    `json:"count"`
+	}
+	result := make([]TagItem, 0, len(tagCounts))
+	for name, count := range tagCounts {
+		result = append(result, TagItem{Name: name, Count: count})
+	}
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].Name < result[j].Name
+	})
+
+	c.JSON(http.StatusOK, result)
 }
 
 func getPersons(c *gin.Context) {

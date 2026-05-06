@@ -19,6 +19,9 @@ async function init(): Promise<void> {
   populateYearFilter();
   await loadEvents();
   await loadPersons();
+  loadTags();
+  initAutocomplete('event-location', 'location-autocomplete', 'location');
+  initTagAutocomplete();
   loadGotifyConfig();
   loadMemoriesConfig();
   loadEmailConfig();
@@ -417,9 +420,11 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
     person_id: parseInt((document.getElementById('event-person') as HTMLSelectElement).value) || 0,
     media_type: (document.getElementById('event-media-type') as HTMLSelectElement).value,
     media_url: eventPhotoUrl || '',
-    tags: (document.getElementById('event-tags') as HTMLInputElement).value,
+    tags: (document.getElementById('event-tags-hidden') as HTMLInputElement).value,
     latitude: parseFloat((document.getElementById('event-latitude') as HTMLInputElement).value) || null,
     longitude: parseFloat((document.getElementById('event-longitude') as HTMLInputElement).value) || null,
+    recurring: (document.getElementById('event-recurring') as HTMLSelectElement).value,
+    user_id: parseInt((document.getElementById('event-user') as HTMLSelectElement).value) || 0,
     weather_data: weatherData
   };
   const res = await fetch('/api/events', {
@@ -588,6 +593,7 @@ function hideInlinePersonForm(): void {
 async function saveInlinePerson(): Promise<void> {
   const name = (document.getElementById('inline-person-name') as HTMLInputElement).value.trim();
   if (!name) { document.getElementById('inline-person-result')!.innerHTML = '<span class="text-danger">Name is required</span>'; return; }
+  await ensureCSRF();
   const res = await fetch('/api/persons', {
     method: 'POST',
     headers: csrfHeaders('application/json'),
@@ -1236,6 +1242,37 @@ async function createBackup(): Promise<void> {
   btn.innerHTML = orig;
 }
 
+let allTags: { name: string; count: number }[] = [];
+
+async function loadTags(): Promise<void> {
+  try {
+    const res = await fetch('/api/tags');
+    allTags = await res.json();
+    renderTagCloud();
+  } catch (e) { console.error('Failed to load tags', e); }
+}
+
+function renderTagCloud(): void {
+  const container = document.getElementById('tag-cloud');
+  if (!container) return;
+  if (!allTags.length) {
+    container.innerHTML = '<div class="text-muted">No tags found</div>';
+    return;
+  }
+  const maxCount = Math.max(...allTags.map(t => t.count), 1);
+  container.innerHTML = allTags.map(t => {
+    const size = 0.75 + (t.count / maxCount) * 1.0; // 0.75rem to 1.75rem
+    return '<span class="badge bg-primary me-1 mb-1" style="font-size:' + size.toFixed(1) + 'rem;cursor:pointer" onclick="filterEventsByTag(\'' + escapeHtml(t.name) + '\')" title="' + t.count + ' events">' + escapeHtml(t.name) + ' (' + t.count + ')</span>';
+  }).join('');
+}
+
+function filterEventsByTag(tag: string): void {
+  (document.getElementById('events-tab') as HTMLElement).click();
+  const searchInput = document.getElementById('event-search') as HTMLInputElement;
+  searchInput.value = tag;
+  debouncedSearch();
+}
+
 function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
@@ -1278,6 +1315,8 @@ init();
 (window as any).selectAutocomplete = selectAutocomplete;
 (window as any).addTag = addTag;
 (window as any).removeTag = removeTag;
+(window as any).loadTags = loadTags;
+(window as any).filterEventsByTag = filterEventsByTag;
 (window as any).filterPersonSelect = filterPersonSelect;
 (window as any).debouncedSearch = debouncedSearch;
 (window as any).applyFilters = applyFilters;
