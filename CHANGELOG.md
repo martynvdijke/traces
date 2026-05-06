@@ -1,3 +1,10 @@
+## [1.8.12](https://github.com/martynvdijke/traces/compare/v1.8.11...v1.8.12) (2026-05-06)
+
+
+### Bug Fixes
+
+* trigger ci ([eb0a020](https://github.com/martynvdijke/traces/commit/eb0a0201d8bd5d9e21ebc1e5a7db7c4b6326127c))
+
 ## [1.8.11](https://github.com/martynvdijke/traces/compare/v1.8.10...v1.8.11) (2026-05-06)
 
 
