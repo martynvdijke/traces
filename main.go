@@ -802,9 +802,9 @@ func saveEvent(c *gin.Context) {
 	action := "created"
 	if e.ID == 0 {
 		result, err := db.Exec(`INSERT INTO timeline_events 
-			(title, description, event_date, location, media_type, media_url, media_caption, tags, sort_order, is_public, person_id, latitude, longitude, recurring, weather_data, user_id) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID)
+			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, person_id, latitude, longitude, recurring, weather_data, user_id) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -813,9 +813,9 @@ func saveEvent(c *gin.Context) {
 		e.ID = int(id)
 	} else {
 		_, err := db.Exec(`UPDATE timeline_events SET 
-			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, media_caption=?, tags=?, sort_order=?, is_public=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, user_id=?
+			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, user_id=?
 			WHERE id=?`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID, e.ID)
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID, e.ID)
 		if err != nil {
 			serverError(c, err)
 			return
