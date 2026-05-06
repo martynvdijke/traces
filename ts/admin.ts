@@ -481,10 +481,11 @@ async function uploadPersonAvatar(file: File): Promise<void> {
   const preview = document.getElementById('person-avatar-preview')!;
   const img = document.getElementById('person-avatar-img') as HTMLImageElement;
   result.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Uploading avatar...</div>';
+  await ensureCSRF();
   const fd = new FormData();
   fd.append('image', file);
   fd.append('media_type', 'image');
-  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+  const res = await fetch('/api/upload', { method: 'POST', body: fd, headers: csrfHeaders() });
   const data = await res.json();
   if (res.ok) {
     (document.getElementById('person-avatar') as HTMLInputElement).value = data.url;
@@ -747,12 +748,13 @@ document.getElementById('upload-form')!.addEventListener('submit', async (e) => 
   const type = (document.getElementById('media-type') as HTMLSelectElement).value;
   const fileInput = document.getElementById('media-file') as HTMLInputElement;
   if (!fileInput.files![0]) { alert('Select a file'); return; }
+  await ensureCSRF();
   const fd = new FormData();
   fd.append(type, fileInput.files![0]);
   fd.append('media_type', type);
   const el = document.getElementById('upload-result')!;
   el.innerHTML = '<div class="text-center"><div class="spinner-border text-primary" role="status"></div><p class="mt-2">Uploading...</p></div>';
-  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+  const res = await fetch('/api/upload', { method: 'POST', body: fd, headers: csrfHeaders() });
   const data = await res.json();
   if (res.ok) {
     let html = '<div class="alert alert-success"><strong>Uploaded!</strong><br>URL: <code class="user-select-all">' + data.url + '</code>';
@@ -804,13 +806,14 @@ async function uploadEventMedia(file: File): Promise<void> {
   const audio = document.getElementById('event-media-audio') as HTMLElement;
   const nameEl = document.getElementById('event-media-name')!;
   result.innerHTML = '<div class="text-center"><div class="spinner-border spinner-border-sm text-primary" role="status"></div> Uploading...</div>';
+  await ensureCSRF();
   const fd = new FormData();
   let mediaType = 'image';
   if (file.type.startsWith('video/')) mediaType = 'video';
   else if (file.type.startsWith('audio/')) mediaType = 'audio';
   fd.append(mediaType, file);
   fd.append('media_type', mediaType);
-  const res = await fetch('/api/upload', { method: 'POST', body: fd });
+  const res = await fetch('/api/upload', { method: 'POST', body: fd, headers: csrfHeaders() });
   const data = await res.json();
   if (res.ok) {
     eventPhotoUrl = data.url;
