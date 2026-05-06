@@ -327,6 +327,7 @@ function clearPersonFilter(): void {
 }
 
 function openEventModal(event?: any): void {
+  if (!locationMap) initLocationMap();
   (document.getElementById('event-form') as HTMLFormElement).reset();
   (document.getElementById('event-id') as HTMLInputElement).value = '0';
   document.getElementById('eventModalLabel')!.textContent = 'Add Event';
@@ -346,6 +347,15 @@ function openEventModal(event?: any): void {
     (document.getElementById('event-recurring') as HTMLSelectElement).value = event.recurring || '';
     (document.getElementById('event-user') as HTMLSelectElement).value = event.user_id || 0;
     document.getElementById('weather-display')!.textContent = '';
+    delete (document.getElementById('weather-display') as any).dataset.weather;
+    if (event.weather_data) {
+      try {
+        const weather = JSON.parse(event.weather_data);
+        const weatherEl = document.getElementById('weather-display')!;
+        weatherEl.innerHTML = '<i class="fa-solid fa-' + weather.icon + '"></i> ' + Math.round(weather.temperature) + '°C ' + weather.condition;
+        (weatherEl as any).dataset.weather = event.weather_data;
+      } catch (e) { }
+    }
     (document.getElementById('event-tags-hidden') as HTMLInputElement).value = event.tags || '';
     selectedTags = event.tags ? event.tags.split(',').map((t: string) => t.trim()).filter((t: string) => t) : [];
     renderTags();
@@ -396,6 +406,8 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
   await ensureCSRF();
   const title = (document.getElementById('event-title') as HTMLInputElement).value.trim();
   if (!title) { alert('Title is required'); return; }
+  const weatherEl = document.getElementById('weather-display')!;
+  const weatherData = (weatherEl as any).dataset.weather || '';
   const data = {
     id: parseInt((document.getElementById('event-id') as HTMLInputElement).value) || 0,
     title: title,
@@ -407,7 +419,8 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
     media_url: eventPhotoUrl || '',
     tags: (document.getElementById('event-tags') as HTMLInputElement).value,
     latitude: parseFloat((document.getElementById('event-latitude') as HTMLInputElement).value) || null,
-    longitude: parseFloat((document.getElementById('event-longitude') as HTMLInputElement).value) || null
+    longitude: parseFloat((document.getElementById('event-longitude') as HTMLInputElement).value) || null,
+    weather_data: weatherData
   };
   const res = await fetch('/api/events', {
     method: 'POST',
