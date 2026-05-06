@@ -1,3 +1,10 @@
+## [1.8.13](https://github.com/martynvdijke/traces/compare/v1.8.12...v1.8.13) (2026-05-06)
+
+
+### Bug Fixes
+
+* event creation bugs and add tags tab, improve e2e coverage ([aa177c1](https://github.com/martynvdijke/traces/commit/aa177c1e422fb6bcfc5f43c31758258782eb5408)), closes [#40](https://github.com/martynvdijke/traces/issues/40)
+
 ## [1.8.12](https://github.com/martynvdijke/traces/compare/v1.8.11...v1.8.12) (2026-05-06)
 
 
