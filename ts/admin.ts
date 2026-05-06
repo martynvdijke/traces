@@ -13,7 +13,6 @@ let locationMarker: any = null;
 let searchTimeout: any = null;
 let viewingPersonId: number | null = null;
 let eventPhotoUrl = '';
-let eventPhotoThumb = '';
 
 async function init(): Promise<void> {
   await ensureCSRF();
@@ -180,13 +179,21 @@ function updateFilterPerson(): void {
   select.innerHTML = '<option value="">All Persons</option>' + allPersons.map((p: any) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
 }
 
-function filterPersonSelect(): void {
-  const q = (document.getElementById('person-search-input') as HTMLInputElement).value.toLowerCase();
-  const select = document.getElementById('event-person') as HTMLSelectElement;
-  for (const opt of select.options) {
-    if (opt.value === '0') continue;
-    opt.style.display = opt.text.toLowerCase().includes(q) ? '' : 'none';
-  }
+let personSearchTimeout: any = null;
+async function filterPersonSelect(): Promise<void> {
+  const q = (document.getElementById('person-search-input') as HTMLInputElement).value.trim();
+  clearTimeout(personSearchTimeout);
+  personSearchTimeout = setTimeout(async () => {
+    try {
+      const select = document.getElementById('event-person') as HTMLSelectElement;
+      const currentVal = select.value;
+      const url = q ? `/api/persons?q=${encodeURIComponent(q)}` : '/api/persons';
+      const res = await fetch(url);
+      const searchedPersons = await res.json();
+      select.innerHTML = '<option value="0">None</option>' + searchedPersons.map((p: any) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+      select.value = currentVal;
+    } catch (e) { }
+  }, 200);
 }
 
 function initLocationMap(): void {
@@ -346,7 +353,6 @@ function openEventModal(event?: any): void {
     (document.getElementById('event-longitude') as HTMLInputElement).value = event.longitude || '';
     if (event.media_url) {
       eventPhotoUrl = event.media_url;
-      eventPhotoThumb = event.thumbnail || event.media_url;
       (document.getElementById('event-media-type') as HTMLSelectElement).value = event.media_type || 'image';
       document.getElementById('event-upload-zone')!.style.display = 'none';
       document.getElementById('event-media-preview')!.style.display = 'block';
@@ -357,7 +363,7 @@ function openEventModal(event?: any): void {
       img.style.display = 'none'; video.style.display = 'none'; audio.style.display = 'none';
       if (event.media_type === 'video') { video.src = event.media_url; video.style.display = ''; }
       else if (event.media_type === 'audio') { audio.style.display = ''; }
-      else { img.src = eventPhotoThumb; img.style.display = ''; }
+      else { img.src = eventPhotoUrl; img.style.display = ''; }
     } else {
       clearEventMedia();
     }
@@ -399,7 +405,6 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
     person_id: parseInt((document.getElementById('event-person') as HTMLSelectElement).value) || 0,
     media_type: (document.getElementById('event-media-type') as HTMLSelectElement).value,
     media_url: eventPhotoUrl || '',
-    thumbnail: eventPhotoThumb || '',
     tags: (document.getElementById('event-tags') as HTMLInputElement).value,
     latitude: parseFloat((document.getElementById('event-latitude') as HTMLInputElement).value) || null,
     longitude: parseFloat((document.getElementById('event-longitude') as HTMLInputElement).value) || null
@@ -539,7 +544,6 @@ document.getElementById('person-form')!.addEventListener('submit', async (e) => 
 
 function clearEventMedia(): void {
   eventPhotoUrl = '';
-  eventPhotoThumb = '';
   document.getElementById('event-media-preview')!.style.display = 'none';
   (document.getElementById('event-media-img') as HTMLImageElement).src = '';
   (document.getElementById('event-media-img') as HTMLElement).style.display = 'none';
@@ -817,7 +821,6 @@ async function uploadEventMedia(file: File): Promise<void> {
   const data = await res.json();
   if (res.ok) {
     eventPhotoUrl = data.url;
-    eventPhotoThumb = data.thumbnail || data.url;
     (document.getElementById('event-media-type') as HTMLSelectElement).value = mediaType;
     img.style.display = 'none';
     video.style.display = 'none';
@@ -828,7 +831,7 @@ async function uploadEventMedia(file: File): Promise<void> {
     } else if (mediaType === 'audio') {
       audio.style.display = '';
     } else {
-      img.src = eventPhotoThumb;
+      img.src = data.url;
       img.style.display = '';
     }
     nameEl.textContent = file.name;
