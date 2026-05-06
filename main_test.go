@@ -1714,3 +1714,299 @@ func TestEventCreationWithoutThumbnail(t *testing.T) {
 		}
 	})
 }
+
+func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT,
+		avatar_url TEXT,
+		bio TEXT,
+		birth_date TEXT,
+		color TEXT,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	t.Run("scan_null_thumbnail", func(t *testing.T) {
+		db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, media_caption, tags, sort_order, is_public)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"Null Thumbnail Event", "Testing NULL thumbnail scan", "2026-03-15", "Test", "image", "/media/test.jpg", "", "test", 0, 1)
+
+		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1 ORDER BY e.event_date ASC`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		events := scanEventsWithPerson(rows)
+		if len(events) != 1 {
+			t.Fatalf("expected 1 event from scanEventsWithPerson, got %d", len(events))
+		}
+
+		e := events[0]
+		if e.Title != "Null Thumbnail Event" {
+			t.Errorf("title = %q, want 'Null Thumbnail Event'", e.Title)
+		}
+		if e.Thumbnail != "" {
+			t.Errorf("thumbnail = %q, want empty string for NULL", e.Thumbnail)
+		}
+		if e.Date != "2026-03-15" {
+			t.Errorf("date = %q, want '2026-03-15'", e.Date)
+		}
+	})
+
+	t.Run("scan_multiple_mixed_thumbnails", func(t *testing.T) {
+		db.Exec("DELETE FROM timeline_events")
+
+		db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, is_public)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"With Thumbnail", "Has thumbnail value", "2026-01-10", "Loc1", "image", "/media/a.jpg", "/thumb.jpg", "", "tag1", 1)
+		db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, media_caption, tags, is_public)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"Null Thumbnail", "Has NULL thumbnail", "2026-06-20", "Loc2", "image", "/media/b.jpg", "", "tag2", 1)
+
+		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1 ORDER BY e.event_date ASC`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+
+		events := scanEventsWithPerson(rows)
+		if len(events) != 2 {
+			t.Fatalf("expected 2 events, got %d", len(events))
+		}
+
+		titles := make(map[string]string)
+		for _, e := range events {
+			titles[e.Title] = e.Thumbnail
+		}
+
+		if v, ok := titles["With Thumbnail"]; !ok {
+			t.Error("event 'With Thumbnail' not found")
+		} else if v != "/thumb.jpg" {
+			t.Errorf("thumbnail = %q, want '/thumb.jpg'", v)
+		}
+
+		if v, ok := titles["Null Thumbnail"]; !ok {
+			t.Error("event 'Null Thumbnail' not found")
+		} else if v != "" {
+			t.Errorf("thumbnail = %q, want empty string", v)
+		}
+	})
+}
+
+func TestSaveAndGetEventsRoundtrip(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	origSessionStore := sessionStore
+	origCSRFTokens := csrfTokens
+	defer func() {
+		db = origDB
+		sessionStore = origSessionStore
+		csrfTokens = origCSRFTokens
+	}()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	sessionStore = make(map[string]int64)
+	csrfTokens = make(map[string]string)
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT,
+		avatar_url TEXT,
+		bio TEXT,
+		birth_date TEXT,
+		color TEXT,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	sessionID := "test-roundtrip-session"
+	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+	csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
+
+	router := gin.New()
+	auth := router.Group("")
+	auth.Use(func(c *gin.Context) {
+		cookie, err := c.Cookie("session")
+		if err != nil || sessionStore[cookie] == 0 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		c.Next()
+	})
+	auth.POST("/api/events", saveEvent)
+	auth.GET("/api/events", getEvents)
+
+	t.Run("create_and_find_event", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		body := `{"title":"Roundtrip Event","description":"Roundtrip test","date":"2026-09-01","location":"Test","media_type":"image","is_public":true,"latitude":40.7128,"longitude":-74.0060}`
+		req := httptest.NewRequest("POST", "/api/events", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("POST status = %d, body=%s", w.Code, w.Body.String())
+		}
+
+		var created TimelineEvent
+		json.Unmarshal(w.Body.Bytes(), &created)
+		if created.ID <= 0 {
+			t.Fatalf("expected positive ID, got %d", created.ID)
+		}
+		if created.Title != "Roundtrip Event" {
+			t.Errorf("title = %q", created.Title)
+		}
+
+		w2 := httptest.NewRecorder()
+		req2 := httptest.NewRequest("GET", "/api/events?year=2026&sort=desc&limit=10", nil)
+		req2.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		router.ServeHTTP(w2, req2)
+
+		if w2.Code != http.StatusOK {
+			t.Fatalf("GET status = %d, body=%s", w2.Code, w2.Body.String())
+		}
+
+		var events []TimelineEvent
+		json.Unmarshal(w2.Body.Bytes(), &events)
+
+		found := false
+		for _, e := range events {
+			if e.Title == "Roundtrip Event" {
+				found = true
+				if e.Date != "2026-09-01" {
+					t.Errorf("date = %q, want '2026-09-01'", e.Date)
+				}
+				if e.Latitude == nil || *e.Latitude != 40.7128 {
+					t.Errorf("latitude mismatch")
+				}
+				if e.Longitude == nil || *e.Longitude != -74.0060 {
+					t.Errorf("longitude mismatch")
+				}
+				break
+			}
+		}
+		if !found {
+			t.Error("created event not found in events list")
+		}
+	})
+
+	t.Run("update_and_refetch_event", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		body := `{"id":1,"title":"Updated Roundtrip","description":"Updated desc","date":"2026-10-15","location":"Updated Loc","media_type":"video","is_public":false}`
+		req := httptest.NewRequest("POST", "/api/events", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("UPDATE status = %d, body=%s", w.Code, w.Body.String())
+		}
+
+		var updated TimelineEvent
+		json.Unmarshal(w.Body.Bytes(), &updated)
+		if updated.Title != "Updated Roundtrip" {
+			t.Errorf("title = %q", updated.Title)
+		}
+
+		w2 := httptest.NewRecorder()
+		req2 := httptest.NewRequest("GET", "/api/events?year=2026&sort=desc&limit=10", nil)
+		req2.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		router.ServeHTTP(w2, req2)
+
+		var events []TimelineEvent
+		json.Unmarshal(w2.Body.Bytes(), &events)
+
+		found := false
+		for _, e := range events {
+			if e.Title == "Updated Roundtrip" {
+				found = true
+				if e.Date != "2026-10-15" {
+					t.Errorf("date = %q, want '2026-10-15'", e.Date)
+				}
+				if e.Location != "Updated Loc" {
+					t.Errorf("location = %q", e.Location)
+				}
+				break
+			}
+		}
+		if !found {
+			t.Error("updated event not found in events list")
+		}
+
+		originalStillPresent := false
+		for _, e := range events {
+			if e.Title == "Roundtrip Event" {
+				originalStillPresent = true
+				break
+			}
+		}
+		if originalStillPresent {
+			t.Error("original event title still present after update")
+		}
+	})
+}

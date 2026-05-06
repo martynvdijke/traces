@@ -1183,12 +1183,18 @@ func cloneEvent(c *gin.Context) {
 	}
 
 	var e TimelineEvent
+	var thumbnail, mediaURL, tags, recurring, weatherData sql.NullString
 	err := db.QueryRow(`SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id FROM timeline_events WHERE id = ?`, input.ID).
-		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.Tags, &e.SortOrder, &e.Recurring, &e.WeatherData, &e.UserID)
+		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &tags, &e.SortOrder, &recurring, &weatherData, &e.UserID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
 		return
 	}
+	e.MediaURL = mediaURL.String
+	e.Thumbnail = thumbnail.String
+	e.Tags = tags.String
+	e.Recurring = recurring.String
+	e.WeatherData = weatherData.String
 
 	e.Date = input.Date
 	e.ID = 0
@@ -1762,10 +1768,17 @@ func getMemories(c *gin.Context) {
 	for rows.Next() {
 		var me MemoryEvent
 		var personID sql.NullInt64
-		err := rows.Scan(&me.ID, &me.Title, &me.Description, &me.Date, &me.Location, &me.MediaType, &me.MediaURL, &me.Thumbnail, &me.MediaCaption, &me.Tags, &me.SortOrder, &me.IsPublic, &me.CreatedAt, &personID, &me.Latitude, &me.Longitude, &me.Recurring, &me.WeatherData, &me.UserID, &me.YearsAgo)
+		var thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData sql.NullString
+		err := rows.Scan(&me.ID, &me.Title, &me.Description, &me.Date, &me.Location, &me.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &me.SortOrder, &me.IsPublic, &me.CreatedAt, &personID, &me.Latitude, &me.Longitude, &recurring, &weatherData, &me.UserID, &me.YearsAgo)
 		if err != nil {
 			continue
 		}
+		me.MediaURL = mediaURL.String
+		me.Thumbnail = thumbnail.String
+		me.MediaCaption = mediaCaption.String
+		me.Tags = tags.String
+		me.Recurring = recurring.String
+		me.WeatherData = weatherData.String
 		if personID.Valid {
 			pid := int(personID.Int64)
 			me.PersonID = &pid
@@ -1999,12 +2012,20 @@ func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
 		var lat, lng sql.NullFloat64
 		var pID sql.NullInt64
 		var pName, pAvatar, pBio, pBirth, pColor, pCreated sql.NullString
+		var thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData sql.NullString
 
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.MediaCaption, &e.Tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt, &personID, &lat, &lng, &e.Recurring, &e.WeatherData, &e.UserID,
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt, &personID, &lat, &lng, &recurring, &weatherData, &e.UserID,
 			&pID, &pName, &pAvatar, &pBio, &pBirth, &pColor, &pCreated)
 		if err != nil {
 			continue
 		}
+
+		e.MediaURL = mediaURL.String
+		e.Thumbnail = thumbnail.String
+		e.MediaCaption = mediaCaption.String
+		e.Tags = tags.String
+		e.Recurring = recurring.String
+		e.WeatherData = weatherData.String
 
 		if personID.Valid {
 			pid := int(personID.Int64)
@@ -2448,12 +2469,18 @@ func generateRecurringEvents(c *gin.Context) {
 	}
 
 	var e TimelineEvent
+	var thumbnail, mediaURL, tags, recurring, weatherData sql.NullString
 	err := db.QueryRow(`SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id FROM timeline_events WHERE id = ?`, input.EventID).
-		Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.Thumbnail, &e.Tags, &e.SortOrder, &e.Recurring, &e.WeatherData, &e.UserID)
+		Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &tags, &e.SortOrder, &recurring, &weatherData, &e.UserID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
 		return
 	}
+	e.MediaURL = mediaURL.String
+	e.Thumbnail = thumbnail.String
+	e.Tags = tags.String
+	e.Recurring = recurring.String
+	e.WeatherData = weatherData.String
 
 	if e.Recurring == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Event is not recurring"})
