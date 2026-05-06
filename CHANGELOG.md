@@ -1,3 +1,10 @@
+## [1.8.8](https://github.com/martynvdijke/traces/compare/v1.8.7...v1.8.8) (2026-05-06)
+
+
+### Bug Fixes
+
+* include CSRF token in image upload requests ([65ee3e2](https://github.com/martynvdijke/traces/commit/65ee3e2cbc9ef3e59e139c012bdc8d3fc4b18c8d))
+
 ## [1.8.7](https://github.com/martynvdijke/traces/compare/v1.8.6...v1.8.7) (2026-05-05)
 
 
