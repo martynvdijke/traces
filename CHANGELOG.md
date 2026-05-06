@@ -1,3 +1,10 @@
+# [1.9.0](https://github.com/martynvdijke/traces/compare/v1.8.13...v1.9.0) (2026-05-06)
+
+
+### Features
+
+* auto-generate Swagger docs with swaggo/gin-swagger ([d9c590d](https://github.com/martynvdijke/traces/commit/d9c590dc1681650d4ba917bdc8bde5c67356cc3e))
+
 ## [1.8.13](https://github.com/martynvdijke/traces/compare/v1.8.12...v1.8.13) (2026-05-06)
 
 
