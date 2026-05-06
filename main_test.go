@@ -1463,3 +1463,254 @@ func TestMarkdownInDescription(t *testing.T) {
 		}
 	})
 }
+
+func TestPersonSearch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT,
+		avatar_url TEXT,
+		bio TEXT,
+		birth_date TEXT,
+		color TEXT,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		person_id INTEGER
+	)`)
+
+	db.Exec("INSERT INTO persons (name, color) VALUES ('Alice Johnson', '#ff0000')")
+	db.Exec("INSERT INTO persons (name, color) VALUES ('Bob Smith', '#00ff00')")
+	db.Exec("INSERT INTO persons (name, color) VALUES ('Charlie Brown', '#0000ff')")
+
+	t.Run("search_by_name_returns_matching_persons", func(t *testing.T) {
+		rows, err := db.Query("SELECT p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at, (SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count FROM persons p WHERE p.name LIKE ? ORDER BY p.name ASC", "%Alice%")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var count int
+		var name string
+		for rows.Next() {
+			var id int
+			var avatarURL, bio, birthDate, color, createdAt sql.NullString
+			var eventCount int
+			if err := rows.Scan(&id, &name, &avatarURL, &bio, &birthDate, &color, &createdAt, &eventCount); err != nil {
+				t.Fatal(err)
+			}
+			count++
+		}
+		if count != 1 {
+			t.Errorf("expected 1 person matching 'Alice', got %d", count)
+		}
+		if name != "Alice Johnson" {
+			t.Errorf("name = %q, want 'Alice Johnson'", name)
+		}
+	})
+
+	t.Run("empty_query_returns_all_persons", func(t *testing.T) {
+		rows, err := db.Query("SELECT p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at, (SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count FROM persons p ORDER BY p.name ASC")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 3 {
+			t.Errorf("expected 3 persons with empty query, got %d", count)
+		}
+	})
+
+	t.Run("partial_match_search", func(t *testing.T) {
+		rows, err := db.Query("SELECT p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at, (SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count FROM persons p WHERE p.name LIKE ? ORDER BY p.name ASC", "%ob%")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var names []string
+		for rows.Next() {
+			var id int
+			var name string
+			var avatarURL, bio, birthDate, color, createdAt sql.NullString
+			var eventCount int
+			if err := rows.Scan(&id, &name, &avatarURL, &bio, &birthDate, &color, &createdAt, &eventCount); err != nil {
+				t.Fatal(err)
+			}
+			names = append(names, name)
+		}
+		if len(names) != 1 || names[0] != "Bob Smith" {
+			t.Errorf("expected ['Bob Smith'], got %v", names)
+		}
+	})
+}
+
+func TestEventCreationWithWeatherData(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT,
+		weather_data TEXT,
+		user_id INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	weatherJSON := `{"temperature":22.5,"condition":"Partly cloudy","icon":"cloud-sun","humidity":65,"wind_speed":12.3,"fetched_at":"2026-05-06T10:00:00Z"}`
+
+	t.Run("create_event_with_weather_data", func(t *testing.T) {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, tags, latitude, longitude, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"Weather Event", "Event with weather", "2026-06-15", "Test Location", "image", "/media/test.jpg", "weather", 40.7128, -74.0060, weatherJSON, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var storedWeather string
+		db.QueryRow("SELECT weather_data FROM timeline_events WHERE id = 1").Scan(&storedWeather)
+		if storedWeather != weatherJSON {
+			t.Errorf("weather_data mismatch: got %q", storedWeather)
+		}
+
+		var parsed struct {
+			Temperature float64 `json:"temperature"`
+			Condition   string  `json:"condition"`
+			Humidity    float64 `json:"humidity"`
+		}
+		if err := json.Unmarshal([]byte(storedWeather), &parsed); err != nil {
+			t.Fatal(err)
+		}
+		if parsed.Temperature != 22.5 {
+			t.Errorf("temperature = %f, want 22.5", parsed.Temperature)
+		}
+		if parsed.Condition != "Partly cloudy" {
+			t.Errorf("condition = %q, want 'Partly cloudy'", parsed.Condition)
+		}
+	})
+
+	t.Run("update_event_weather_data", func(t *testing.T) {
+		newWeather := `{"temperature":18.0,"condition":"Rain","icon":"cloud-rain","humidity":80,"wind_speed":20.0,"fetched_at":"2026-05-06T12:00:00Z"}`
+		_, err := db.Exec("UPDATE timeline_events SET weather_data = ? WHERE id = ?", newWeather, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var storedWeather string
+		db.QueryRow("SELECT weather_data FROM timeline_events WHERE id = 1").Scan(&storedWeather)
+		if storedWeather != newWeather {
+			t.Errorf("weather_data mismatch after update")
+		}
+	})
+
+	t.Run("create_event_without_weather_data", func(t *testing.T) {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, tags, latitude, longitude, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"No Weather Event", "Event without weather", "2026-07-01", "Another Location", "image", "/media/test2.jpg", "test", 51.5074, -0.1278, 1)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var weatherData sql.NullString
+		db.QueryRow("SELECT weather_data FROM timeline_events WHERE id = 2").Scan(&weatherData)
+		if weatherData.Valid && weatherData.String != "" {
+			t.Errorf("expected empty weather_data, got %q", weatherData.String)
+		}
+	})
+}
+
+func TestEventCreationWithoutThumbnail(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT,
+		weather_data TEXT,
+		user_id INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	t.Run("insert_without_thumbnail_column", func(t *testing.T) {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, media_caption, tags, sort_order, is_public, person_id, latitude, longitude, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			"No Thumbnail Event", "Testing without thumbnail", "2026-08-01", "Test Location", "image", "/media/test.jpg", "", "test", 0, 1, nil, 40.7128, -74.0060, "", "", 1)
+		if err != nil {
+			t.Fatalf("insert without thumbnail failed: %v", err)
+		}
+
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 event, got %d", count)
+		}
+	})
+
+	t.Run("update_without_thumbnail_column", func(t *testing.T) {
+		_, err := db.Exec(`UPDATE timeline_events SET title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, media_caption=?, tags=?, sort_order=?, is_public=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, user_id=? WHERE id=?`,
+			"Updated No Thumbnail", "Updated desc", "2026-08-02", "Updated Location", "video", "/media/test2.mp4", "", "updated", 1, 0, nil, 51.5074, -0.1278, "", "", 1, 1)
+		if err != nil {
+			t.Fatalf("update without thumbnail failed: %v", err)
+		}
+
+		var title string
+		db.QueryRow("SELECT title FROM timeline_events WHERE id = 1").Scan(&title)
+		if title != "Updated No Thumbnail" {
+			t.Errorf("title = %q, want 'Updated No Thumbnail'", title)
+		}
+	})
+}
