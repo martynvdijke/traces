@@ -1,3 +1,11 @@
+## [1.8.10](https://github.com/martynvdijke/traces/compare/v1.8.9...v1.8.10) (2026-05-06)
+
+
+### Bug Fixes
+
+* include thumbnail column in saveEvent INSERT and UPDATE ([4d6d041](https://github.com/martynvdijke/traces/commit/4d6d041fc54d1f9718acffabf235eea621489acf)), closes [#9](https://github.com/martynvdijke/traces/issues/9)
+* initialize location map on modal open and persist weather data ([0b6909c](https://github.com/martynvdijke/traces/commit/0b6909c675068327b77100a271198322e2faeeb0))
+
 ## [1.8.9](https://github.com/martynvdijke/traces/compare/v1.8.8...v1.8.9) (2026-05-06)
 
 
