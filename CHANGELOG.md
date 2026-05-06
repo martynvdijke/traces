@@ -1,3 +1,11 @@
+## [1.8.11](https://github.com/martynvdijke/traces/compare/v1.8.10...v1.8.11) (2026-05-06)
+
+
+### Bug Fixes
+
+* add in same taskfile ([96570a2](https://github.com/martynvdijke/traces/commit/96570a231662cef99b8d6aaab69155afbca87a9f))
+* handle NULL text columns in row scans to prevent silently dropped rows ([f55ece8](https://github.com/martynvdijke/traces/commit/f55ece8a80886b927d850d3d7c9269f8f392d4a7)), closes [#9](https://github.com/martynvdijke/traces/issues/9)
+
 ## [1.8.10](https://github.com/martynvdijke/traces/compare/v1.8.9...v1.8.10) (2026-05-06)
 
 
