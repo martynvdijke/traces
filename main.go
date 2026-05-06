@@ -1,3 +1,27 @@
+// TRACES API
+//
+// A timeline API for managing events with multimedia (images, videos, audio) throughout the year.
+//
+//	 Schemes: http
+//	 Host: localhost:6270
+//	 BasePath: /api
+//	 Version: 1.8.12
+//	 Contact: API Support
+//
+//	 Consumes:
+//	 - application/json
+//	 - multipart/form-data
+//
+//	 Produces:
+//	 - application/json
+//
+//	 SecurityDefinitions:
+//	 SessionCookie:
+//	   type: apiKey
+//	   in: cookie
+//	   name: session
+//
+// swagger:meta
 package main
 
 import (
@@ -29,6 +53,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/image/draw"
+
+	swaggerFiles "github.com/swaggo/files"
+	ginSwagger "github.com/swaggo/gin-swagger"
 )
 
 func init() {
@@ -334,29 +361,10 @@ func main() {
 	})
 
 	r.GET("/docs", func(c *gin.Context) {
-		c.Header("Content-Type", "text/html")
-		c.String(http.StatusOK, `<!DOCTYPE html>
-<html>
-<head>
-    <title>TRACES API Documentation</title>
-    <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
-</head>
-<body>
-    <div id="swagger-ui"></div>
-    <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
-    <script>
-        window.onload = function() {
-            SwaggerUIBundle({
-                url: "/api-docs",
-                dom_id: '#swagger-ui',
-                presets: [SwaggerUIBundle.presets.apis, SwaggerUIBundle.SwaggerUIStandalonePreset],
-                layout: "BaseLayout"
-            });
-        };
-    </script>
-</body>
-</html>`)
+		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
 	})
+
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
 
 	r.GET("/api-docs", func(c *gin.Context) {
 		c.File(filepath.Join(basePath, "static/swagger.json"))
@@ -475,6 +483,13 @@ func csrfMiddleware() gin.HandlerFunc {
 	}
 }
 
+// @Summary Get CSRF token
+// @Description Returns a new CSRF token for the current session
+// @Tags Authentication
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /csrf-token [get]
 func getCSRFToken(c *gin.Context) {
 	cookie, _ := c.Cookie("session")
 	if cookie == "" {
@@ -493,6 +508,12 @@ func serverError(c *gin.Context, err error) {
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 }
 
+// @Summary Get public config
+// @Description Returns public configuration (umami analytics settings)
+// @Tags Info
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /config [get]
 func getPublicConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
 		"umami_url":  umamiURL,
@@ -500,12 +521,28 @@ func getPublicConfig(c *gin.Context) {
 	})
 }
 
+// @Summary Check setup status
+// @Description Check if admin has been configured
+// @Tags Info
+// @Produce json
+// @Success 200 {object} map[string]bool
+// @Router /check-setup [get]
 func handleCheckSetup(c *gin.Context) {
 	var count int
 	db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
 	c.JSON(http.StatusOK, gin.H{"setup": count > 0})
 }
 
+// @Summary Login admin user
+// @Description Authenticate admin user or perform initial setup
+// @Tags Authentication
+// @Accept json
+// @Produce json
+// @Param credentials body object true "Login credentials" SchemaProperties({username:{type:string}, password:{type:string}, setup:{type:boolean}})
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Failure 401 {object} map[string]string
+// @Router /login [post]
 func handleLogin(c *gin.Context) {
 	var input struct {
 		Username string `json:"username"`
@@ -600,6 +637,12 @@ func handleLogin(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Logout admin user
+// @Description Destroy admin session
+// @Tags Authentication
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /logout [post]
 func handleLogout(c *gin.Context) {
 	cookie, err := c.Cookie("session")
 	if err == nil {
@@ -619,6 +662,18 @@ func handleLogout(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Get timeline events
+// @Description Returns events with optional year, month, tag, limit, sort, and user_id filters
+// @Tags Events
+// @Produce json
+// @Param year query string false "Filter by year"
+// @Param month query string false "Filter by month (01-12)"
+// @Param tag query string false "Filter by tag"
+// @Param limit query int false "Limit results"
+// @Param sort query string false "Sort order" Enums(asc, desc)
+// @Param user_id query int false "Filter by user ID"
+// @Success 200 {array} object "timeline events"
+// @Router /events [get]
 func getEvents(c *gin.Context) {
 	year := c.Query("year")
 	month := c.Query("month")
@@ -674,6 +729,12 @@ func getEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// @Summary Get all events with full fields
+// @Description Returns all events with complete field data, ordered by date ascending
+// @Tags Events
+// @Produce json
+// @Success 200 {array} object "timeline events"
+// @Router /events/full [get]
 func getEventsFull(c *gin.Context) {
 	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
@@ -690,6 +751,14 @@ func getEventsFull(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// @Summary Get public events
+// @Description Returns events accessible via share token or public mode
+// @Tags Events
+// @Produce json
+// @Param share query string false "Share token"
+// @Param year query string false "Filter by year"
+// @Success 200 {array} object "timeline events"
+// @Router /public [get]
 func getPublicEvents(c *gin.Context) {
 	shareToken := c.Query("share")
 	year := c.Query("year")
@@ -757,6 +826,13 @@ func getPublicEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// @Summary Get contribution data
+// @Description Returns a map of dates to event counts for contribution graph
+// @Tags Events
+// @Produce json
+// @Param year query string false "Filter by year"
+// @Success 200 {object} map[string]int
+// @Router /contributions [get]
 func getContributions(c *gin.Context) {
 	year := c.Query("year")
 	if year == "" {
@@ -781,6 +857,15 @@ func getContributions(c *gin.Context) {
 	c.JSON(http.StatusOK, contributions)
 }
 
+// @Summary Create or update event
+// @Description Creates a new event or updates an existing one
+// @Tags Events
+// @Accept json
+// @Produce json
+// @Param event body object true "Event data" SchemaProperties(id:{type:integer}, title:{type:string}, description:{type:string}, date:{type:string}, location:{type:string}, media_type:{type:string}, media_url:{type:string}, thumbnail:{type:string}, tags:{type:string}, is_public:{type:boolean}, person_id:{type:integer}, latitude:{type:number}, longitude:{type:number})
+// @Success 200 {object} object "saved event"
+// @Failure 400 {object} map[string]string
+// @Router /events [post]
 func saveEvent(c *gin.Context) {
 	var e TimelineEvent
 	if err := c.ShouldBindJSON(&e); err != nil {
@@ -827,6 +912,14 @@ func saveEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, e)
 }
 
+// @Summary Delete event
+// @Description Deletes an event by ID
+// @Tags Events
+// @Produce json
+// @Param id query int true "Event ID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /events [delete]
 func deleteEvent(c *gin.Context) {
 	idStr := c.Query("id")
 	id, err := strconv.Atoi(idStr)
@@ -848,6 +941,18 @@ func deleteEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Upload media file
+// @Description Upload an image, video, or audio file. Returns the URL and optional thumbnail URL.
+// @Tags Media
+// @Accept mpfd
+// @Produce json
+// @Param image formData file false "Image file"
+// @Param video formData file false "Video file"
+// @Param audio formData file false "Audio file"
+// @Param media_type formData string true "Media type" Enums(image, video, audio)
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /upload [post]
 func handleUpload(c *gin.Context) {
 	mediaType := c.PostForm("media_type")
 	if mediaType == "" {
@@ -1006,6 +1111,20 @@ func saveImage(path string, img image.Image, format string) error {
 	}
 }
 
+// @Summary Search events
+// @Description Full-text search across events with multiple filters
+// @Tags Events
+// @Produce json
+// @Param q query string false "Search query"
+// @Param year query string false "Filter by year"
+// @Param tag query string false "Filter by tag"
+// @Param person query string false "Filter by person name"
+// @Param media_type query string false "Filter by media type"
+// @Param location query string false "Filter by location"
+// @Param month query string false "Filter by month"
+// @Param user_id query int false "Filter by user ID"
+// @Success 200 {array} object "timeline events"
+// @Router /events/search [get]
 func searchEvents(c *gin.Context) {
 	query := c.Query("q")
 	year := c.Query("year")
@@ -1068,6 +1187,14 @@ func searchEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// @Summary Autocomplete suggestions
+// @Description Returns autocomplete suggestions for location, person, tag, media, or user fields
+// @Tags Events
+// @Produce json
+// @Param field query string true "Field to autocomplete" Enums(location, person, tag, media, user)
+// @Param q query string true "Search prefix"
+// @Success 200 {array} string
+// @Router /autocomplete [get]
 func getAutocomplete(c *gin.Context) {
 	field := c.Query("field")
 	q := c.Query("q")
@@ -1151,6 +1278,14 @@ func uniqueStrings(s []string) []string {
 	return r
 }
 
+// @Summary Get events for a person
+// @Description Returns all events associated with a person
+// @Tags Persons
+// @Produce json
+// @Param id path int true "Person ID"
+// @Success 200 {array} object "timeline events"
+// @Failure 400 {object} map[string]string
+// @Router /persons/{id}/events [get]
 func getPersonEvents(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
@@ -1172,6 +1307,15 @@ func getPersonEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// @Summary Clone event
+// @Description Clone an existing event to a new date
+// @Tags Events
+// @Accept json
+// @Produce json
+// @Param body body object true "Clone request" SchemaProperties({id:{type:integer}, date:{type:string}})
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /events/clone [post]
 func cloneEvent(c *gin.Context) {
 	var input struct {
 		ID   int    `json:"id"`
@@ -1210,6 +1354,18 @@ func cloneEvent(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Import events
+// @Description Import events from JSON or CSV format
+// @Tags Events
+// @Accept json
+// @Accept mpfd
+// @Produce json
+// @Param format query string false "Import format" Enums(json, csv)
+// @Param file formData file false "CSV file (for CSV format)"
+// @Param events body array false "Events array (for JSON format)"
+// @Success 200 {object} map[string]int
+// @Failure 400 {object} map[string]string
+// @Router /events/import [post]
 func importEvents(c *gin.Context) {
 	format := c.Query("format")
 	if format == "" {
@@ -1289,6 +1445,15 @@ func importEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"imported": count})
 }
 
+// @Summary Export events
+// @Description Export events as JSON or CSV
+// @Tags Events
+// @Produce json
+// @Produce text/csv
+// @Param year query string false "Filter by year"
+// @Param format query string false "Export format" Enums(json, csv)
+// @Success 200 {object} object "events"
+// @Router /events/export [get]
 func exportEvents(c *gin.Context) {
 	year := c.Query("year")
 	format := c.Query("format")
@@ -1336,6 +1501,13 @@ func exportEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// @Summary Get event statistics
+// @Description Returns statistics for events in a given year
+// @Tags Events
+// @Produce json
+// @Param year query string false "Filter by year"
+// @Success 200 {object} object "event statistics"
+// @Router /stats [get]
 func getEventStats(c *gin.Context) {
 	year := c.Query("year")
 	if year == "" {
@@ -1402,6 +1574,15 @@ func getEventStats(c *gin.Context) {
 	c.JSON(http.StatusOK, stats)
 }
 
+// @Summary Create share link
+// @Description Creates a shareable link for selected events
+// @Tags Sharing
+// @Accept json
+// @Produce json
+// @Param body body object true "Share request" SchemaProperties({event_ids:{type:array,items:{type:integer}}, year:{type:string}, days:{type:integer}})
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /share/create [post]
 func createShareLink(c *gin.Context) {
 	var input struct {
 		EventIDs []int  `json:"event_ids"`
@@ -1444,6 +1625,15 @@ func createShareLink(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token, "expires": expires.Format("2006-01-02")})
 }
 
+// @Summary Get share link
+// @Description Redirect to shared view using a share token
+// @Tags Sharing
+// @Produce json
+// @Param token query string true "Share token"
+// @Success 302 {string} string "redirect"
+// @Failure 400 {object} map[string]string
+// @Failure 404 {object} map[string]string
+// @Router /share [get]
 func getShareLink(c *gin.Context) {
 	token := c.Query("token")
 	if token == "" {
@@ -1468,6 +1658,13 @@ func getShareLink(c *gin.Context) {
 	c.Redirect(http.StatusFound, "/?share="+token)
 }
 
+// @Summary Get tags
+// @Description Returns all unique tags with their counts, optionally filtered by year
+// @Tags Events
+// @Produce json
+// @Param year query string false "Filter by year"
+// @Success 200 {array} object "tags with counts"
+// @Router /tags [get]
 func getTags(c *gin.Context) {
 	year := c.Query("year")
 	query := "SELECT tags FROM timeline_events WHERE tags != ''"
@@ -1512,6 +1709,13 @@ func getTags(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// @Summary List persons
+// @Description Returns all persons with optional search filter
+// @Tags Persons
+// @Produce json
+// @Param q query string false "Search by name"
+// @Success 200 {array} object "persons"
+// @Router /persons [get]
 func getPersons(c *gin.Context) {
 	q := c.Query("q")
 
@@ -1546,6 +1750,15 @@ func getPersons(c *gin.Context) {
 	c.JSON(http.StatusOK, persons)
 }
 
+// @Summary Create or update person
+// @Description Creates a new person or updates an existing one
+// @Tags Persons
+// @Accept json
+// @Produce json
+// @Param person body object true "Person data" SchemaProperties({id:{type:integer}, name:{type:string}, avatar_url:{type:string}, bio:{type:string}, birth_date:{type:string}, color:{type:string}})
+// @Success 200 {object} object "saved person"
+// @Failure 400 {object} map[string]string
+// @Router /persons [post]
 func savePerson(c *gin.Context) {
 	var p Person
 	if err := c.ShouldBindJSON(&p); err != nil {
@@ -1576,6 +1789,14 @@ func savePerson(c *gin.Context) {
 	c.JSON(http.StatusOK, p)
 }
 
+// @Summary Delete person
+// @Description Deletes a person by ID and unlinks their events
+// @Tags Persons
+// @Produce json
+// @Param id query int true "Person ID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /persons [delete]
 func deletePerson(c *gin.Context) {
 	idStr := c.Query("id")
 	id, err := strconv.Atoi(idStr)
@@ -1598,6 +1819,13 @@ func deletePerson(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Get map data
+// @Description Returns events with geo-coordinates as a feature collection, optionally filtered by year
+// @Tags Events
+// @Produce json
+// @Param year query string false "Filter by year"
+// @Success 200 {object} object "GeoJSON feature collection"
+// @Router /map [get]
 func getMapData(c *gin.Context) {
 	year := c.Query("year")
 	query := `SELECT id, title, description, event_date, location, media_type, media_url, latitude, longitude 
@@ -1656,6 +1884,12 @@ func getMapData(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
+// @Summary Get Gotify config
+// @Description Returns the current Gotify notification configuration
+// @Tags Notifications
+// @Produce json
+// @Success 200 {object} object "Gotify config"
+// @Router /gotify/config [get]
 func getGotifyConfig(c *gin.Context) {
 	var cfg GotifyConfig
 	var enabledInt int
@@ -1666,6 +1900,15 @@ func getGotifyConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, cfg)
 }
 
+// @Summary Save Gotify config
+// @Description Saves the Gotify notification configuration
+// @Tags Notifications
+// @Accept json
+// @Produce json
+// @Param config body object true "Gotify config" SchemaProperties({url:{type:string}, token:{type:string}, enabled:{type:boolean}})
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /gotify/config [post]
 func saveGotifyConfig(c *gin.Context) {
 	var cfg GotifyConfig
 	if err := c.ShouldBindJSON(&cfg); err != nil {
@@ -1691,6 +1934,13 @@ func saveGotifyConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Test Gotify notification
+// @Description Sends a test notification via Gotify
+// @Tags Notifications
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /gotify/test [post]
 func testGotify(c *gin.Context) {
 	if gotifyURL == "" || gotifyToken == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Gotify URL and token not configured"})
@@ -1721,6 +1971,12 @@ func testGotify(c *gin.Context) {
 	}
 }
 
+// @Summary Get memory events
+// @Description Returns events from past years that fall within the configured memory window
+// @Tags Memories
+// @Produce json
+// @Success 200 {array} object "memory events"
+// @Router /memories [get]
 func getMemories(c *gin.Context) {
 	var cfg MemoriesConfig
 	var enabledInt int
@@ -1809,6 +2065,12 @@ func getMemories(c *gin.Context) {
 	c.JSON(http.StatusOK, memories)
 }
 
+// @Summary Get memories config
+// @Description Returns the memories/on-this-day configuration
+// @Tags Memories
+// @Produce json
+// @Success 200 {object} object "Memories config"
+// @Router /memories/config [get]
 func getMemoriesConfig(c *gin.Context) {
 	var cfg MemoriesConfig
 	var enabledInt int
@@ -1821,6 +2083,15 @@ func getMemoriesConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, cfg)
 }
 
+// @Summary Save memories config
+// @Description Saves the memories/on-this-day configuration
+// @Tags Memories
+// @Accept json
+// @Produce json
+// @Param config body object true "Memories config" SchemaProperties({enabled:{type:boolean}, days_window:{type:integer}, email_enabled:{type:boolean}})
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /memories/config [post]
 func saveMemoriesConfig(c *gin.Context) {
 	var cfg MemoriesConfig
 	if err := c.ShouldBindJSON(&cfg); err != nil {
@@ -1849,6 +2120,12 @@ func saveMemoriesConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Get email config
+// @Description Returns the current email/SMTP configuration
+// @Tags Email
+// @Produce json
+// @Success 200 {object} object "Email config"
+// @Router /email/config [get]
 func getEmailConfig(c *gin.Context) {
 	var cfg EmailConfig
 	var port int
@@ -1861,6 +2138,15 @@ func getEmailConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, cfg)
 }
 
+// @Summary Save email config
+// @Description Saves the email/SMTP configuration
+// @Tags Email
+// @Accept json
+// @Produce json
+// @Param config body object true "Email config" SchemaProperties({smtp_host:{type:string}, smtp_port:{type:integer}, smtp_user:{type:string}, smtp_pass:{type:string}, from_addr:{type:string}, to_addr:{type:string}})
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /email/config [post]
 func saveEmailConfig(c *gin.Context) {
 	var cfg EmailConfig
 	if err := c.ShouldBindJSON(&cfg); err != nil {
@@ -1879,6 +2165,12 @@ func saveEmailConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Test email
+// @Description Sends a test email using the configured SMTP settings
+// @Tags Email
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /email/test [post]
 func testEmail(c *gin.Context) {
 	var cfg EmailConfig
 	var port int
@@ -1943,6 +2235,12 @@ func sendEmail(cfg EmailConfig, subject, body string) error {
 	return smtp.SendMail(addr, auth, cfg.FromAddr, []string{cfg.ToAddr}, msg)
 }
 
+// @Summary Send memories email
+// @Description Manually trigger sending of memories/on-this-day email
+// @Tags Memories
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /memories/send [post]
 func sendMemoriesEmailHandler(c *gin.Context) {
 	var memCfg MemoriesConfig
 	var enabledInt int
@@ -2073,6 +2371,12 @@ func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
 	return events
 }
 
+// @Summary Get calendar data
+// @Description Returns events grouped by date for calendar view
+// @Tags Events
+// @Produce json
+// @Success 200 {object} object "calendar data"
+// @Router /calendar [get]
 func getCalendar(c *gin.Context) {
 	year := c.Query("year")
 	month := c.Query("month")
@@ -2136,6 +2440,15 @@ func getCalendar(c *gin.Context) {
 	c.JSON(http.StatusOK, calendar)
 }
 
+// @Summary Fetch weather data
+// @Description Fetches and stores weather data for an event based on date and location
+// @Tags Events
+// @Accept json
+// @Produce json
+// @Param body body object true "Weather request" SchemaProperties({id:{type:integer}})
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /weather/fetch [post]
 func fetchWeather(c *gin.Context) {
 	var input struct {
 		EventID   int     `json:"event_id"`
@@ -2289,6 +2602,15 @@ func weatherCodeToIcon(code int) string {
 	}
 }
 
+// @Summary Auto-tag event
+// @Description Automatically generates tags for an event using AI/Ollama
+// @Tags Events
+// @Accept json
+// @Produce json
+// @Param body body object true "Auto-tag request" SchemaProperties({id:{type:integer}})
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /auto-tag [post]
 func autoTagEvent(c *gin.Context) {
 	var input struct {
 		Title       string `json:"title"`
@@ -2384,6 +2706,12 @@ Tags:`, sanitizePrompt(input.Title), sanitizePrompt(input.Description), sanitize
 	c.JSON(http.StatusOK, gin.H{"tags": cleanTags})
 }
 
+// @Summary List users
+// @Description Returns all registered users
+// @Tags Users
+// @Produce json
+// @Success 200 {array} object "users"
+// @Router /users [get]
 func getUsers(c *gin.Context) {
 	rows, err := db.Query(`SELECT id, username, display_name, color, avatar_url, created_at,
 		(SELECT COUNT(*) FROM timeline_events WHERE user_id = users.id) as event_count
@@ -2407,6 +2735,15 @@ func getUsers(c *gin.Context) {
 	c.JSON(http.StatusOK, users)
 }
 
+// @Summary Create or update user
+// @Description Creates a new user or updates an existing one
+// @Tags Users
+// @Accept json
+// @Produce json
+// @Param user body object true "User data"
+// @Success 200 {object} object "saved user"
+// @Failure 400 {object} map[string]string
+// @Router /users [post]
 func saveUser(c *gin.Context) {
 	var u User
 	if err := c.ShouldBindJSON(&u); err != nil {
@@ -2435,6 +2772,14 @@ func saveUser(c *gin.Context) {
 	c.JSON(http.StatusOK, u)
 }
 
+// @Summary Delete user
+// @Description Deletes a user by ID
+// @Tags Users
+// @Produce json
+// @Param id query int true "User ID"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /users [delete]
 func deleteUser(c *gin.Context) {
 	idStr := c.Query("id")
 	id, err := strconv.Atoi(idStr)
@@ -2453,6 +2798,14 @@ func deleteUser(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+// @Summary Get events for a user
+// @Description Returns all events associated with a specific user
+// @Tags Users
+// @Produce json
+// @Param id path int true "User ID"
+// @Success 200 {array} object "timeline events"
+// @Failure 400 {object} map[string]string
+// @Router /users/{id}/events [get]
 func getUserEvents(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
@@ -2474,6 +2827,12 @@ func getUserEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// @Summary Generate recurring events
+// @Description Generates events from recurring event templates
+// @Tags Events
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /events/recurring/generate [post]
 func generateRecurringEvents(c *gin.Context) {
 	var input struct {
 		EventID   int    `json:"event_id"`
@@ -2568,6 +2927,12 @@ func generateRecurringEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"generated": generated})
 }
 
+// @Summary Get Ollama config
+// @Description Returns the current Ollama AI configuration
+// @Tags AI
+// @Produce json
+// @Success 200 {object} object "Ollama config"
+// @Router /ollama/config [get]
 func getOllamaConfig(c *gin.Context) {
 	var cfg OllamaConfig
 	var enabledInt int
@@ -2580,6 +2945,15 @@ func getOllamaConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, cfg)
 }
 
+// @Summary Save Ollama config
+// @Description Saves the Ollama AI configuration
+// @Tags AI
+// @Accept json
+// @Produce json
+// @Param config body object true "Ollama config"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /ollama/config [post]
 func saveOllamaConfig(c *gin.Context) {
 	var cfg OllamaConfig
 	if err := c.ShouldBindJSON(&cfg); err != nil {
@@ -2628,6 +3002,12 @@ func backupDatabase() {
 	log.Printf("[Backup] Database backed up to %s", dst)
 }
 
+// @Summary Create backup
+// @Description Creates a database backup
+// @Tags System
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /backup [post]
 func handleBackup(c *gin.Context) {
 	backupDatabase()
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -2639,6 +3019,12 @@ type BackupInfo struct {
 	Date string `json:"date"`
 }
 
+// @Summary List backups
+// @Description Lists all database backups
+// @Tags System
+// @Produce json
+// @Success 200 {array} object "backups"
+// @Router /backups [get]
 func handleListBackups(c *gin.Context) {
 	entries, err := os.ReadDir(backupPath)
 	if err != nil {

@@ -1,0 +1,1747 @@
+{
+    "swagger": "2.0",
+    "info": {
+        "contact": {}
+    },
+    "paths": {
+        "/auto-tag": {
+            "post": {
+                "description": "Automatically generates tags for an event using AI/Ollama",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Auto-tag event",
+                "parameters": [
+                    {
+                        "description": "Auto-tag request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/autocomplete": {
+            "get": {
+                "description": "Returns autocomplete suggestions for location, person, tag, media, or user fields",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Autocomplete suggestions",
+                "parameters": [
+                    {
+                        "enum": [
+                            "location",
+                            "person",
+                            "tag",
+                            "media",
+                            "user"
+                        ],
+                        "type": "string",
+                        "description": "Field to autocomplete",
+                        "name": "field",
+                        "in": "query",
+                        "required": true
+                    },
+                    {
+                        "type": "string",
+                        "description": "Search prefix",
+                        "name": "q",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/backup": {
+            "post": {
+                "description": "Creates a database backup",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "Create backup",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/backups": {
+            "get": {
+                "description": "Lists all database backups",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "System"
+                ],
+                "summary": "List backups",
+                "responses": {
+                    "200": {
+                        "description": "backups",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/calendar": {
+            "get": {
+                "description": "Returns events grouped by date for calendar view",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Get calendar data",
+                "responses": {
+                    "200": {
+                        "description": "calendar data",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/check-setup": {
+            "get": {
+                "description": "Check if admin has been configured",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Info"
+                ],
+                "summary": "Check setup status",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "boolean"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/config": {
+            "get": {
+                "description": "Returns public configuration (umami analytics settings)",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Info"
+                ],
+                "summary": "Get public config",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/contributions": {
+            "get": {
+                "description": "Returns a map of dates to event counts for contribution graph",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Get contribution data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by year",
+                        "name": "year",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/csrf-token": {
+            "get": {
+                "description": "Returns a new CSRF token for the current session",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Get CSRF token",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/email/config": {
+            "get": {
+                "description": "Returns the current email/SMTP configuration",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Email"
+                ],
+                "summary": "Get email config",
+                "responses": {
+                    "200": {
+                        "description": "Email config",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Saves the email/SMTP configuration",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Email"
+                ],
+                "summary": "Save email config",
+                "parameters": [
+                    {
+                        "description": "Email config",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/email/test": {
+            "post": {
+                "description": "Sends a test email using the configured SMTP settings",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Email"
+                ],
+                "summary": "Test email",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/events": {
+            "get": {
+                "description": "Returns events with optional year, month, tag, limit, sort, and user_id filters",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Get timeline events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by year",
+                        "name": "year",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by month (01-12)",
+                        "name": "month",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tag",
+                        "name": "tag",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Limit results",
+                        "name": "limit",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "asc",
+                            "desc"
+                        ],
+                        "type": "string",
+                        "description": "Sort order",
+                        "name": "sort",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by user ID",
+                        "name": "user_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "timeline events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Creates a new event or updates an existing one",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Create or update event",
+                "parameters": [
+                    {
+                        "description": "Event data",
+                        "name": "event",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "saved event",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes an event by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Delete event",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Event ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/events/clone": {
+            "post": {
+                "description": "Clone an existing event to a new date",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Clone event",
+                "parameters": [
+                    {
+                        "description": "Clone request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/events/export": {
+            "get": {
+                "description": "Export events as JSON or CSV",
+                "produces": [
+                    "application/json",
+                    "text/csv"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Export events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by year",
+                        "name": "year",
+                        "in": "query"
+                    },
+                    {
+                        "enum": [
+                            "json",
+                            "csv"
+                        ],
+                        "type": "string",
+                        "description": "Export format",
+                        "name": "format",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "events",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/events/full": {
+            "get": {
+                "description": "Returns all events with complete field data, ordered by date ascending",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Get all events with full fields",
+                "responses": {
+                    "200": {
+                        "description": "timeline events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/events/import": {
+            "post": {
+                "description": "Import events from JSON or CSV format",
+                "consumes": [
+                    "application/json",
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Import events",
+                "parameters": [
+                    {
+                        "enum": [
+                            "json",
+                            "csv"
+                        ],
+                        "type": "string",
+                        "description": "Import format",
+                        "name": "format",
+                        "in": "query"
+                    },
+                    {
+                        "type": "file",
+                        "description": "CSV file (for CSV format)",
+                        "name": "file",
+                        "in": "formData"
+                    },
+                    {
+                        "description": "Events array (for JSON format)",
+                        "name": "events",
+                        "in": "body",
+                        "schema": {
+                            "type": "array"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "integer"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/events/recurring/generate": {
+            "post": {
+                "description": "Generates events from recurring event templates",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Generate recurring events",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/events/search": {
+            "get": {
+                "description": "Full-text search across events with multiple filters",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Search events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search query",
+                        "name": "q",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by year",
+                        "name": "year",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by tag",
+                        "name": "tag",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by person name",
+                        "name": "person",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by media type",
+                        "name": "media_type",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by location",
+                        "name": "location",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by month",
+                        "name": "month",
+                        "in": "query"
+                    },
+                    {
+                        "type": "integer",
+                        "description": "Filter by user ID",
+                        "name": "user_id",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "timeline events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/gotify/config": {
+            "get": {
+                "description": "Returns the current Gotify notification configuration",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Get Gotify config",
+                "responses": {
+                    "200": {
+                        "description": "Gotify config",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Saves the Gotify notification configuration",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Save Gotify config",
+                "parameters": [
+                    {
+                        "description": "Gotify config",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/gotify/test": {
+            "post": {
+                "description": "Sends a test notification via Gotify",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Notifications"
+                ],
+                "summary": "Test Gotify notification",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/login": {
+            "post": {
+                "description": "Authenticate admin user or perform initial setup",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Login admin user",
+                "parameters": [
+                    {
+                        "description": "Login credentials",
+                        "name": "credentials",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "401": {
+                        "description": "Unauthorized",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/logout": {
+            "post": {
+                "description": "Destroy admin session",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "Logout admin user",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/map": {
+            "get": {
+                "description": "Returns events with geo-coordinates as a feature collection, optionally filtered by year",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Get map data",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by year",
+                        "name": "year",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "GeoJSON feature collection",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/memories": {
+            "get": {
+                "description": "Returns events from past years that fall within the configured memory window",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memories"
+                ],
+                "summary": "Get memory events",
+                "responses": {
+                    "200": {
+                        "description": "memory events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/memories/config": {
+            "get": {
+                "description": "Returns the memories/on-this-day configuration",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memories"
+                ],
+                "summary": "Get memories config",
+                "responses": {
+                    "200": {
+                        "description": "Memories config",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Saves the memories/on-this-day configuration",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memories"
+                ],
+                "summary": "Save memories config",
+                "parameters": [
+                    {
+                        "description": "Memories config",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/memories/send": {
+            "post": {
+                "description": "Manually trigger sending of memories/on-this-day email",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Memories"
+                ],
+                "summary": "Send memories email",
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/ollama/config": {
+            "get": {
+                "description": "Returns the current Ollama AI configuration",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "Get Ollama config",
+                "responses": {
+                    "200": {
+                        "description": "Ollama config",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Saves the Ollama AI configuration",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "AI"
+                ],
+                "summary": "Save Ollama config",
+                "parameters": [
+                    {
+                        "description": "Ollama config",
+                        "name": "config",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/persons": {
+            "get": {
+                "description": "Returns all persons with optional search filter",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Persons"
+                ],
+                "summary": "List persons",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Search by name",
+                        "name": "q",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "persons",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Creates a new person or updates an existing one",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Persons"
+                ],
+                "summary": "Create or update person",
+                "parameters": [
+                    {
+                        "description": "Person data",
+                        "name": "person",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "saved person",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes a person by ID and unlinks their events",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Persons"
+                ],
+                "summary": "Delete person",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Person ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/persons/{id}/events": {
+            "get": {
+                "description": "Returns all events associated with a person",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Persons"
+                ],
+                "summary": "Get events for a person",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "Person ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "timeline events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/public": {
+            "get": {
+                "description": "Returns events accessible via share token or public mode",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Get public events",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Share token",
+                        "name": "share",
+                        "in": "query"
+                    },
+                    {
+                        "type": "string",
+                        "description": "Filter by year",
+                        "name": "year",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "timeline events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/share": {
+            "get": {
+                "description": "Redirect to shared view using a share token",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sharing"
+                ],
+                "summary": "Get share link",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Share token",
+                        "name": "token",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "302": {
+                        "description": "redirect",
+                        "schema": {
+                            "type": "string"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/share/create": {
+            "post": {
+                "description": "Creates a shareable link for selected events",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Sharing"
+                ],
+                "summary": "Create share link",
+                "parameters": [
+                    {
+                        "description": "Share request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/stats": {
+            "get": {
+                "description": "Returns statistics for events in a given year",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Get event statistics",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by year",
+                        "name": "year",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "event statistics",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
+        "/tags": {
+            "get": {
+                "description": "Returns all unique tags with their counts, optionally filtered by year",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Get tags",
+                "parameters": [
+                    {
+                        "type": "string",
+                        "description": "Filter by year",
+                        "name": "year",
+                        "in": "query"
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "tags with counts",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/upload": {
+            "post": {
+                "description": "Upload an image, video, or audio file. Returns the URL and optional thumbnail URL.",
+                "consumes": [
+                    "multipart/form-data"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Media"
+                ],
+                "summary": "Upload media file",
+                "parameters": [
+                    {
+                        "type": "file",
+                        "description": "Image file",
+                        "name": "image",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Video file",
+                        "name": "video",
+                        "in": "formData"
+                    },
+                    {
+                        "type": "file",
+                        "description": "Audio file",
+                        "name": "audio",
+                        "in": "formData"
+                    },
+                    {
+                        "enum": [
+                            "image",
+                            "video",
+                            "audio"
+                        ],
+                        "type": "string",
+                        "description": "Media type",
+                        "name": "media_type",
+                        "in": "formData",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users": {
+            "get": {
+                "description": "Returns all registered users",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "List users",
+                "responses": {
+                    "200": {
+                        "description": "users",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    }
+                }
+            },
+            "post": {
+                "description": "Creates a new user or updates an existing one",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Create or update user",
+                "parameters": [
+                    {
+                        "description": "User data",
+                        "name": "user",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "saved user",
+                        "schema": {
+                            "type": "object"
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            },
+            "delete": {
+                "description": "Deletes a user by ID",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Delete user",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "query",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/users/{id}/events": {
+            "get": {
+                "description": "Returns all events associated with a specific user",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Users"
+                ],
+                "summary": "Get events for a user",
+                "parameters": [
+                    {
+                        "type": "integer",
+                        "description": "User ID",
+                        "name": "id",
+                        "in": "path",
+                        "required": true
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "timeline events",
+                        "schema": {
+                            "type": "array",
+                            "items": {
+                                "type": "object"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        },
+        "/weather/fetch": {
+            "post": {
+                "description": "Fetches and stores weather data for an event based on date and location",
+                "consumes": [
+                    "application/json"
+                ],
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "Events"
+                ],
+                "summary": "Fetch weather data",
+                "parameters": [
+                    {
+                        "description": "Weather request",
+                        "name": "body",
+                        "in": "body",
+                        "required": true,
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                ],
+                "responses": {
+                    "200": {
+                        "description": "OK",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "400": {
+                        "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}

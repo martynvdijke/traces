@@ -84,10 +84,16 @@ tasks:
       - rm -f traces-server
       - rm -f traces.db
 
+  generate-swagger:
+    desc: Generate Swagger/OpenAPI documentation
+    cmds:
+      - swag init --parseDependency --parseInternal
+
   prepush:
     desc: Run all checks required before pushing (lint, build, test)
     cmds:
       - task: tidy
+      - task: generate-swagger
       - task: lint
       - task: build-ts
       - task: build

@@ -1,0 +1,1154 @@
+info:
+  contact: {}
+paths:
+  /auto-tag:
+    post:
+      consumes:
+      - application/json
+      description: Automatically generates tags for an event using AI/Ollama
+      parameters:
+      - description: Auto-tag request
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Auto-tag event
+      tags:
+      - Events
+  /autocomplete:
+    get:
+      description: Returns autocomplete suggestions for location, person, tag, media,
+        or user fields
+      parameters:
+      - description: Field to autocomplete
+        enum:
+        - location
+        - person
+        - tag
+        - media
+        - user
+        in: query
+        name: field
+        required: true
+        type: string
+      - description: Search prefix
+        in: query
+        name: q
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              type: string
+            type: array
+      summary: Autocomplete suggestions
+      tags:
+      - Events
+  /backup:
+    post:
+      description: Creates a database backup
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create backup
+      tags:
+      - System
+  /backups:
+    get:
+      description: Lists all database backups
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: backups
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List backups
+      tags:
+      - System
+  /calendar:
+    get:
+      description: Returns events grouped by date for calendar view
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: calendar data
+          schema:
+            type: object
+      summary: Get calendar data
+      tags:
+      - Events
+  /check-setup:
+    get:
+      description: Check if admin has been configured
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: boolean
+            type: object
+      summary: Check setup status
+      tags:
+      - Info
+  /config:
+    get:
+      description: Returns public configuration (umami analytics settings)
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get public config
+      tags:
+      - Info
+  /contributions:
+    get:
+      description: Returns a map of dates to event counts for contribution graph
+      parameters:
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+      summary: Get contribution data
+      tags:
+      - Events
+  /csrf-token:
+    get:
+      description: Returns a new CSRF token for the current session
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get CSRF token
+      tags:
+      - Authentication
+  /email/config:
+    get:
+      description: Returns the current email/SMTP configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Email config
+          schema:
+            type: object
+      summary: Get email config
+      tags:
+      - Email
+    post:
+      consumes:
+      - application/json
+      description: Saves the email/SMTP configuration
+      parameters:
+      - description: Email config
+        in: body
+        name: config
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Save email config
+      tags:
+      - Email
+  /email/test:
+    post:
+      description: Sends a test email using the configured SMTP settings
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Test email
+      tags:
+      - Email
+  /events:
+    delete:
+      description: Deletes an event by ID
+      parameters:
+      - description: Event ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete event
+      tags:
+      - Events
+    get:
+      description: Returns events with optional year, month, tag, limit, sort, and
+        user_id filters
+      parameters:
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      - description: Filter by month (01-12)
+        in: query
+        name: month
+        type: string
+      - description: Filter by tag
+        in: query
+        name: tag
+        type: string
+      - description: Limit results
+        in: query
+        name: limit
+        type: integer
+      - description: Sort order
+        enum:
+        - asc
+        - desc
+        in: query
+        name: sort
+        type: string
+      - description: Filter by user ID
+        in: query
+        name: user_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: timeline events
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Get timeline events
+      tags:
+      - Events
+    post:
+      consumes:
+      - application/json
+      description: Creates a new event or updates an existing one
+      parameters:
+      - description: Event data
+        in: body
+        name: event
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: saved event
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create or update event
+      tags:
+      - Events
+  /events/clone:
+    post:
+      consumes:
+      - application/json
+      description: Clone an existing event to a new date
+      parameters:
+      - description: Clone request
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Clone event
+      tags:
+      - Events
+  /events/export:
+    get:
+      description: Export events as JSON or CSV
+      parameters:
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      - description: Export format
+        enum:
+        - json
+        - csv
+        in: query
+        name: format
+        type: string
+      produces:
+      - application/json
+      - text/csv
+      responses:
+        "200":
+          description: events
+          schema:
+            type: object
+      summary: Export events
+      tags:
+      - Events
+  /events/full:
+    get:
+      description: Returns all events with complete field data, ordered by date ascending
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: timeline events
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Get all events with full fields
+      tags:
+      - Events
+  /events/import:
+    post:
+      consumes:
+      - application/json
+      - multipart/form-data
+      description: Import events from JSON or CSV format
+      parameters:
+      - description: Import format
+        enum:
+        - json
+        - csv
+        in: query
+        name: format
+        type: string
+      - description: CSV file (for CSV format)
+        in: formData
+        name: file
+        type: file
+      - description: Events array (for JSON format)
+        in: body
+        name: events
+        schema:
+          type: array
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: integer
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Import events
+      tags:
+      - Events
+  /events/recurring/generate:
+    post:
+      description: Generates events from recurring event templates
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Generate recurring events
+      tags:
+      - Events
+  /events/search:
+    get:
+      description: Full-text search across events with multiple filters
+      parameters:
+      - description: Search query
+        in: query
+        name: q
+        type: string
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      - description: Filter by tag
+        in: query
+        name: tag
+        type: string
+      - description: Filter by person name
+        in: query
+        name: person
+        type: string
+      - description: Filter by media type
+        in: query
+        name: media_type
+        type: string
+      - description: Filter by location
+        in: query
+        name: location
+        type: string
+      - description: Filter by month
+        in: query
+        name: month
+        type: string
+      - description: Filter by user ID
+        in: query
+        name: user_id
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: timeline events
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Search events
+      tags:
+      - Events
+  /gotify/config:
+    get:
+      description: Returns the current Gotify notification configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Gotify config
+          schema:
+            type: object
+      summary: Get Gotify config
+      tags:
+      - Notifications
+    post:
+      consumes:
+      - application/json
+      description: Saves the Gotify notification configuration
+      parameters:
+      - description: Gotify config
+        in: body
+        name: config
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Save Gotify config
+      tags:
+      - Notifications
+  /gotify/test:
+    post:
+      description: Sends a test notification via Gotify
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Test Gotify notification
+      tags:
+      - Notifications
+  /login:
+    post:
+      consumes:
+      - application/json
+      description: Authenticate admin user or perform initial setup
+      parameters:
+      - description: Login credentials
+        in: body
+        name: credentials
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Login admin user
+      tags:
+      - Authentication
+  /logout:
+    post:
+      description: Destroy admin session
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Logout admin user
+      tags:
+      - Authentication
+  /map:
+    get:
+      description: Returns events with geo-coordinates as a feature collection, optionally
+        filtered by year
+      parameters:
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: GeoJSON feature collection
+          schema:
+            type: object
+      summary: Get map data
+      tags:
+      - Events
+  /memories:
+    get:
+      description: Returns events from past years that fall within the configured
+        memory window
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: memory events
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Get memory events
+      tags:
+      - Memories
+  /memories/config:
+    get:
+      description: Returns the memories/on-this-day configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Memories config
+          schema:
+            type: object
+      summary: Get memories config
+      tags:
+      - Memories
+    post:
+      consumes:
+      - application/json
+      description: Saves the memories/on-this-day configuration
+      parameters:
+      - description: Memories config
+        in: body
+        name: config
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Save memories config
+      tags:
+      - Memories
+  /memories/send:
+    post:
+      description: Manually trigger sending of memories/on-this-day email
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Send memories email
+      tags:
+      - Memories
+  /ollama/config:
+    get:
+      description: Returns the current Ollama AI configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Ollama config
+          schema:
+            type: object
+      summary: Get Ollama config
+      tags:
+      - AI
+    post:
+      consumes:
+      - application/json
+      description: Saves the Ollama AI configuration
+      parameters:
+      - description: Ollama config
+        in: body
+        name: config
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Save Ollama config
+      tags:
+      - AI
+  /persons:
+    delete:
+      description: Deletes a person by ID and unlinks their events
+      parameters:
+      - description: Person ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete person
+      tags:
+      - Persons
+    get:
+      description: Returns all persons with optional search filter
+      parameters:
+      - description: Search by name
+        in: query
+        name: q
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: persons
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List persons
+      tags:
+      - Persons
+    post:
+      consumes:
+      - application/json
+      description: Creates a new person or updates an existing one
+      parameters:
+      - description: Person data
+        in: body
+        name: person
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: saved person
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create or update person
+      tags:
+      - Persons
+  /persons/{id}/events:
+    get:
+      description: Returns all events associated with a person
+      parameters:
+      - description: Person ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: timeline events
+          schema:
+            items:
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get events for a person
+      tags:
+      - Persons
+  /public:
+    get:
+      description: Returns events accessible via share token or public mode
+      parameters:
+      - description: Share token
+        in: query
+        name: share
+        type: string
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: timeline events
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Get public events
+      tags:
+      - Events
+  /share:
+    get:
+      description: Redirect to shared view using a share token
+      parameters:
+      - description: Share token
+        in: query
+        name: token
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "302":
+          description: redirect
+          schema:
+            type: string
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get share link
+      tags:
+      - Sharing
+  /share/create:
+    post:
+      consumes:
+      - application/json
+      description: Creates a shareable link for selected events
+      parameters:
+      - description: Share request
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create share link
+      tags:
+      - Sharing
+  /stats:
+    get:
+      description: Returns statistics for events in a given year
+      parameters:
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: event statistics
+          schema:
+            type: object
+      summary: Get event statistics
+      tags:
+      - Events
+  /tags:
+    get:
+      description: Returns all unique tags with their counts, optionally filtered
+        by year
+      parameters:
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: tags with counts
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Get tags
+      tags:
+      - Events
+  /upload:
+    post:
+      consumes:
+      - multipart/form-data
+      description: Upload an image, video, or audio file. Returns the URL and optional
+        thumbnail URL.
+      parameters:
+      - description: Image file
+        in: formData
+        name: image
+        type: file
+      - description: Video file
+        in: formData
+        name: video
+        type: file
+      - description: Audio file
+        in: formData
+        name: audio
+        type: file
+      - description: Media type
+        enum:
+        - image
+        - video
+        - audio
+        in: formData
+        name: media_type
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Upload media file
+      tags:
+      - Media
+  /users:
+    delete:
+      description: Deletes a user by ID
+      parameters:
+      - description: User ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete user
+      tags:
+      - Users
+    get:
+      description: Returns all registered users
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: users
+          schema:
+            items:
+              type: object
+            type: array
+      summary: List users
+      tags:
+      - Users
+    post:
+      consumes:
+      - application/json
+      description: Creates a new user or updates an existing one
+      parameters:
+      - description: User data
+        in: body
+        name: user
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: saved user
+          schema:
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Create or update user
+      tags:
+      - Users
+  /users/{id}/events:
+    get:
+      description: Returns all events associated with a specific user
+      parameters:
+      - description: User ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: timeline events
+          schema:
+            items:
+              type: object
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Get events for a user
+      tags:
+      - Users
+  /weather/fetch:
+    post:
+      consumes:
+      - application/json
+      description: Fetches and stores weather data for an event based on date and
+        location
+      parameters:
+      - description: Weather request
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Fetch weather data
+      tags:
+      - Events
+swagger: "2.0"
