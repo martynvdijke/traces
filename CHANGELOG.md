@@ -1,3 +1,10 @@
+## [1.8.9](https://github.com/martynvdijke/traces/compare/v1.8.8...v1.8.9) (2026-05-06)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/crypto to v0.50.0 ([df9eced](https://github.com/martynvdijke/traces/commit/df9ecedd72b51916ded8eac41dfb146a552ebf3b))
+
 ## [1.8.8](https://github.com/martynvdijke/traces/compare/v1.8.7...v1.8.8) (2026-05-06)
 
 
