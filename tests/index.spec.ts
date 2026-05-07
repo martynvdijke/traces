@@ -197,3 +197,99 @@ test.describe('TRACES JavaScript Loading', () => {
     await expect(page.locator('#gallery')).toBeVisible();
   });
 });
+
+test.describe('TRACES Search & Discovery', () => {
+  let sessionCookie: string;
+
+  test.beforeAll(async ({ request }) => {
+    const setupResp = await request.get('/api/check-setup');
+    const { setup } = await setupResp.json();
+
+    if (!setup) {
+      const setupRes = await request.post('/api/login', {
+        data: { username: 'admin', password: 'admin123', setup: true }
+      });
+      const cookies = setupRes.headers()['set-cookie'];
+      if (cookies) {
+        const match = cookies.match(/session=([^;]+)/);
+        if (match) sessionCookie = match[1];
+      }
+    } else {
+      const loginRes = await request.post('/api/login', {
+        data: { username: 'admin', password: 'admin123' }
+      });
+      if (loginRes.ok()) {
+        const cookies = loginRes.headers()['set-cookie'];
+        if (cookies) {
+          const match = cookies.match(/session=([^;]+)/);
+          if (match) sessionCookie = match[1];
+        }
+      }
+    }
+  });
+
+  test('should have global search input', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#search-input')).toBeVisible();
+    await expect(page.locator('#search-input')).toHaveAttribute('placeholder', /search/i);
+  });
+
+  test('should search events via API', async ({ request }) => {
+    const resp = await request.get('/api/events/search?q=test&year=2026', {
+      headers: sessionCookie ? { Cookie: `session=${sessionCookie}` } : {}
+    });
+    expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    expect(Array.isArray(data)).toBeTruthy();
+  });
+
+  test('should global search via API', async ({ request }) => {
+    const resp = await request.get('/api/events/search/global?q=test&limit=5', {
+      headers: sessionCookie ? { Cookie: `session=${sessionCookie}` } : {}
+    });
+    expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    expect(Array.isArray(data)).toBeTruthy();
+  });
+
+  test('should return stats distribution', async ({ request }) => {
+    const resp = await request.get('/api/stats/distribution?year=2026', {
+      headers: sessionCookie ? { Cookie: `session=${sessionCookie}` } : {}
+    });
+    expect(resp.ok()).toBeTruthy();
+    const data = await resp.json();
+    expect(data.event_count).toBeDefined();
+    expect(data.by_month).toBeDefined();
+    expect(data.by_weekday).toBeDefined();
+    expect(Array.isArray(data.by_tag)).toBeTruthy();
+    expect(Array.isArray(data.by_person)).toBeTruthy();
+    expect(Array.isArray(data.by_user)).toBeTruthy();
+    expect(Array.isArray(data.by_location)).toBeTruthy();
+  });
+
+  test('should have filters toggle button', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('button[title="Advanced Filters"]')).toBeVisible();
+  });
+
+  test('should toggle filters panel', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('button[title="Advanced Filters"]').click();
+    await expect(page.locator('#advanced-filters')).toBeVisible();
+  });
+
+  test('should have Stats tab', async ({ page }) => {
+    await page.goto('/');
+    await expect(page.locator('#stats-tab')).toBeVisible();
+    await expect(page.locator('#stats-tab')).toContainText('Stats');
+  });
+
+  test('should load stats distribution when clicking Stats tab', async ({ page }) => {
+    await page.goto('/');
+    await page.locator('#stats-tab').click();
+    await page.waitForTimeout(2000);
+    await expect(page.locator('#stats-distribution-container')).toBeVisible();
+    // Should not show the loading text anymore after load
+    await expect(page.locator('#stats-distribution-container')).not.toContainText('Loading statistics...');
+  });
+});

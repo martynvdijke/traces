@@ -52,6 +52,31 @@
         .user-badge { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.5rem; border-radius: 10px; font-size: 0.7rem; color: white; }
         .memories-section { margin-top: 1rem; }
         .memories-item { padding: 0.75rem; border-left: 3px solid var(--primary); margin-bottom: 0.5rem; background: var(--bg); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
+        .global-search-wrapper { position: relative; }
+        .global-search-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; max-height: 320px; overflow-y: auto; z-index: 1050; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .global-search-item { padding: 0.5rem 0.75rem; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
+        .global-search-item:last-child { border-bottom: none; }
+        .global-search-item:hover, .global-search-item.active { background: var(--primary-glow); }
+        .global-search-item .search-year { font-size: 0.7rem; color: var(--text-muted); }
+        .global-search-no-results { padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+        .filter-tags { position: relative; }
+        .selected-filter-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+        .filter-tag-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--primary-glow); color: var(--primary); border-radius: 12px; font-size: 0.72rem; cursor: pointer; }
+        .filter-tag-badge i { font-size: 0.65rem; }
+        .stats-bar-chart { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding-top: 8px; }
+        .stats-bar { flex: 1; background: var(--primary); border-radius: 4px 4px 0 0; min-width: 8px; position: relative; transition: height 0.3s; }
+        .stats-bar:hover { opacity: 0.8; }
+        .stats-bar-label { text-align: center; font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; }
+        .stats-bar-value { text-align: center; font-size: 0.7rem; font-weight: 700; }
+        .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
+        .tag-cloud-item { padding: 3px 10px; border-radius: 12px; background: var(--primary-glow); color: var(--primary); font-size: 0.75rem; }
+        .weekday-chart { display: flex; gap: 6px; align-items: flex-end; height: 100px; }
+        .weekday-bar { flex: 1; background: var(--primary); border-radius: 4px 4px 0 0; position: relative; transition: height 0.3s; }
+        .weekday-bar-label { text-align: center; font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; }
+        .dist-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+        .dist-card h5 { font-size: 0.9rem; margin-bottom: 0.75rem; font-weight: 700; }
+        .geo-spread { font-size: 0.8rem; color: var(--text-muted); }
+        .top-day-badge { display: inline-block; padding: 4px 10px; background: var(--primary-glow); border-radius: 8px; font-weight: 700; font-size: 0.85rem; }
         @media (max-width: 768px) {
             .calendar-day { min-height: 60px; font-size: 0.75rem; }
             .main-tabs .nav-link { padding: 0.5rem 0.75rem; font-size: 0.8rem; }
@@ -72,7 +97,10 @@
                 <div class="racing-stripes"></div>
                 <nav class="d-flex flex-column flex-md-row align-items-center gap-2 gap-md-3 w-100">
                     <div class="search-box d-flex order-1 order-md-0">
-                        <input type="text" placeholder="Search..." id="search-input" class="form-control form-control-sm">
+                        <div class="global-search-wrapper">
+                            <input type="text" placeholder="Search all years..." id="search-input" class="form-control form-control-sm" autocomplete="off" oninput="globalSearchInput()" onkeydown="globalSearchKeydown(event)" onfocus="globalSearchFocus()">
+                            <div class="global-search-dropdown" id="global-search-dropdown" style="display:none"></div>
+                        </div>
                         <button class="btn btn-sm btn-outline-secondary" onclick="searchEvents()">
                             <i class="fa-solid fa-search"></i>
                         </button>
@@ -95,7 +123,45 @@
                     <h2 class="mb-0"><i class="fa-solid fa-calendar me-2"></i>Year <span id="current-year">2026</span></h2>
                 </div>
                 <div class="col-md-8">
-                    <div class="d-flex gap-2 flex-wrap" id="year-buttons">
+                    <div class="d-flex gap-2 flex-wrap align-items-center" id="year-buttons">
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <section class="advanced-filters mb-4" id="advanced-filters" style="display:none">
+            <div class="card">
+                <div class="card-body">
+                    <div class="row g-3">
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold">Tags</label>
+                            <div class="filter-tags" id="filter-tags-container">
+                                <input type="text" class="form-control form-control-sm" id="filter-tag-input" placeholder="Type tag..." oninput="filterTagInput()" autocomplete="off">
+                                <div class="selected-filter-tags mt-1" id="selected-filter-tags"></div>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold">Person</label>
+                            <select class="form-select form-select-sm" id="filter-person" onchange="applyAdvancedFilters()">
+                                <option value="">Any person</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold">Media Type</label>
+                            <div class="d-flex gap-2 mt-1">
+                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="image" onchange="applyAdvancedFilters()" id="filter-media-image"> Image</label>
+                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="video" onchange="applyAdvancedFilters()" id="filter-media-video"> Video</label>
+                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="audio" onchange="applyAdvancedFilters()" id="filter-media-audio"> Audio</label>
+                            </div>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold">Location</label>
+                            <input type="text" class="form-control form-control-sm" id="filter-location" placeholder="Filter by location..." oninput="filterLocationDebounce()">
+                        </div>
+                    </div>
+                    <div class="mt-2">
+                        <button class="btn btn-sm btn-outline-secondary" onclick="clearAllFilters()">Clear Filters</button>
+                        <span class="text-muted small ms-2" id="filter-status"></span>
                     </div>
                 </div>
             </div>
@@ -107,7 +173,10 @@
                     <div class="contribution-card">
                         <div class="contribution-header">
                             <h3><i class="fa-solid fa-chart-pie me-2"></i>Activity Overview</h3>
-                            <span class="badge bg-primary" id="total-events">0 events</span>
+                            <div>
+                                <button class="btn btn-sm btn-outline-primary me-1" onclick="toggleFilters()" title="Advanced Filters"><i class="fa-solid fa-filter"></i></button>
+                                <span class="badge bg-primary" id="total-events">0 events</span>
+                            </div>
                         </div>
                         <div class="contribution-graph" id="contribution-graph">
                         </div>
@@ -159,6 +228,7 @@
             <li class="nav-item"><button class="nav-link" id="gallery-tab" data-bs-toggle="tab" data-bs-target="#gallery-pane" type="button"><i class="fa-solid fa-images me-1"></i> Photos</button></li>
             <li class="nav-item"><button class="nav-link" id="map-tab" data-bs-toggle="tab" data-bs-target="#map-pane" type="button"><i class="fa-solid fa-map-location-dot me-1"></i> Map</button></li>
             <li class="nav-item"><button class="nav-link" id="compare-tab" data-bs-toggle="tab" data-bs-target="#compare-pane" type="button"><i class="fa-solid fa-chart-bar me-1"></i> Compare</button></li>
+            <li class="nav-item"><button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-pane" type="button"><i class="fa-solid fa-chart-simple me-1"></i> Stats</button></li>
         </ul>
 
         <div class="tab-content">
@@ -258,6 +328,15 @@
                                 <div class="card-body" id="compare-result"></div>
                             </div>
                         </div>
+                    </div>
+                </section>
+            </div>
+
+            <div class="tab-pane fade" id="stats-pane">
+                <section class="stats-section mb-4">
+                    <h4 class="mb-3"><i class="fa-solid fa-chart-simple me-2"></i>Event Distributions</h4>
+                    <div id="stats-distribution-container">
+                        <div class="text-center text-muted py-5">Loading statistics...</div>
                     </div>
                 </section>
             </div>

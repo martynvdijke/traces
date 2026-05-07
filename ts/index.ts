@@ -104,14 +104,111 @@ function changeYear(year: number): void {
   const btn = document.querySelector(`.year-selector .btn[data-year="${year}"]`);
   if (btn) { btn.classList.remove('btn-outline-primary'); btn.classList.add('btn-primary'); }
   loadData();
+  loadStatsDist();
 }
 
 function searchEvents(): void {
   const input = document.getElementById('search-input') as HTMLInputElement | null;
   if (input?.value) {
-    window.location.href = '?q=' + encodeURIComponent(input.value);
+    applyAdvancedFilters();
+  }
+  hideGlobalDropdown();
+}
+
+function globalSearchInput(): void {
+  const input = document.getElementById('search-input') as HTMLInputElement | null;
+  const q = input?.value?.trim();
+  if (!q || q.length < 2) {
+    hideGlobalDropdown();
+    return;
+  }
+  fetch('/api/events/search/global?q=' + encodeURIComponent(q) + '&limit=8')
+    .then(r => r.json())
+    .then((results: any[]) => {
+      const dropdown = document.getElementById('global-search-dropdown');
+      if (!dropdown) return;
+      if (!Array.isArray(results) || results.length === 0) {
+        dropdown.innerHTML = '<div class="global-search-no-results">No matches found</div>';
+      } else {
+        dropdown.innerHTML = results.map((e: any, i: number) => {
+          const year = e.date ? e.date.slice(0, 4) : '';
+          const loc = e.location ? ' <span class="search-year"><i class="fa-solid fa-location-dot"></i> ' + escapeHtml(e.location) + '</span>' : '';
+          return '<div class="global-search-item" data-id="' + e.id + '" onclick="selectGlobalResult(' + e.id + ')" onmouseenter="highlightGlobalItem(' + i + ')">' +
+            '<div class="fw-bold">' + escapeHtml(e.title) + '</div>' +
+            '<div class="search-year">' + year + loc + '</div>' +
+            '</div>';
+        }).join('');
+      }
+      dropdown.style.display = 'block';
+    })
+    .catch(() => { hideGlobalDropdown(); });
+}
+
+let globalSearchIndex = -1;
+
+function globalSearchKeydown(e: KeyboardEvent): void {
+  const dropdown = document.getElementById('global-search-dropdown');
+  if (!dropdown || dropdown.style.display === 'none') return;
+  const items = dropdown.querySelectorAll('.global-search-item');
+  if (e.key === 'ArrowDown') {
+    e.preventDefault();
+    globalSearchIndex = Math.min(globalSearchIndex + 1, items.length - 1);
+    updateGlobalHighlight(items);
+  } else if (e.key === 'ArrowUp') {
+    e.preventDefault();
+    globalSearchIndex = Math.max(globalSearchIndex - 1, 0);
+    updateGlobalHighlight(items);
+  } else if (e.key === 'Enter') {
+    e.preventDefault();
+    if (globalSearchIndex >= 0 && items[globalSearchIndex]) {
+      const el = items[globalSearchIndex] as HTMLElement;
+      selectGlobalResult(parseInt(el.dataset.id || '0'));
+    }
+  } else if (e.key === 'Escape') {
+    hideGlobalDropdown();
   }
 }
+
+function updateGlobalHighlight(items: NodeListOf<Element>): void {
+  items.forEach((item, i) => {
+    item.classList.toggle('active', i === globalSearchIndex);
+  });
+}
+
+function highlightGlobalItem(index: number): void {
+  const dropdown = document.getElementById('global-search-dropdown');
+  if (!dropdown) return;
+  const items = dropdown.querySelectorAll('.global-search-item');
+  items.forEach((item, i) => {
+    item.classList.toggle('active', i === index);
+  });
+  globalSearchIndex = index;
+}
+
+function globalSearchFocus(): void {
+  const input = document.getElementById('search-input') as HTMLInputElement | null;
+  if (input?.value?.trim() && input.value.trim().length >= 2) {
+    globalSearchInput();
+  }
+}
+
+function selectGlobalResult(id: number): void {
+  hideGlobalDropdown();
+  if (id) showMedia(id);
+}
+
+function hideGlobalDropdown(): void {
+  const dropdown = document.getElementById('global-search-dropdown');
+  if (dropdown) dropdown.style.display = 'none';
+  globalSearchIndex = -1;
+}
+
+document.addEventListener('click', (e: Event) => {
+  const target = e.target as HTMLElement;
+  if (!target.closest('.global-search-wrapper')) {
+    hideGlobalDropdown();
+  }
+});
 
 function filterMonth(month: number): void {
   currentMonth = month;
@@ -204,6 +301,193 @@ function updateStats(): void {
   if (statVideos) statVideos.textContent = String(videos);
   if (statAudio) statAudio.textContent = String(audio);
   if (statLocations) statLocations.textContent = String(locations);
+}
+
+let selectedFilterTags: string[] = [];
+let filterLocationTimeout: any = null;
+
+function toggleFilters(): void {
+  const panel = document.getElementById('advanced-filters');
+  if (!panel) return;
+  const isHidden = panel.style.display === 'none' || !panel.style.display;
+  panel.style.display = isHidden ? 'block' : 'none';
+}
+
+function applyAdvancedFilters(): void {
+  const q = (document.getElementById('search-input') as HTMLInputElement | null)?.value?.trim() || '';
+  const personId = (document.getElementById('filter-person') as HTMLSelectElement | null)?.value || '';
+  const location = (document.getElementById('filter-location') as HTMLInputElement | null)?.value?.trim() || '';
+  const mediaTypes: string[] = [];
+  if ((document.getElementById('filter-media-image') as HTMLInputElement | null)?.checked) mediaTypes.push('image');
+  if ((document.getElementById('filter-media-video') as HTMLInputElement | null)?.checked) mediaTypes.push('video');
+  if ((document.getElementById('filter-media-audio') as HTMLInputElement | null)?.checked) mediaTypes.push('audio');
+
+  let url = '/api/events/search?year=' + currentYear;
+  if (q) url += '&q=' + encodeURIComponent(q);
+  if (personId) url += '&person_id=' + encodeURIComponent(personId);
+  if (location) url += '&location=' + encodeURIComponent(location);
+
+  if (selectedFilterTags.length > 0) {
+    url += '&tag=' + encodeURIComponent(selectedFilterTags.join(','));
+  }
+  if (mediaTypes.length === 1) {
+    url += '&media_type=' + encodeURIComponent(mediaTypes[0]);
+  }
+
+  const statusEl = document.getElementById('filter-status');
+  if (statusEl) statusEl.textContent = 'Filtering...';
+
+  fetch(url)
+    .then(r => r.json())
+    .then((data: any[]) => {
+      if (Array.isArray(data)) {
+        events = data;
+        renderTimeline();
+        renderGallery();
+        renderMapInstance();
+        renderCalendar();
+        updateStats();
+        const status = document.getElementById('filter-status');
+        if (status) status.textContent = data.length + ' results';
+      }
+    })
+    .catch(() => {
+      const status = document.getElementById('filter-status');
+      if (status) status.textContent = 'Filter error';
+    });
+}
+
+function clearAllFilters(): void {
+  (document.getElementById('search-input') as HTMLInputElement).value = '';
+  (document.getElementById('filter-person') as HTMLSelectElement).value = '';
+  (document.getElementById('filter-location') as HTMLInputElement).value = '';
+  (document.getElementById('filter-media-image') as HTMLInputElement).checked = false;
+  (document.getElementById('filter-media-video') as HTMLInputElement).checked = false;
+  (document.getElementById('filter-media-audio') as HTMLInputElement).checked = false;
+  selectedFilterTags = [];
+  renderSelectedFilterTags();
+  loadData();
+  const status = document.getElementById('filter-status');
+  if (status) status.textContent = '';
+}
+
+function addFilterTag(tag: string): void {
+  if (!selectedFilterTags.includes(tag)) {
+    selectedFilterTags.push(tag);
+    renderSelectedFilterTags();
+    applyAdvancedFilters();
+  }
+  (document.getElementById('filter-tag-input') as HTMLInputElement).value = '';
+}
+
+function removeFilterTag(tag: string): void {
+  selectedFilterTags = selectedFilterTags.filter(t => t !== tag);
+  renderSelectedFilterTags();
+  applyAdvancedFilters();
+}
+
+function renderSelectedFilterTags(): void {
+  const container = document.getElementById('selected-filter-tags');
+  if (!container) return;
+  container.innerHTML = selectedFilterTags.map(t =>
+    '<span class="filter-tag-badge" onclick="removeFilterTag(\'' + escapeHtml(t) + '\')">' + escapeHtml(t) + ' <i class="fa-solid fa-xmark"></i></span>'
+  ).join('');
+}
+
+function filterTagInput(): void {
+  const input = (document.getElementById('filter-tag-input') as HTMLInputElement).value;
+  if (input.endsWith(',') || input.endsWith(' ')) {
+    const tag = input.replace(/[, ]+$/, '').trim();
+    if (tag) addFilterTag(tag);
+  }
+}
+
+function filterLocationDebounce(): void {
+  clearTimeout(filterLocationTimeout);
+  filterLocationTimeout = setTimeout(applyAdvancedFilters, 400);
+}
+
+async function loadStatsDist(): Promise<void> {
+  const container = document.getElementById('stats-distribution-container');
+  if (!container) return;
+  container.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading statistics...</div>';
+
+  try {
+    const res = await fetch('/api/stats/distribution?year=' + currentYear);
+    if (!res.ok) throw new Error('Failed');
+    const dist = await res.json();
+
+    const monthNames_short = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const maxMonth = Math.max(...(Object.values(dist.by_month) as number[]), 1);
+    const monthBars = monthNames_short.map((m, i) => {
+      const idx = String(i + 1).padStart(2, '0');
+      const val = dist.by_month[idx] || 0;
+      const pct = (val / maxMonth * 100).toFixed(0);
+      return '<div class="d-flex flex-column align-items-center" style="flex:1">' +
+        '<div class="stats-bar-value">' + val + '</div>' +
+        '<div class="stats-bar" style="height:' + pct + '%" title="' + m + ': ' + val + ' events"></div>' +
+        '<div class="stats-bar-label">' + m + '</div></div>';
+    }).join('');
+
+    const wdNames = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    const maxWD = Math.max(...(Object.values(dist.by_weekday) as number[]), 1);
+    const wdBars = wdNames.map((d, i) => {
+      const val = dist.by_weekday[String(i)] || 0;
+      const pct = (val / maxWD * 100).toFixed(0);
+      return '<div class="d-flex flex-column align-items-center" style="flex:1">' +
+        '<div class="weekday-bar" style="height:' + pct + '%" title="' + d + ': ' + val + ' events"></div>' +
+        '<div class="weekday-bar-label">' + d + '</div></div>';
+    }).join('');
+
+    let tagHTML = '';
+    if (dist.by_tag && dist.by_tag.length > 0) {
+      const totalTags = dist.by_tag.reduce((s: number, t: any) => s + t.count, 0);
+      tagHTML = '<div class="tag-cloud">' + dist.by_tag.slice(0, 20).map((t: any) => {
+        const pct = totalTags > 0 ? (t.count / totalTags * 100).toFixed(1) : '0';
+        return '<span class="tag-cloud-item" title="' + t.count + ' events">' + escapeHtml(t.name) + ' (' + pct + '%)</span>';
+      }).join('') + '</div>';
+    }
+
+    let personHTML = '';
+    if (dist.by_person && dist.by_person.length > 0) {
+      personHTML = dist.by_person.map((p: any) =>
+        '<div class="d-flex justify-content-between align-items-center py-1"><span>' + escapeHtml(p.name) + '</span><span class="badge bg-primary">' + p.count + '</span></div>'
+      ).join('');
+    }
+
+    let userHTML = '';
+    if (dist.by_user && dist.by_user.length > 0) {
+      userHTML = dist.by_user.map((u: any) =>
+        '<div class="d-flex justify-content-between align-items-center py-1"><span>' + escapeHtml(u.display_name) + '</span><span class="badge bg-primary">' + u.count + '</span></div>'
+      ).join('');
+    }
+
+    let locHTML = '';
+    if (dist.by_location && dist.by_location.length > 0) {
+      locHTML = dist.by_location.map((l: any) =>
+        '<div class="d-flex justify-content-between align-items-center py-1"><span><i class="fa-solid fa-location-dot me-1"></i>' + escapeHtml(l.location) + '</span><span class="badge bg-secondary">' + l.count + '</span></div>'
+      ).join('');
+    }
+
+    const topDayFormatted = dist.top_day ? new Date(dist.top_day + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : 'N/A';
+
+    container.innerHTML =
+      '<div class="row g-3">' +
+      '<div class="col-12 mb-2"><div class="d-flex gap-3 flex-wrap">' +
+      '<div class="dist-card" style="flex:1;min-width:150px"><h5><i class="fa-solid fa-calendar me-1"></i>Events</h5><div class="fs-4 fw-bold">' + dist.event_count + '</div><div class="text-muted small">' + dist.monthly_avg.toFixed(1) + '/mo · ' + dist.daily_avg.toFixed(2) + '/day</div></div>' +
+      '<div class="dist-card" style="flex:1;min-width:150px"><h5><i class="fa-solid fa-star me-1"></i>Busiest Day</h5><div class="top-day-badge">' + topDayFormatted + '</div></div>' +
+      '<div class="dist-card" style="flex:1;min-width:150px"><h5><i class="fa-solid fa-globe me-1"></i>Geo Spread</h5><div class="fs-5 fw-bold">' + (dist.geo_spread > 0 ? dist.geo_spread.toFixed(0) + ' km' : 'N/A') + '</div><div class="geo-spread">avg distance between locations</div></div>' +
+      '</div></div>' +
+      '<div class="col-12"><div class="dist-card"><h5><i class="fa-solid fa-chart-column me-1"></i>Events by Month</h5><div class="stats-bar-chart">' + monthBars + '</div></div></div>' +
+      '<div class="col-12"><div class="dist-card"><h5><i class="fa-solid fa-calendar-week me-1"></i>Events by Day of Week</h5><div class="weekday-chart">' + wdBars + '</div></div></div>' +
+      (tagHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-tags me-1"></i>Tag Distribution</h5>' + tagHTML + '</div></div>' : '') +
+      (personHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-user-group me-1"></i>People</h5>' + personHTML + '</div></div>' : '') +
+      (userHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-users me-1"></i>Family Members</h5>' + userHTML + '</div></div>' : '') +
+      (locHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-map-pin me-1"></i>Top Locations</h5>' + locHTML + '</div></div>' : '') +
+      '</div>';
+  } catch (err) {
+    container.innerHTML = '<div class="text-center text-muted py-5">Failed to load statistics</div>';
+  }
 }
 
 async function loadEvents(): Promise<void> {
@@ -784,6 +1068,13 @@ function initApp(): void {
   loadMemories();
   updateCompare();
   renderCalendarView();
+  loadPersonsForFilter();
+
+  const statsTab = document.getElementById('stats-tab');
+  if (statsTab) {
+    statsTab.addEventListener('shown.bs.tab', () => { loadStatsDist(); });
+    statsTab.addEventListener('click', () => { loadStatsDist(); });
+  }
 
   const compareYear1 = document.getElementById('compare-year-1') as HTMLSelectElement | null;
   const compareYear2 = document.getElementById('compare-year-2') as HTMLSelectElement | null;
@@ -810,6 +1101,23 @@ function initApp(): void {
   });
 }
 
+async function loadPersonsForFilter(): Promise<void> {
+  try {
+    const res = await fetch('/api/persons');
+    const persons = await res.json();
+    if (!Array.isArray(persons)) return;
+    const select = document.getElementById('filter-person') as HTMLSelectElement;
+    if (!select) return;
+    select.innerHTML = '<option value="">Any person</option>';
+    persons.forEach((p: any) => {
+      const opt = document.createElement('option');
+      opt.value = p.id;
+      opt.textContent = p.name;
+      select.appendChild(opt);
+    });
+  } catch (_) { }
+}
+
 document.addEventListener('DOMContentLoaded', initApp);
 
 (window as any).changeYear = changeYear;
@@ -822,3 +1130,16 @@ document.addEventListener('DOMContentLoaded', initApp);
 (window as any).calendarToday = calendarToday;
 (window as any).showCalendarDay = showCalendarDay;
 (window as any).updateCompare = updateCompare;
+(window as any).toggleFilters = toggleFilters;
+(window as any).applyAdvancedFilters = applyAdvancedFilters;
+(window as any).clearAllFilters = clearAllFilters;
+(window as any).addFilterTag = addFilterTag;
+(window as any).removeFilterTag = removeFilterTag;
+(window as any).filterTagInput = filterTagInput;
+(window as any).filterLocationDebounce = filterLocationDebounce;
+(window as any).loadStatsDist = loadStatsDist;
+(window as any).globalSearchInput = globalSearchInput;
+(window as any).globalSearchKeydown = globalSearchKeydown;
+(window as any).globalSearchFocus = globalSearchFocus;
+(window as any).selectGlobalResult = selectGlobalResult;
+(window as any).highlightGlobalItem = highlightGlobalItem;

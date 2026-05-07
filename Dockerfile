@@ -17,7 +17,7 @@ RUN go mod download
 
 COPY . .
 
-RUN CGO_ENABLED=1 GOOS=linux go build -o traces-server .
+RUN CGO_ENABLED=1 GOOS=linux go build -tags "sqlite_fts5" -o traces-server .
 
 FROM alpine:latest
 RUN apk add --no-cache sqlite-libs ca-certificates

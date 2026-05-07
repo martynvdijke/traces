@@ -2010,3 +2010,577 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 		}
 	})
 }
+
+func TestFTSSearch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		tags TEXT
+	)`)
+
+	createFTS5Table()
+
+	db.Exec("INSERT INTO timeline_events (title, description, event_date, location, tags) VALUES ('Beach Day', 'Went swimming at the beach', '2026-07-15', 'Malibu, CA', 'beach, summer')")
+	db.Exec("INSERT INTO timeline_events (title, description, event_date, location, tags) VALUES ('Mountain Hike', 'Hiked through Yosemite', '2026-08-02', 'Yosemite, CA', 'hiking, nature')")
+	db.Exec("INSERT INTO timeline_events (title, description, event_date, location, tags) VALUES ('Concert Night', 'Live music at the park', '2026-06-20', 'Central Park', 'music, summer')")
+
+	t.Run("fts_search_by_title", func(t *testing.T) {
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("Beach"))
+		if err != nil {
+			t.Fatalf("FTS query failed: %v", err)
+		}
+		defer rows.Close()
+		var titles []string
+		for rows.Next() {
+			var title string
+			rows.Scan(&title)
+			titles = append(titles, title)
+		}
+		if len(titles) != 1 {
+			t.Errorf("expected 1 result for 'Beach', got %d: %v", len(titles), titles)
+		}
+	})
+
+	t.Run("fts_search_by_location", func(t *testing.T) {
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("Malibu"))
+		if err != nil {
+			t.Fatalf("FTS query failed: %v", err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 1 {
+			t.Errorf("expected 1 result for 'Malibu', got %d", count)
+		}
+	})
+
+	t.Run("fts_search_by_tag", func(t *testing.T) {
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("hiking"))
+		if err != nil {
+			t.Fatalf("FTS query failed: %v", err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 1 {
+			t.Errorf("expected 1 result for 'hiking', got %d", count)
+		}
+	})
+
+	t.Run("fts_multi_match", func(t *testing.T) {
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("summer"))
+		if err != nil {
+			t.Fatalf("FTS query failed: %v", err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 2 {
+			t.Errorf("expected 2 results for 'summer', got %d", count)
+		}
+	})
+
+	t.Run("fts_insert_trigger", func(t *testing.T) {
+		db.Exec("INSERT INTO timeline_events (title, description, event_date, location, tags) VALUES ('Ski Trip', 'Skiing in the Alps', '2026-01-15', 'Alps', 'skiing, winter')")
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("Skiing"))
+		if err != nil {
+			t.Fatalf("FTS trigger query failed: %v", err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 1 {
+			t.Errorf("expected 1 result for 'Skiing' after insert, got %d", count)
+		}
+	})
+
+	t.Run("fts_delete_trigger", func(t *testing.T) {
+		db.Exec("DELETE FROM timeline_events WHERE title = 'Ski Trip'")
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("Skiing"))
+		if err != nil {
+			t.Fatalf("FTS delete query failed: %v", err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 0 {
+			t.Errorf("expected 0 results for 'Skiing' after delete, got %d", count)
+		}
+	})
+
+	t.Run("fts_update_trigger", func(t *testing.T) {
+		db.Exec("UPDATE timeline_events SET description = 'Live jazz concert in the park' WHERE title = 'Concert Night'")
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("jazz"))
+		if err != nil {
+			t.Fatalf("FTS update query failed: %v", err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 1 {
+			t.Errorf("expected 1 result for 'jazz' after update, got %d", count)
+		}
+	})
+
+	t.Run("fts_no_match", func(t *testing.T) {
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("zzzznotfound"))
+		if err != nil {
+			t.Fatalf("FTS query failed: %v", err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 0 {
+			t.Errorf("expected 0 results for 'zzzznotfound', got %d", count)
+		}
+	})
+
+	t.Run("sanitize_fts_query", func(t *testing.T) {
+		cases := []struct {
+			input    string
+			expected string
+		}{
+			{"hello", `"hello"`},
+			{"it's", `"it''s"`},
+		}
+		for _, tc := range cases {
+			result := sanitizeFTSQuery(tc.input)
+			if result != tc.expected {
+				t.Errorf("sanitizeFTSQuery(%q) = %q, want %q", tc.input, result, tc.expected)
+			}
+		}
+	})
+}
+
+func TestGlobalSearch(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		tags TEXT
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT
+	)`)
+
+	createFTS5Table()
+
+	db.Exec("INSERT INTO timeline_events (title, event_date, description) VALUES ('Christmas Party', '2025-12-25', 'Yearly holiday event')")
+	db.Exec("INSERT INTO timeline_events (title, event_date, description) VALUES ('New Year Party', '2026-01-01', 'New year celebration')")
+	db.Exec("INSERT INTO timeline_events (title, event_date, description) VALUES ('Summer BBQ', '2026-07-04', 'Fourth of July cookout')")
+
+	t.Run("global_search_returns_all_years", func(t *testing.T) {
+		rows, err := db.Query(`SELECT e.title, e.event_date FROM timeline_events e
+			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
+			ORDER BY e.event_date DESC LIMIT 10`, sanitizeFTSQuery("Party"))
+		if err != nil {
+			t.Fatalf("Global search query failed: %v", err)
+		}
+		defer rows.Close()
+		var titles []string
+		for rows.Next() {
+			var title, date string
+			rows.Scan(&title, &date)
+			titles = append(titles, title)
+		}
+		if len(titles) != 2 {
+			t.Errorf("expected 2 'Party' matches, got %d: %v", len(titles), titles)
+		}
+	})
+
+	t.Run("global_search_like_fallback", func(t *testing.T) {
+		query := "BBQ"
+		like := "%" + query + "%"
+		rows, err := db.Query(`SELECT e.title FROM timeline_events e
+			WHERE 1=1 AND (e.title LIKE ? OR e.description LIKE ? OR e.location LIKE ?)
+			ORDER BY e.event_date DESC LIMIT 10`, like, like, like)
+		if err != nil {
+			t.Fatalf("LIKE fallback query failed: %v", err)
+		}
+		defer rows.Close()
+		var titles []string
+		for rows.Next() {
+			var title string
+			rows.Scan(&title)
+			titles = append(titles, title)
+		}
+		if len(titles) != 1 {
+			t.Errorf("expected 1 result for 'BBQ' via LIKE, got %d: %v", len(titles), titles)
+		}
+	})
+
+	t.Run("global_search_limit", func(t *testing.T) {
+		db.Exec("INSERT INTO timeline_events (title, event_date, description) VALUES ('Party One', '2026-01-01', '')")
+		db.Exec("INSERT INTO timeline_events (title, event_date, description) VALUES ('Party Two', '2026-01-02', '')")
+		db.Exec("INSERT INTO timeline_events (title, event_date, description) VALUES ('Party Three', '2026-01-03', '')")
+		db.Exec("INSERT INTO timeline_events (title, event_date, description) VALUES ('Party Four', '2026-01-04', '')")
+
+		rows, err := db.Query(`SELECT e.title FROM timeline_events e
+			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
+			ORDER BY e.event_date DESC LIMIT 3`, sanitizeFTSQuery("Party"))
+		if err != nil {
+			t.Fatalf("Limit query failed: %v", err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 3 {
+			t.Errorf("expected exactly 3 results with LIMIT, got %d", count)
+		}
+	})
+
+	t.Run("global_search_empty_query", func(t *testing.T) {
+		rows, err := db.Query(`SELECT e.title FROM timeline_events e
+			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)`,
+			sanitizeFTSQuery(""))
+		if err == nil {
+			rows.Close()
+		}
+	})
+}
+
+func TestStatsDistribution(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		event_date TEXT,
+		location TEXT,
+		tags TEXT,
+		media_type TEXT,
+		person_id INTEGER,
+		user_id INTEGER,
+		latitude REAL,
+		longitude REAL
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		display_name TEXT
+	)`)
+	db.Exec("INSERT OR IGNORE INTO users (id, display_name) VALUES (1, 'Alice')")
+	db.Exec("INSERT OR IGNORE INTO users (id, display_name) VALUES (2, 'Bob')")
+	db.Exec("INSERT OR IGNORE INTO persons (id, name) VALUES (1, 'Charlie')")
+	db.Exec("INSERT OR IGNORE INTO persons (id, name) VALUES (2, 'Diana')")
+
+	db.Exec("INSERT INTO timeline_events (title, event_date, location, tags, media_type, person_id, user_id, latitude, longitude) VALUES ('E1', '2026-01-15', 'NYC', 'work, travel', 'image', 1, 1, 40.7128, -74.0060)")
+	db.Exec("INSERT INTO timeline_events (title, event_date, location, tags, media_type, person_id, user_id, latitude, longitude) VALUES ('E2', '2026-03-20', 'LA', 'fun, travel', 'video', 1, 2, 34.0522, -118.2437)")
+	db.Exec("INSERT INTO timeline_events (title, event_date, location, tags, media_type, person_id, user_id, latitude, longitude) VALUES ('E3', '2026-03-20', 'SF', 'work', 'image', 2, 1, 37.7749, -122.4194)")
+	db.Exec("INSERT INTO timeline_events (title, event_date, location, tags, media_type, person_id, user_id, latitude, longitude) VALUES ('E4', '2026-07-04', 'Chicago', 'fun, holiday', 'image', 2, 2, 41.8781, -87.6298)")
+
+	t.Run("monthly_distribution", func(t *testing.T) {
+		rows, err := db.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events
+			WHERE strftime('%Y', event_date) = '2026' GROUP BY strftime('%m', event_date)`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		monthCounts := make(map[string]int)
+		for rows.Next() {
+			var m string
+			var c int
+			rows.Scan(&m, &c)
+			monthCounts[m] = c
+		}
+		if monthCounts["01"] != 1 {
+			t.Errorf("Jan has %d events, want 1", monthCounts["01"])
+		}
+		if monthCounts["03"] != 2 {
+			t.Errorf("Mar has %d events, want 2", monthCounts["03"])
+		}
+		if monthCounts["07"] != 1 {
+			t.Errorf("Jul has %d events, want 1", monthCounts["07"])
+		}
+	})
+
+	t.Run("tag_distribution", func(t *testing.T) {
+		rows, err := db.Query(`SELECT tags FROM timeline_events WHERE strftime('%Y', event_date) = '2026' AND tags != ''`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		tagMap := make(map[string]int)
+		for rows.Next() {
+			var t string
+			rows.Scan(&t)
+			for _, tag := range strings.Split(t, ",") {
+				tag = strings.TrimSpace(tag)
+				if tag != "" {
+					tagMap[tag]++
+				}
+			}
+		}
+		if tagMap["work"] != 2 {
+			t.Errorf("tag 'work' = %d, want 2", tagMap["work"])
+		}
+		if tagMap["travel"] != 2 {
+			t.Errorf("tag 'travel' = %d, want 2", tagMap["travel"])
+		}
+		if tagMap["fun"] != 2 {
+			t.Errorf("tag 'fun' = %d, want 2", tagMap["fun"])
+		}
+	})
+
+	t.Run("person_distribution", func(t *testing.T) {
+		rows, err := db.Query(`SELECT p.id, p.name, COUNT(e.id) FROM persons p
+			LEFT JOIN timeline_events e ON e.person_id = p.id AND strftime('%Y', e.event_date) = '2026'
+			GROUP BY p.id HAVING COUNT(e.id) > 0 ORDER BY COUNT(e.id) DESC`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var results []struct {
+			id    int
+			name  string
+			count int
+		}
+		for rows.Next() {
+			var r struct {
+				id    int
+				name  string
+				count int
+			}
+			rows.Scan(&r.id, &r.name, &r.count)
+			results = append(results, r)
+		}
+		if len(results) != 2 {
+			t.Errorf("expected 2 persons, got %d", len(results))
+		}
+	})
+
+	t.Run("user_distribution", func(t *testing.T) {
+		rows, err := db.Query(`SELECT u.id, u.display_name, COUNT(e.id) FROM users u
+			LEFT JOIN timeline_events e ON e.user_id = u.id AND strftime('%Y', e.event_date) = '2026'
+			GROUP BY u.id HAVING COUNT(e.id) > 0 ORDER BY COUNT(e.id) DESC`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var results []struct {
+			id    int
+			name  string
+			count int
+		}
+		for rows.Next() {
+			var r struct {
+				id    int
+				name  string
+				count int
+			}
+			rows.Scan(&r.id, &r.name, &r.count)
+			results = append(results, r)
+		}
+		if len(results) != 2 {
+			t.Errorf("expected 2 users, got %d", len(results))
+		}
+	})
+
+	t.Run("haversine_distance", func(t *testing.T) {
+		nyLat, nyLng := 40.7128, -74.0060
+		laLat, laLng := 34.0522, -118.2437
+		dist := haversine(nyLat, nyLng, laLat, laLng)
+		if dist < 3000 || dist > 5000 {
+			t.Errorf("NYC to LA distance = %.0f km, expected ~3940 km", dist)
+		}
+	})
+
+	t.Run("is_leap_year", func(t *testing.T) {
+		if !isLeapYear("2024") {
+			t.Error("2024 should be a leap year")
+		}
+		if isLeapYear("2023") {
+			t.Error("2023 should NOT be a leap year")
+		}
+		if !isLeapYear("2000") {
+			t.Error("2000 should be a leap year")
+		}
+		if isLeapYear("1900") {
+			t.Error("1900 should NOT be a leap year")
+		}
+	})
+
+	t.Run("event_count", func(t *testing.T) {
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = '2026'").Scan(&count)
+		if count != 4 {
+			t.Errorf("event count = %d, want 4", count)
+		}
+	})
+
+	t.Run("top_day", func(t *testing.T) {
+		var topDay string
+		var topCount int
+		db.QueryRow("SELECT event_date, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = '2026' GROUP BY event_date ORDER BY COUNT(*) DESC LIMIT 1").Scan(&topDay, &topCount)
+		if topDay != "2026-03-20" || topCount != 2 {
+			t.Errorf("top day = %s (%d), want '2026-03-20' (2)", topDay, topCount)
+		}
+	})
+
+	t.Run("media_breakdown", func(t *testing.T) {
+		rows, err := db.Query("SELECT media_type, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = '2026' AND media_type != '' GROUP BY media_type")
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		media := make(map[string]int)
+		for rows.Next() {
+			var mt string
+			var c int
+			rows.Scan(&mt, &c)
+			media[mt] = c
+		}
+		if media["image"] != 3 {
+			t.Errorf("images = %d, want 3", media["image"])
+		}
+		if media["video"] != 1 {
+			t.Errorf("videos = %d, want 1", media["video"])
+		}
+	})
+}
+
+func TestSearchEventsCombinedFilters(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		tags TEXT,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT
+	)`)
+	db.Exec("INSERT INTO persons (id, name) VALUES (1, 'Alice')")
+	db.Exec("INSERT INTO persons (id, name) VALUES (2, 'Bob')")
+
+	createFTS5Table()
+
+	db.Exec("INSERT INTO timeline_events (title, event_date, location, media_type, tags, person_id) VALUES ('Beach Party', '2026-07-15', 'Miami', 'image', 'beach, summer', 1)")
+	db.Exec("INSERT INTO timeline_events (title, event_date, location, media_type, tags, person_id) VALUES ('Mountain Trip', '2026-07-20', 'Denver', 'video', 'hiking, summer', 2)")
+	db.Exec("INSERT INTO timeline_events (title, event_date, location, media_type, tags, person_id) VALUES ('Museum Visit', '2026-08-01', 'NYC', 'image', 'art, culture', 1)")
+
+	t.Run("filter_by_tag", func(t *testing.T) {
+		rows, _ := db.Query(`SELECT title FROM timeline_events e WHERE 1=1 AND e.tags LIKE ? ORDER BY e.event_date ASC`, "%beach%")
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 1 {
+			t.Errorf("tag filter expected 1, got %d", count)
+		}
+	})
+
+	t.Run("filter_by_person_id", func(t *testing.T) {
+		rows, _ := db.Query(`SELECT title FROM timeline_events e WHERE 1=1 AND e.person_id = ? ORDER BY e.event_date ASC`, "1")
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 2 {
+			t.Errorf("person_id filter expected 2, got %d", count)
+		}
+	})
+
+	t.Run("combined_filters", func(t *testing.T) {
+		rows, _ := db.Query(`SELECT title FROM timeline_events e WHERE 1=1 AND strftime('%Y', e.event_date) = ? AND e.media_type = ? AND e.person_id = ? ORDER BY e.event_date ASC`, "2026", "image", "1")
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 2 {
+			t.Errorf("combined filter expected 2, got %d", count)
+		}
+	})
+
+	t.Run("combined_filters_no_match", func(t *testing.T) {
+		rows, _ := db.Query(`SELECT title FROM timeline_events e WHERE 1=1 AND e.person_id = ? AND e.media_type = ? ORDER BY e.event_date ASC`, "1", "video")
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+		}
+		if count != 0 {
+			t.Errorf("combined no-match expected 0, got %d", count)
+		}
+	})
+}

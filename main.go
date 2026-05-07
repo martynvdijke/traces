@@ -2,24 +2,24 @@
 //
 // A timeline API for managing events with multimedia (images, videos, audio) throughout the year.
 //
-//	 Schemes: http
-//	 Host: localhost:6270
-//	 BasePath: /api
-//	 Version: 1.8.12
-//	 Contact: API Support
+//	Schemes: http
+//	Host: localhost:6270
+//	BasePath: /api
+//	Version: 1.8.12
+//	Contact: API Support
 //
-//	 Consumes:
-//	 - application/json
-//	 - multipart/form-data
+//	Consumes:
+//	- application/json
+//	- multipart/form-data
 //
-//	 Produces:
-//	 - application/json
+//	Produces:
+//	- application/json
 //
-//	 SecurityDefinitions:
-//	 SessionCookie:
-//	   type: apiKey
-//	   in: cookie
-//	   name: session
+//	SecurityDefinitions:
+//	SessionCookie:
+//	  type: apiKey
+//	  in: cookie
+//	  name: session
 //
 // swagger:meta
 package main
@@ -39,6 +39,7 @@ import (
 	"image/png"
 	"io"
 	"log"
+	"math"
 	"net/http"
 	"net/smtp"
 	"os"
@@ -173,7 +174,7 @@ type CalendarDay struct {
 	Count  int             `json:"count"`
 }
 
-const currentSchemaVersion = 7
+const currentSchemaVersion = 8
 const currentVersion = "1.9.0"
 
 var (
@@ -272,9 +273,11 @@ func main() {
 			auth.GET("/events", getEvents)
 			auth.GET("/events/full", getEventsFull)
 			auth.GET("/events/search", searchEvents)
+			auth.GET("/events/search/global", globalSearchEvents)
 			auth.GET("/events/export", exportEvents)
 			auth.GET("/contributions", getContributions)
 			auth.GET("/stats", getEventStats)
+			auth.GET("/stats/distribution", getStatsDistribution)
 			auth.GET("/tags", getTags)
 			auth.GET("/map", getMapData)
 			auth.GET("/persons", getPersons)
@@ -1130,6 +1133,7 @@ func searchEvents(c *gin.Context) {
 	year := c.Query("year")
 	tag := c.Query("tag")
 	person := c.Query("person")
+	personID := c.Query("person_id")
 	mediaType := c.Query("media_type")
 	location := c.Query("location")
 	month := c.Query("month")
@@ -1141,9 +1145,20 @@ func searchEvents(c *gin.Context) {
 	args := []interface{}{}
 
 	if query != "" {
-		sqlStr += " AND (e.title LIKE ? OR e.description LIKE ? OR e.location LIKE ? OR p.name LIKE ?)"
-		like := "%" + query + "%"
-		args = append(args, like, like, like, like)
+		ftsOK := true
+		ftsQuery := sanitizeFTSQuery(query)
+		var ftsCount int
+		if err := db.QueryRow("SELECT COUNT(*) FROM events_fts WHERE events_fts MATCH ?", ftsQuery).Scan(&ftsCount); err != nil {
+			ftsOK = false
+		}
+		if ftsOK && ftsCount > 0 {
+			sqlStr += " AND e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)"
+			args = append(args, ftsQuery)
+		} else {
+			sqlStr += " AND (e.title LIKE ? OR e.description LIKE ? OR e.location LIKE ? OR p.name LIKE ?)"
+			like := "%" + query + "%"
+			args = append(args, like, like, like, like)
+		}
 	}
 	if year != "" {
 		sqlStr += " AND strftime('%Y', e.event_date) = ?"
@@ -1160,6 +1175,10 @@ func searchEvents(c *gin.Context) {
 	if person != "" {
 		sqlStr += " AND p.name LIKE ?"
 		args = append(args, "%"+person+"%")
+	}
+	if personID != "" {
+		sqlStr += " AND e.person_id = ?"
+		args = append(args, personID)
 	}
 	if mediaType != "" {
 		sqlStr += " AND e.media_type = ?"
@@ -1185,6 +1204,14 @@ func searchEvents(c *gin.Context) {
 
 	events := scanEventsWithPerson(rows)
 	c.JSON(http.StatusOK, events)
+}
+
+func sanitizeFTSQuery(query string) string {
+	s := query
+	s = strings.ReplaceAll(s, "'", "''")
+	s = strings.ReplaceAll(s, `"`, `""`)
+	s = `"` + s + `"`
+	return s
 }
 
 // @Summary Autocomplete suggestions
@@ -1276,6 +1303,234 @@ func uniqueStrings(s []string) []string {
 		}
 	}
 	return r
+}
+
+func globalSearchEvents(c *gin.Context) {
+	query := c.Query("q")
+	limit := c.Query("limit")
+
+	if query == "" {
+		c.JSON(http.StatusOK, []interface{}{})
+		return
+	}
+
+	l := 10
+	if limit != "" {
+		if v, err := strconv.Atoi(limit); err == nil && v > 0 {
+			l = v
+		}
+	}
+
+	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
+	args := []interface{}{}
+
+	ftsQuery := sanitizeFTSQuery(query)
+	var ftsCount int
+	if err := db.QueryRow("SELECT COUNT(*) FROM events_fts WHERE events_fts MATCH ?", ftsQuery).Scan(&ftsCount); err != nil || ftsCount == 0 {
+		sqlStr += " AND (e.title LIKE ? OR e.description LIKE ? OR e.location LIKE ? OR p.name LIKE ?)"
+		like := "%" + query + "%"
+		args = append(args, like, like, like, like)
+	} else {
+		sqlStr += " AND e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)"
+		args = append(args, ftsQuery)
+	}
+
+	sqlStr += " ORDER BY e.event_date DESC LIMIT ?"
+	args = append(args, l)
+
+	rows, err := db.Query(sqlStr, args...)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	events := scanEventsWithPerson(rows)
+	c.JSON(http.StatusOK, events)
+}
+
+type StatsDistribution struct {
+	ByMonth        map[string]int  `json:"by_month"`
+	ByWeekday      map[string]int  `json:"by_weekday"`
+	ByTag          []TagCount      `json:"by_tag"`
+	ByPerson       []PersonCount   `json:"by_person"`
+	ByUser         []UserCount     `json:"by_user"`
+	ByLocation     []LocationCount `json:"by_location"`
+	GeoSpread      float64         `json:"geo_spread"`
+	EventCount     int             `json:"event_count"`
+	MediaBreakdown map[string]int  `json:"media_breakdown"`
+	DailyAvg       float64         `json:"daily_avg"`
+	MonthlyAvg     float64         `json:"monthly_avg"`
+	TopDay         string          `json:"top_day"`
+}
+
+type TagCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type PersonCount struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type UserCount struct {
+	ID          int    `json:"id"`
+	DisplayName string `json:"display_name"`
+	Count       int    `json:"count"`
+}
+
+type LocationCount struct {
+	Location string  `json:"location"`
+	Count    int     `json:"count"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
+}
+
+func getStatsDistribution(c *gin.Context) {
+	year := c.Query("year")
+	if year == "" {
+		year = fmt.Sprintf("%d", time.Now().Year())
+	}
+
+	var dist StatsDistribution
+	dist.ByMonth = make(map[string]int)
+	dist.ByWeekday = make(map[string]int)
+	dist.MediaBreakdown = make(map[string]int)
+
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&dist.EventCount)
+
+	daysInYear := 365
+	if isLeapYear(year) {
+		daysInYear = 366
+	}
+	if dist.EventCount > 0 {
+		dist.DailyAvg = float64(dist.EventCount) / float64(daysInYear)
+		dist.MonthlyAvg = float64(dist.EventCount) / 12.0
+	}
+
+	monthRows, _ := db.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events
+		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%m', event_date)`, year)
+	for monthRows.Next() {
+		var m string
+		var c int
+		monthRows.Scan(&m, &c)
+		dist.ByMonth[m] = c
+	}
+	monthRows.Close()
+
+	weekdayRows, _ := db.Query(`SELECT CAST(strftime('%w', event_date) AS INTEGER), COUNT(*) FROM timeline_events
+		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%w', event_date)`, year)
+	for weekdayRows.Next() {
+		var wd int
+		var c int
+		if err := weekdayRows.Scan(&wd, &c); err == nil {
+			dist.ByWeekday[strconv.Itoa(wd)] = c
+		}
+	}
+	weekdayRows.Close()
+
+	tagRows, _ := db.Query(`SELECT tags FROM timeline_events
+		WHERE strftime('%Y', event_date) = ? AND tags != ''`, year)
+	tagMap := make(map[string]int)
+	for tagRows.Next() {
+		var t string
+		tagRows.Scan(&t)
+		for _, tag := range strings.Split(t, ",") {
+			tag = strings.TrimSpace(tag)
+			if tag != "" {
+				tagMap[tag]++
+			}
+		}
+	}
+	tagRows.Close()
+	for name, count := range tagMap {
+		dist.ByTag = append(dist.ByTag, TagCount{Name: name, Count: count})
+	}
+	sort.Slice(dist.ByTag, func(i, j int) bool { return dist.ByTag[i].Count > dist.ByTag[j].Count })
+
+	personRows, _ := db.Query(`SELECT p.id, p.name, COUNT(e.id) as cnt FROM persons p
+		LEFT JOIN timeline_events e ON e.person_id = p.id AND strftime('%Y', e.event_date) = ?
+		GROUP BY p.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
+	for personRows.Next() {
+		var pc PersonCount
+		personRows.Scan(&pc.ID, &pc.Name, &pc.Count)
+		dist.ByPerson = append(dist.ByPerson, pc)
+	}
+	personRows.Close()
+
+	userRows, _ := db.Query(`SELECT u.id, u.display_name, COUNT(e.id) as cnt FROM users u
+		LEFT JOIN timeline_events e ON e.user_id = u.id AND strftime('%Y', e.event_date) = ?
+		GROUP BY u.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
+	for userRows.Next() {
+		var uc UserCount
+		userRows.Scan(&uc.ID, &uc.DisplayName, &uc.Count)
+		dist.ByUser = append(dist.ByUser, uc)
+	}
+	userRows.Close()
+
+	locRows, _ := db.Query(`SELECT location, latitude, longitude, COUNT(*) as cnt FROM timeline_events
+		WHERE strftime('%Y', event_date) = ? AND location != '' AND latitude != 0 AND longitude != 0
+		GROUP BY location ORDER BY cnt DESC LIMIT 20`, year)
+	for locRows.Next() {
+		var lc LocationCount
+		locRows.Scan(&lc.Location, &lc.Lat, &lc.Lng, &lc.Count)
+		dist.ByLocation = append(dist.ByLocation, lc)
+	}
+	locRows.Close()
+
+	if len(dist.ByLocation) >= 2 {
+		totalDist := 0.0
+		pairs := 0
+		for i := 0; i < len(dist.ByLocation); i++ {
+			for j := i + 1; j < len(dist.ByLocation); j++ {
+				totalDist += haversine(dist.ByLocation[i].Lat, dist.ByLocation[i].Lng,
+					dist.ByLocation[j].Lat, dist.ByLocation[j].Lng)
+				pairs++
+			}
+		}
+		if pairs > 0 {
+			dist.GeoSpread = totalDist / float64(pairs)
+		}
+	}
+
+	mediaRows, _ := db.Query(`SELECT media_type, COUNT(*) FROM timeline_events
+		WHERE strftime('%Y', event_date) = ? AND media_type != '' GROUP BY media_type`, year)
+	for mediaRows.Next() {
+		var mt string
+		var c int
+		mediaRows.Scan(&mt, &c)
+		dist.MediaBreakdown[mt] = c
+	}
+	mediaRows.Close()
+
+	var topDay string
+	var topCount int
+	db.QueryRow(`SELECT event_date, COUNT(*) as cnt FROM timeline_events
+		WHERE strftime('%Y', event_date) = ? GROUP BY event_date ORDER BY cnt DESC LIMIT 1`, year).Scan(&topDay, &topCount)
+	dist.TopDay = topDay
+
+	c.JSON(http.StatusOK, dist)
+}
+
+func isLeapYear(year string) bool {
+	y, err := strconv.Atoi(year)
+	if err != nil {
+		return false
+	}
+	return (y%4 == 0 && y%100 != 0) || y%400 == 0
+}
+
+func haversine(lat1, lng1, lat2, lng2 float64) float64 {
+	const R = 6371.0
+	dLat := (lat2 - lat1) * (math.Pi / 180.0)
+	dLng := (lng2 - lng1) * (math.Pi / 180.0)
+	a := math.Sin(dLat/2)*math.Sin(dLat/2) + math.Cos(lat1*math.Pi/180.0)*math.Cos(lat2*math.Pi/180.0)*math.Sin(dLng/2)*math.Sin(dLng/2)
+	c := 2 * math.Atan2(math.Sqrt(a), math.Sqrt(1-a))
+	return R * c
 }
 
 // @Summary Get events for a person
@@ -3194,6 +3449,8 @@ func createTables() {
 		}
 	}
 
+	createFTS5Table()
+
 	var count int
 	db.QueryRow("SELECT COUNT(*) FROM gotify_settings").Scan(&count)
 	if count == 0 {
@@ -3222,6 +3479,40 @@ func createTables() {
 	db.QueryRow("SELECT COUNT(*) FROM ollama_settings").Scan(&ollamaCount)
 	if ollamaCount == 0 {
 		db.Exec("INSERT INTO ollama_settings (id, url, model, enabled) VALUES (1, 'http://localhost:11434', 'llama3.2', 0)")
+	}
+}
+
+func createFTS5Table() {
+	_, err := db.Exec(`CREATE VIRTUAL TABLE IF NOT EXISTS events_fts USING fts5(
+		title, description, location, tags,
+		content='timeline_events',
+		content_rowid='id'
+	)`)
+	if err != nil {
+		log.Printf("[DB] Warning: FTS5 not available, full-text search disabled: %v", err)
+		return
+	}
+	db.Exec(`CREATE TRIGGER IF NOT EXISTS events_fts_ai AFTER INSERT ON timeline_events BEGIN
+		INSERT INTO events_fts(rowid, title, description, location, tags)
+		VALUES (new.id, new.title, new.description, new.location, COALESCE(new.tags, ''));
+	END`)
+	db.Exec(`CREATE TRIGGER IF NOT EXISTS events_fts_ad AFTER DELETE ON timeline_events BEGIN
+		INSERT INTO events_fts(events_fts, rowid, title, description, location, tags)
+		VALUES('delete', old.id, old.title, old.description, old.location, COALESCE(old.tags, ''));
+	END`)
+	db.Exec(`CREATE TRIGGER IF NOT EXISTS events_fts_au AFTER UPDATE ON timeline_events BEGIN
+		INSERT INTO events_fts(events_fts, rowid, title, description, location, tags)
+		VALUES('delete', old.id, old.title, old.description, old.location, COALESCE(old.tags, ''));
+		INSERT INTO events_fts(rowid, title, description, location, tags)
+		VALUES (new.id, new.title, new.description, new.location, COALESCE(new.tags, ''));
+	END`)
+
+	var ftsCount int
+	db.QueryRow("SELECT COUNT(*) FROM events_fts").Scan(&ftsCount)
+	if ftsCount == 0 {
+		db.Exec(`INSERT INTO events_fts(rowid, title, description, location, tags)
+			SELECT id, title, description, location, COALESCE(tags, '') FROM timeline_events`)
+		log.Printf("[DB] Indexed %d events for full-text search", ftsCount)
 	}
 }
 
@@ -3318,6 +3609,8 @@ func runMigration(fromVersion int) {
 			enabled INTEGER DEFAULT 0
 		)`)
 		_, _ = db.Exec(`INSERT OR IGNORE INTO ollama_settings (id, url, model, enabled) VALUES (1, 'http://localhost:11434', 'llama3.2', 0)`)
+	case 7:
+		createFTS5Table()
 	}
 }
 
