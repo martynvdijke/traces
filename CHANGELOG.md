@@ -1,3 +1,17 @@
+# [1.10.0](https://github.com/martynvdijke/traces/compare/v1.9.0...v1.10.0) (2026-05-07)
+
+
+### Bug Fixes
+
+* initialize stats distribution arrays to prevent null JSON ([04ea3f8](https://github.com/martynvdijke/traces/commit/04ea3f827073a5d4c22013a55fdfc866b211ae8d))
+* skip FTS5-dependent tests when FTS5 module is not available ([6abe21b](https://github.com/martynvdijke/traces/commit/6abe21bd9583792510360d42be564169cc9fad27))
+
+
+### Features
+
+* add full-text search, global search, advanced filters, and stats distributions ([a9af442](https://github.com/martynvdijke/traces/commit/a9af4427b27130b874d0c874f9110d1bce08b61f))
+* add Immich memory import from immich.vandijke.xyz ([c288408](https://github.com/martynvdijke/traces/commit/c288408ca65c75b7933ecb5a4a56b312ee46f400))
+
 # [1.9.0](https://github.com/martynvdijke/traces/compare/v1.8.13...v1.9.0) (2026-05-06)
 
 
