@@ -2334,23 +2334,23 @@ func testImmich(c *gin.Context) {
 }
 
 type immichTimelineResponse struct {
-	Title  string          `json:"title"`
-	Assets []immichAsset   `json:"assets"`
+	Title  string        `json:"title"`
+	Assets []immichAsset `json:"assets"`
 }
 
 type immichAsset struct {
-	ID               string         `json:"id"`
-	OriginalFileName string         `json:"originalFileName"`
-	Type             string         `json:"type"`
-	ExifInfo         *immichExif    `json:"exifInfo"`
+	ID               string      `json:"id"`
+	OriginalFileName string      `json:"originalFileName"`
+	Type             string      `json:"type"`
+	ExifInfo         *immichExif `json:"exifInfo"`
 }
 
 type immichExif struct {
-	DateTimeOriginal *string `json:"dateTimeOriginal"`
+	DateTimeOriginal *string  `json:"dateTimeOriginal"`
 	Latitude         *float64 `json:"latitude"`
 	Longitude        *float64 `json:"longitude"`
-	City             *string `json:"city"`
-	Country          *string `json:"country"`
+	City             *string  `json:"city"`
+	Country          *string  `json:"country"`
 }
 
 func fetchImmichMemories(c *gin.Context) {
