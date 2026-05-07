@@ -1442,6 +1442,10 @@ func getStatsDistribution(c *gin.Context) {
 	dist.ByMonth = make(map[string]int)
 	dist.ByWeekday = make(map[string]int)
 	dist.MediaBreakdown = make(map[string]int)
+	dist.ByTag = make([]TagCount, 0)
+	dist.ByPerson = make([]PersonCount, 0)
+	dist.ByUser = make([]UserCount, 0)
+	dist.ByLocation = make([]LocationCount, 0)
 
 	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&dist.EventCount)
 
