@@ -28,6 +28,8 @@ async function init(): Promise<void> {
   loadMemories();
   loadUsers();
   loadOllamaConfig();
+  loadImmichConfig();
+  loadImmichMemories();
   loadBackups();
 }
 
@@ -1000,6 +1002,108 @@ async function sendMemoriesNow(): Promise<void> {
   btn.innerHTML = origText;
 }
 
+async function loadImmichConfig(): Promise<void> {
+  try {
+    const res = await fetch('/api/immich/config');
+    const cfg = await res.json();
+    (document.getElementById('immich-url') as HTMLInputElement).value = cfg.url || '';
+    (document.getElementById('immich-api-key') as HTMLInputElement).value = cfg.api_key || '';
+  } catch (e) { }
+}
+
+let selectedImmichMemories: string[] = [];
+
+document.getElementById('immich-form')!.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = {
+    url: (document.getElementById('immich-url') as HTMLInputElement).value,
+    api_key: (document.getElementById('immich-api-key') as HTMLInputElement).value,
+    enabled: true
+  };
+  const res = await fetch('/api/immich/config', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify(data)
+  });
+  const result = await res.json();
+  document.getElementById('immich-result')!.innerHTML = res.ok
+    ? '<div class="alert alert-success">Immich settings saved.</div>'
+    : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
+});
+
+async function testImmich(): Promise<void> {
+  const el = document.getElementById('immich-result')!;
+  el.innerHTML = '<div class="alert alert-info">Testing connection...</div>';
+  await ensureCSRF();
+  const res = await fetch('/api/immich/test', { method: 'POST', headers: csrfHeaders() });
+  const data = await res.json();
+  el.innerHTML = res.ok
+    ? '<div class="alert alert-success">' + (data.message || 'Connection successful!') + '</div>'
+    : '<div class="alert alert-danger">Error: ' + (data.error || '') + '</div>';
+}
+
+async function loadImmichMemories(): Promise<void> {
+  const list = document.getElementById('immich-memories-list')!;
+  list.innerHTML = '<div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading Immich memories...</div>';
+  selectedImmichMemories = [];
+  try {
+    const res = await fetch('/api/immich/memories');
+    if (!res.ok) {
+      const err = await res.json();
+      list.innerHTML = '<div class="alert alert-warning">' + (err.error || 'Could not fetch Immich memories. Please check your connection settings.') + '</div>';
+      return;
+    }
+    const memories = await res.json();
+    if (!memories || !memories.length) {
+      list.innerHTML = '<div class="text-center text-muted py-4"><i class="fa-solid fa-cloud me-2" style="font-size:2rem"></i><p class="mt-2">No memories found from Immich for today.</p></div>';
+      return;
+    }
+    list.innerHTML = '<div class="mb-2"><label class="form-check"><input class="form-check-input" type="checkbox" id="immich-select-all" onchange="toggleSelectAllImmich()"> <span class="form-check-label">Select all</span></label></div>'
+      + memories.map((m: any, i: number) => {
+        const imgSrc = m.thumbnail_url ? '<img src="' + m.thumbnail_url + '" onerror="this.style.display=\'none\'" class="rounded" style="width:64px;height:64px;object-fit:cover" alt="">' : '<i class="fa-solid fa-image" style="font-size:1.5rem;color:var(--text-muted)"></i>';
+        return '<div class="d-flex align-items-start gap-3 p-3 border-bottom animate-in">'
+          + '<div class="form-check"><input class="form-check-input immich-checkbox" type="checkbox" value="' + m.id + '" data-index="' + i + '"></div>'
+          + '<div class="flex-shrink-0">' + imgSrc + '</div>'
+          + '<div class="flex-grow-1" style="min-width:0">'
+          + '<div class="fw-semibold">' + escapeHtml(m.originalFileName || m.description || 'Unknown') + '</div>'
+          + '<div class="text-muted" style="font-size:0.85rem">' + (m.memory_date || 'Memory') + (m.type ? ' &middot; ' + m.type : '') + '</div>'
+          + '</div></div>';
+      }).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="alert alert-danger">Failed to load memories from Immich</div>';
+  }
+}
+
+function toggleSelectAllImmich(): void {
+  const selectAll = document.getElementById('immich-select-all') as HTMLInputElement;
+  const checkboxes = document.querySelectorAll('.immich-checkbox') as NodeListOf<HTMLInputElement>;
+  checkboxes.forEach(cb => cb.checked = selectAll.checked);
+}
+
+async function importSelectedImmichMemories(): Promise<void> {
+  const checkboxes = document.querySelectorAll('.immich-checkbox:checked') as NodeListOf<HTMLInputElement>;
+  const ids = Array.from(checkboxes).map(cb => cb.value);
+  if (!ids.length) {
+    document.getElementById('immich-import-result')!.innerHTML = '<div class="alert alert-warning">Please select at least one memory to import.</div>';
+    return;
+  }
+  const resultEl = document.getElementById('immich-import-result')!;
+  resultEl.innerHTML = '<div class="alert alert-info"><i class="fa-solid fa-spinner fa-spin me-1"></i> Importing ' + ids.length + ' memories...</div>';
+  await ensureCSRF();
+  const res = await fetch('/api/immich/import', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify(ids)
+  });
+  const data = await res.json();
+  if (res.ok) {
+    resultEl.innerHTML = '<div class="alert alert-success"><i class="fa-solid fa-check me-1"></i> Successfully imported ' + data.imported + ' memories from Immich.</div>';
+    loadImmichMemories();
+  } else {
+    resultEl.innerHTML = '<div class="alert alert-danger">Error: ' + (data.error || '') + '</div>';
+  }
+}
+
 async function loadEmailConfig(): Promise<void> {
   try {
     const res = await fetch('/api/email/config');
@@ -1301,6 +1405,10 @@ init();
 (window as any).sendMemoriesNow = sendMemoriesNow;
 (window as any).loadMemories = loadMemories;
 (window as any).testGotify = testGotify;
+(window as any).testImmich = testImmich;
+(window as any).loadImmichMemories = loadImmichMemories;
+(window as any).importSelectedImmichMemories = importSelectedImmichMemories;
+(window as any).toggleSelectAllImmich = toggleSelectAllImmich;
 (window as any).testEmailConfig = testEmailConfig;
 (window as any).createBackup = createBackup;
 (window as any).openUserModal = openUserModal;

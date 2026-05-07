@@ -159,6 +159,24 @@ type OllamaConfig struct {
 	Enabled bool   `json:"enabled"`
 }
 
+type ImmichConfig struct {
+	URL     string `json:"url"`
+	APIKey  string `json:"api_key"`
+	Enabled bool   `json:"enabled"`
+}
+
+type ImmichMemoryAsset struct {
+	ID               string  `json:"id"`
+	OriginalFileName string  `json:"originalFileName"`
+	Type             string  `json:"type"`
+	ThumbnailURL     string  `json:"thumbnail_url"`
+	AssetCount       int     `json:"asset_count"`
+	MemoryDate       string  `json:"memory_date"`
+	Latitude         float64 `json:"latitude"`
+	Longitude        float64 `json:"longitude"`
+	Description      string  `json:"description"`
+}
+
 type WeatherData struct {
 	Temperature float64 `json:"temperature"`
 	Condition   string  `json:"condition"`
@@ -180,6 +198,7 @@ const currentVersion = "1.9.0"
 var (
 	publicMode    bool = false
 	gotifyEnabled bool
+	immichEnabled bool
 )
 
 var (
@@ -195,6 +214,8 @@ var (
 	gotifyToken   = ""
 	umamiURL      = ""
 	umamiSiteID   = ""
+	immichURL     = ""
+	immichAPIKey  = ""
 	currentUserID int
 )
 
@@ -215,6 +236,12 @@ func main() {
 	umamiURL = os.Getenv("UMAMI_URL")
 	umamiSiteID = os.Getenv("UMAMI_SITE_ID")
 
+	immichURL = os.Getenv("IMMICH_URL")
+	immichAPIKey = os.Getenv("IMMICH_API_KEY")
+	if os.Getenv("IMMICH_ENABLED") == "true" {
+		immichEnabled = true
+	}
+
 	if err := os.MkdirAll(mediaPath, 0755); err != nil {
 		log.Printf("Warning: could not create media directory: %v", err)
 	}
@@ -233,6 +260,16 @@ func main() {
 	defer db.Close()
 
 	initDB()
+
+	if immichURL == "" {
+		var cfg ImmichConfig
+		var enabledInt int
+		if err := db.QueryRow("SELECT url, api_key, enabled FROM immich_settings WHERE id = 1").Scan(&cfg.URL, &cfg.APIKey, &enabledInt); err == nil {
+			immichURL = cfg.URL
+			immichAPIKey = cfg.APIKey
+			immichEnabled = enabledInt == 1
+		}
+	}
 
 	r := gin.Default()
 	r.MaxMultipartMemory = 32 << 20
@@ -311,6 +348,11 @@ func main() {
 			auth.POST("/events/recurring/generate", generateRecurringEvents)
 			auth.GET("/ollama/config", getOllamaConfig)
 			auth.POST("/ollama/config", saveOllamaConfig)
+			auth.GET("/immich/config", getImmichConfig)
+			auth.POST("/immich/config", saveImmichConfig)
+			auth.POST("/immich/test", testImmich)
+			auth.GET("/immich/memories", fetchImmichMemories)
+			auth.POST("/immich/import", importImmichMemories)
 			auth.POST("/backup", handleBackup)
 			auth.GET("/backups", handleListBackups)
 			auth.GET("/csrf-token", getCSRFToken)
@@ -2226,6 +2268,242 @@ func testGotify(c *gin.Context) {
 	}
 }
 
+func getImmichConfig(c *gin.Context) {
+	var cfg ImmichConfig
+	var enabledInt int
+	err := db.QueryRow("SELECT url, api_key, enabled FROM immich_settings WHERE id = 1").Scan(&cfg.URL, &cfg.APIKey, &enabledInt)
+	if err == nil {
+		cfg.Enabled = enabledInt == 1
+	}
+	c.JSON(http.StatusOK, cfg)
+}
+
+func saveImmichConfig(c *gin.Context) {
+	var cfg ImmichConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	enabledInt := 0
+	if cfg.Enabled {
+		enabledInt = 1
+	}
+
+	_, err := db.Exec(`UPDATE immich_settings SET url=?, api_key=?, enabled=? WHERE id=1`, cfg.URL, cfg.APIKey, enabledInt)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+
+	immichURL = cfg.URL
+	immichAPIKey = cfg.APIKey
+	immichEnabled = cfg.Enabled
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+func testImmich(c *gin.Context) {
+	if immichURL == "" || immichAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich URL and API key not configured"})
+		return
+	}
+
+	req, err := http.NewRequest("GET", strings.TrimRight(immichURL, "/")+"/api/server-info/about", nil)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
+		return
+	}
+	req.Header.Set("x-api-key", immichAPIKey)
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Immich: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Connected to Immich successfully"})
+	} else {
+		body, _ := io.ReadAll(resp.Body)
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Immich returned %d: %s", resp.StatusCode, string(body))})
+	}
+}
+
+type immichTimelineResponse struct {
+	Title  string          `json:"title"`
+	Assets []immichAsset   `json:"assets"`
+}
+
+type immichAsset struct {
+	ID               string         `json:"id"`
+	OriginalFileName string         `json:"originalFileName"`
+	Type             string         `json:"type"`
+	ExifInfo         *immichExif    `json:"exifInfo"`
+}
+
+type immichExif struct {
+	DateTimeOriginal *string `json:"dateTimeOriginal"`
+	Latitude         *float64 `json:"latitude"`
+	Longitude        *float64 `json:"longitude"`
+	City             *string `json:"city"`
+	Country          *string `json:"country"`
+}
+
+func fetchImmichMemories(c *gin.Context) {
+	if immichURL == "" || immichAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich not configured"})
+		return
+	}
+
+	req, err := http.NewRequest("GET", strings.TrimRight(immichURL, "/")+"/api/timeline/memory", nil)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	req.Header.Set("x-api-key", immichAPIKey)
+	req.Header.Set("Accept", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch memories from Immich: " + err.Error()})
+		return
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		body, _ := io.ReadAll(resp.Body)
+		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Immich returned %d: %s", resp.StatusCode, string(body))})
+		return
+	}
+
+	var timeline []immichTimelineResponse
+	if err := json.NewDecoder(resp.Body).Decode(&timeline); err != nil {
+		serverError(c, err)
+		return
+	}
+
+	memories := make([]ImmichMemoryAsset, 0)
+	for _, group := range timeline {
+		for _, asset := range group.Assets {
+			lat := 0.0
+			lng := 0.0
+			if asset.ExifInfo != nil {
+				if asset.ExifInfo.Latitude != nil {
+					lat = *asset.ExifInfo.Latitude
+				}
+				if asset.ExifInfo.Longitude != nil {
+					lng = *asset.ExifInfo.Longitude
+				}
+			}
+			memories = append(memories, ImmichMemoryAsset{
+				ID:               asset.ID,
+				OriginalFileName: asset.OriginalFileName,
+				Type:             asset.Type,
+				ThumbnailURL:     strings.TrimRight(immichURL, "/") + "/api/assets/" + asset.ID + "/thumbnail",
+				AssetCount:       len(group.Assets),
+				MemoryDate:       group.Title,
+				Latitude:         lat,
+				Longitude:        lng,
+				Description:      asset.OriginalFileName,
+			})
+		}
+	}
+
+	c.JSON(http.StatusOK, memories)
+}
+
+func importImmichMemories(c *gin.Context) {
+	var assetIDs []string
+	if err := c.ShouldBindJSON(&assetIDs); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if immichURL == "" || immichAPIKey == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich not configured"})
+		return
+	}
+
+	if len(assetIDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No assets selected"})
+		return
+	}
+
+	today := time.Now().Format("2006-01-02")
+	count := 0
+
+	for _, assetID := range assetIDs {
+		req, err := http.NewRequest("GET", strings.TrimRight(immichURL, "/")+"/api/assets/"+assetID, nil)
+		if err != nil {
+			continue
+		}
+		req.Header.Set("x-api-key", immichAPIKey)
+		req.Header.Set("Accept", "application/json")
+
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Do(req)
+		if err != nil {
+			continue
+		}
+
+		var asset immichAsset
+		if err := json.NewDecoder(resp.Body).Decode(&asset); err != nil {
+			resp.Body.Close()
+			continue
+		}
+		resp.Body.Close()
+
+		mediaType := "image"
+		if asset.Type == "VIDEO" {
+			mediaType = "video"
+		} else if asset.Type == "AUDIO" {
+			mediaType = "audio"
+		}
+
+		var lat, lng *float64
+		location := ""
+		eventDate := today
+		if asset.ExifInfo != nil {
+			if asset.ExifInfo.Latitude != nil {
+				v := *asset.ExifInfo.Latitude
+				lat = &v
+			}
+			if asset.ExifInfo.Longitude != nil {
+				v := *asset.ExifInfo.Longitude
+				lng = &v
+			}
+			if asset.ExifInfo.City != nil && *asset.ExifInfo.City != "" {
+				location = *asset.ExifInfo.City
+				if asset.ExifInfo.Country != nil && *asset.ExifInfo.Country != "" {
+					location += ", " + *asset.ExifInfo.Country
+				}
+			}
+			if asset.ExifInfo.DateTimeOriginal != nil && *asset.ExifInfo.DateTimeOriginal != "" {
+				if t, err := time.Parse(time.RFC3339, *asset.ExifInfo.DateTimeOriginal); err == nil {
+					eventDate = t.Format("2006-01-02")
+				}
+			}
+		}
+
+		thumbnailURL := strings.TrimRight(immichURL, "/") + "/api/assets/" + asset.ID + "/thumbnail"
+		mediaURL := strings.TrimRight(immichURL, "/") + "/api/assets/" + asset.ID + "/original"
+
+		_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, latitude, longitude, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			asset.OriginalFileName, asset.OriginalFileName, eventDate, location, mediaType, mediaURL, thumbnailURL, "immich-import", 0, lat, lng, "", "", 0)
+		if err == nil {
+			count++
+		}
+	}
+
+	sendGotifyNotification(fmt.Sprintf("Imported %d memories from Immich", count), "")
+	c.JSON(http.StatusOK, gin.H{"imported": count, "message": fmt.Sprintf("Successfully imported %d memories from Immich", count)})
+}
+
 // @Summary Get memory events
 // @Description Returns events from past years that fall within the configured memory window
 // @Tags Memories
@@ -3440,6 +3718,12 @@ func createTables() {
 			model TEXT DEFAULT 'llama3.2',
 			enabled INTEGER DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS immich_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			url TEXT DEFAULT '',
+			api_key TEXT DEFAULT '',
+			enabled INTEGER DEFAULT 0
+		)`,
 	}
 
 	for _, q := range queries {
@@ -3479,6 +3763,12 @@ func createTables() {
 	db.QueryRow("SELECT COUNT(*) FROM ollama_settings").Scan(&ollamaCount)
 	if ollamaCount == 0 {
 		db.Exec("INSERT INTO ollama_settings (id, url, model, enabled) VALUES (1, 'http://localhost:11434', 'llama3.2', 0)")
+	}
+
+	var immichCount int
+	db.QueryRow("SELECT COUNT(*) FROM immich_settings").Scan(&immichCount)
+	if immichCount == 0 {
+		db.Exec("INSERT INTO immich_settings (id, url, api_key, enabled) VALUES (1, '', '', 0)")
 	}
 }
 

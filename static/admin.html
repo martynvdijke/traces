@@ -516,6 +516,7 @@
                 <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button"><i class="fa-solid fa-upload me-2"></i>Upload</button></li>
                 <li class="nav-item"><button class="nav-link" id="gotify-tab" data-bs-toggle="tab" data-bs-target="#gotify-pane" type="button"><i class="fa-solid fa-bell me-2"></i>Notifications</button></li>
                 <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button"><i class="fa-solid fa-clock-rotate-left me-2"></i>Memories</button></li>
+                <li class="nav-item"><button class="nav-link" id="immich-tab" data-bs-toggle="tab" data-bs-target="#immich-pane" type="button"><i class="fa-solid fa-cloud me-2"></i>Immich</button></li>
                 <li class="nav-item"><button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags-pane" type="button"><i class="fa-solid fa-tags me-2"></i>Tags</button></li>
                 <li class="nav-item"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button"><i class="fa-solid fa-people-group me-2"></i>Users</button></li>
                 <li class="nav-item"><button class="nav-link" id="ollama-tab" data-bs-toggle="tab" data-bs-target="#ollama-pane" type="button"><i class="fa-solid fa-robot me-2"></i>AI</button></li>
@@ -731,6 +732,52 @@
                         <div id="memories-list">
                             <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading...</div>
                         </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- IMMICH TAB -->
+            <div class="tab-pane fade" id="immich-pane">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-cloud me-2 text-primary"></i>Immich Import</h5>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header"><i class="fa-solid fa-gear me-2"></i>Immich Connection</div>
+                    <div class="card-body">
+                        <form id="immich-form">
+                            <div class="mb-3">
+                                <label class="form-label">Immich Server URL</label>
+                                <input type="url" class="form-control" id="immich-url" placeholder="https://immich.vandijke.xyz">
+                                <div class="text-muted" style="font-size:0.85rem">The base URL of your Immich server</div>
+                            </div>
+                            <div class="mb-3">
+                                <label class="form-label">API Key</label>
+                                <input type="password" class="form-control" id="immich-api-key" placeholder="Your Immich API key">
+                                <div class="text-muted" style="font-size:0.85rem">Generate an API key in Immich under Account Settings > API Keys</div>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="testImmich()"><i class="fa-solid fa-plug me-1"></i> Test Connection</button>
+                            </div>
+                        </form>
+                        <div id="immich-result" class="mt-3"></div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <div class="card-header d-flex justify-content-between align-items-center">
+                        <span><i class="fa-solid fa-clock-rotate-left me-2"></i>Today's Immich Memories</span>
+                        <div>
+                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="loadImmichMemories()"><i class="fa-solid fa-rotate me-1"></i> Refresh</button>
+                            <button type="button" class="btn btn-sm btn-success" onclick="importSelectedImmichMemories()"><i class="fa-solid fa-download me-1"></i> Import Selected</button>
+                        </div>
+                    </div>
+                    <div class="card-body">
+                        <div id="immich-memories-list">
+                            <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading...</div>
+                        </div>
+                        <div id="immich-import-result" class="mt-3"></div>
                     </div>
                 </div>
             </div>
