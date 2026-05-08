@@ -1,3 +1,10 @@
+# [1.11.0](https://github.com/martynvdijke/traces/compare/v1.10.0...v1.11.0) (2026-05-08)
+
+
+### Features
+
+* show media thumbnails on timeline cards ([a0cd742](https://github.com/martynvdijke/traces/commit/a0cd74285c54b28596da33539b3553d52e8fc753))
+
 # [1.10.0](https://github.com/martynvdijke/traces/compare/v1.9.0...v1.10.0) (2026-05-07)
 
 
