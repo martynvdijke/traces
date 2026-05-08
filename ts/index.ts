@@ -590,6 +590,18 @@ function renderTimeline(): void {
     const hasMedia = e.media_url;
     const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
 
+    let thumbHtml = '';
+    if (hasMedia) {
+      const thumbUrl = e.thumbnail || e.media_url;
+      if (e.media_type === 'video') {
+        thumbHtml = '<div class="timeline-thumb"><video src="' + thumbUrl + '" muted></video></div>';
+      } else if (e.media_type === 'audio') {
+        thumbHtml = '<div class="timeline-thumb"><div class="audio-placeholder-sm"><i class="fa-solid fa-music fa-2x"></i></div></div>';
+      } else {
+        thumbHtml = '<div class="timeline-thumb"><img src="' + thumbUrl + '" alt="' + escapeHtml(e.title) + '"></div>';
+      }
+    }
+
     let weatherHtml = '';
     if (e.weather_data) {
       try {
@@ -615,6 +627,7 @@ function renderTimeline(): void {
           <div class="timeline-title">${escapeHtml(e.title)} ${weatherHtml}</div>
           <div class="timeline-location"><i class="fa-solid fa-location-dot me-1"></i>${escapeHtml(e.location)} ${userHtml}</div>
           ${tagList.length > 0 ? '<div class="timeline-people mb-2"><i class="fa-solid fa-tags me-1"></i>' + tagList.map(t => '<span class="badge bg-secondary me-1">' + escapeHtml(t) + '</span>').join('') + '</div>' : ''}
+          ${thumbHtml}
           ${e.description ? '<div class="timeline-desc md-content">' + renderMarkdown(e.description) + '</div>' : ''}
           ${hasMedia ? '<div class="timeline-media-badge"><i class="' + mediaIcon + '"></i> ' + e.media_type + '</div>' : ''}
         </div>

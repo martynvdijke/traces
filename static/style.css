@@ -482,6 +482,32 @@ nav a.active {
     line-height: 1.5;
 }
 
+.timeline-thumb {
+    margin-top: 0.75rem;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    max-height: 180px;
+}
+
+.timeline-thumb img,
+.timeline-thumb video {
+    width: 100%;
+    height: 180px;
+    object-fit: cover;
+    border-radius: var(--radius-sm);
+    display: block;
+}
+
+.audio-placeholder-sm {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    height: 80px;
+    background: var(--primary-glow);
+    border-radius: var(--radius-sm);
+    color: var(--primary);
+}
+
 .timeline-media-badge {
     display: inline-flex;
     align-items: center;
