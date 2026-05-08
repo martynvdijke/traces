@@ -1,3 +1,11 @@
+## [1.11.1](https://github.com/martynvdijke/traces/compare/v1.11.0...v1.11.1) (2026-05-08)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([4a23f68](https://github.com/martynvdijke/traces/commit/4a23f68bf685be4ddb57540a7953439eb74066f9))
+* **deps:** update module github.com/swaggo/files to v2 ([e0670cf](https://github.com/martynvdijke/traces/commit/e0670cf8bf6990871db55ea0bedaf776545b743f))
+
 # [1.11.0](https://github.com/martynvdijke/traces/compare/v1.10.0...v1.11.0) (2026-05-08)
 
 
