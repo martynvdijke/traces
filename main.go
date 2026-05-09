@@ -165,6 +165,11 @@ type ImmichConfig struct {
 	Enabled bool   `json:"enabled"`
 }
 
+type BackupConfig struct {
+	RetentionDays int  `json:"retention_days"`
+	AutoPrune     bool `json:"auto_prune"`
+}
+
 type ImmichMemoryAsset struct {
 	ID               string  `json:"id"`
 	OriginalFileName string  `json:"originalFileName"`
@@ -192,7 +197,7 @@ type CalendarDay struct {
 	Count  int             `json:"count"`
 }
 
-const currentSchemaVersion = 8
+const currentSchemaVersion = 9
 const currentVersion = "1.11.2"
 
 var (
@@ -268,6 +273,12 @@ func main() {
 			immichURL = cfg.URL
 			immichAPIKey = cfg.APIKey
 			immichEnabled = enabledInt == 1
+		}
+	}
+
+	if os.Getenv("BACKUP_RETENTION_DAYS") != "" {
+		if days, err := strconv.Atoi(os.Getenv("BACKUP_RETENTION_DAYS")); err == nil && days > 0 {
+			db.Exec("UPDATE backup_settings SET retention_days=? WHERE id=1", days)
 		}
 	}
 
@@ -355,6 +366,8 @@ func main() {
 			auth.POST("/immich/import", importImmichMemories)
 			auth.POST("/backup", handleBackup)
 			auth.GET("/backups", handleListBackups)
+			auth.GET("/backup/config", getBackupConfig)
+			auth.POST("/backup/config", saveBackupConfig)
 			auth.GET("/csrf-token", getCSRFToken)
 		}
 	}
@@ -457,6 +470,7 @@ func main() {
 			defer ticker.Stop()
 			for {
 				backupDatabase()
+				pruneBackups()
 				<-ticker.C
 			}
 		}
@@ -3547,6 +3561,7 @@ func backupDatabase() {
 // @Router /backup [post]
 func handleBackup(c *gin.Context) {
 	backupDatabase()
+	pruneBackups()
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -3586,6 +3601,98 @@ func handleListBackups(c *gin.Context) {
 		backups = []BackupInfo{}
 	}
 	c.JSON(http.StatusOK, backups)
+}
+
+func pruneBackups() {
+	var cfg BackupConfig
+	var autoPruneInt int
+	err := db.QueryRow("SELECT retention_days, auto_prune FROM backup_settings WHERE id = 1").Scan(&cfg.RetentionDays, &autoPruneInt)
+	if err != nil {
+		log.Printf("[Backup] No backup config found, skipping prune")
+		return
+	}
+	cfg.AutoPrune = autoPruneInt == 1
+	if !cfg.AutoPrune {
+		return
+	}
+	if cfg.RetentionDays <= 0 {
+		cfg.RetentionDays = 7
+	}
+	threshold := time.Now().AddDate(0, 0, -cfg.RetentionDays)
+	entries, err := os.ReadDir(backupPath)
+	if err != nil {
+		log.Printf("[Backup] Failed to read backup directory: %v", err)
+		return
+	}
+	pruned := 0
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "traces-backup-") {
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			if info.ModTime().Before(threshold) {
+				path := filepath.Join(backupPath, e.Name())
+				if err := os.Remove(path); err != nil {
+					log.Printf("[Backup] Failed to prune backup %s: %v", e.Name(), err)
+				} else {
+					log.Printf("[Backup] Pruned old backup: %s", e.Name())
+					pruned++
+				}
+			}
+		}
+	}
+	if pruned > 0 {
+		log.Printf("[Backup] Pruned %d old backup(s)", pruned)
+	}
+}
+
+// @Summary Get backup config
+// @Description Gets the backup configuration
+// @Tags System
+// @Produce json
+// @Success 200 {object} BackupConfig
+// @Router /backup/config [get]
+func getBackupConfig(c *gin.Context) {
+	var cfg BackupConfig
+	var autoPruneInt int
+	err := db.QueryRow("SELECT retention_days, auto_prune FROM backup_settings WHERE id = 1").Scan(&cfg.RetentionDays, &autoPruneInt)
+	if err != nil {
+		c.JSON(http.StatusOK, BackupConfig{RetentionDays: 7, AutoPrune: true})
+		return
+	}
+	cfg.AutoPrune = autoPruneInt == 1
+	c.JSON(http.StatusOK, cfg)
+}
+
+// @Summary Save backup config
+// @Description Saves the backup configuration
+// @Tags System
+// @Accept json
+// @Produce json
+// @Param config body object true "Backup config"
+// @Success 200 {object} map[string]string
+// @Failure 400 {object} map[string]string
+// @Router /backup/config [post]
+func saveBackupConfig(c *gin.Context) {
+	var cfg BackupConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if cfg.RetentionDays < 1 {
+		cfg.RetentionDays = 7
+	}
+	autoPruneInt := 0
+	if cfg.AutoPrune {
+		autoPruneInt = 1
+	}
+	_, err := db.Exec(`UPDATE backup_settings SET retention_days=?, auto_prune=? WHERE id=1`, cfg.RetentionDays, autoPruneInt)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
 func serveManifest(c *gin.Context) {
@@ -3728,6 +3835,11 @@ func createTables() {
 			api_key TEXT DEFAULT '',
 			enabled INTEGER DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS backup_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			retention_days INTEGER DEFAULT 7,
+			auto_prune INTEGER DEFAULT 1
+		)`,
 	}
 
 	for _, q := range queries {
@@ -3773,6 +3885,12 @@ func createTables() {
 	db.QueryRow("SELECT COUNT(*) FROM immich_settings").Scan(&immichCount)
 	if immichCount == 0 {
 		db.Exec("INSERT INTO immich_settings (id, url, api_key, enabled) VALUES (1, '', '', 0)")
+	}
+
+	var backupCount int
+	db.QueryRow("SELECT COUNT(*) FROM backup_settings").Scan(&backupCount)
+	if backupCount == 0 {
+		db.Exec("INSERT INTO backup_settings (id, retention_days, auto_prune) VALUES (1, 7, 1)")
 	}
 }
 

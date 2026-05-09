@@ -31,6 +31,7 @@ async function init(): Promise<void> {
   loadImmichConfig();
   loadImmichMemories();
   loadBackups();
+  loadBackupConfig();
 }
 
 function loadAdminAnalytics(): void {
@@ -1266,6 +1267,8 @@ document.getElementById('ollama-form')!.addEventListener('submit', async (e) => 
     : '<div class="alert alert-danger">Failed to save.</div>';
 });
 
+document.getElementById('backup-config-form')!.addEventListener('submit', saveBackupConfig);
+
 async function fetchEventWeather(): Promise<void> {
   const lat = (document.getElementById('event-latitude') as HTMLInputElement).value;
   const lng = (document.getElementById('event-longitude') as HTMLInputElement).value;
@@ -1342,6 +1345,40 @@ async function createBackup(): Promise<void> {
       document.getElementById('backup-result')!.innerHTML = '<div class="alert alert-danger mb-0">Backup failed: ' + (data.error || 'unknown') + '</div>';
     }
   } catch (e) { document.getElementById('backup-result')!.innerHTML = '<div class="alert alert-danger mb-0">Backup failed</div>'; }
+  btn.disabled = false;
+  btn.innerHTML = orig;
+}
+
+async function loadBackupConfig(): Promise<void> {
+  try {
+    const res = await fetch('/api/backup/config', { headers: csrfHeaders() });
+    const cfg = await res.json();
+    (document.getElementById('backup-retention-days') as HTMLInputElement).value = cfg.retention_days;
+    (document.getElementById('backup-auto-prune') as HTMLInputElement).checked = cfg.auto_prune;
+  } catch (e) { console.error('Failed to load backup config', e); }
+}
+
+async function saveBackupConfig(e: Event): Promise<void> {
+  e.preventDefault();
+  const btn = e.target instanceof HTMLButtonElement ? e.target : (e.target as HTMLElement).querySelector('button[type="submit"]') as HTMLButtonElement;
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+  try {
+    const res = await fetch('/api/backup/config', {
+      method: 'POST',
+      headers: csrfHeaders('application/json'),
+      body: JSON.stringify({
+        retention_days: parseInt((document.getElementById('backup-retention-days') as HTMLInputElement).value) || 7,
+        auto_prune: (document.getElementById('backup-auto-prune') as HTMLInputElement).checked
+      })
+    });
+    if (res.ok) {
+      document.getElementById('backup-config-result')!.innerHTML = '<div class="alert alert-success mb-0">Backup config saved</div>';
+    } else {
+      document.getElementById('backup-config-result')!.innerHTML = '<div class="alert alert-danger mb-0">Failed to save backup config</div>';
+    }
+  } catch (e) { document.getElementById('backup-config-result')!.innerHTML = '<div class="alert alert-danger mb-0">Failed to save backup config</div>'; }
   btn.disabled = false;
   btn.innerHTML = orig;
 }
