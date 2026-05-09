@@ -1,3 +1,10 @@
+## [1.11.2](https://github.com/martynvdijke/traces/compare/v1.11.1...v1.11.2) (2026-05-09)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([4063920](https://github.com/martynvdijke/traces/commit/4063920743e829a61e2ccc841e212db4c28420d9))
+
 ## [1.11.1](https://github.com/martynvdijke/traces/compare/v1.11.0...v1.11.1) (2026-05-08)
 
 
