@@ -1,3 +1,10 @@
+# [1.12.0](https://github.com/martynvdijke/traces/compare/v1.11.2...v1.12.0) (2026-05-09)
+
+
+### Features
+
+* add configurable auto-prune for old backups ([4efda84](https://github.com/martynvdijke/traces/commit/4efda84b8e31848235b49347104ec0a35e7e60d0)), closes [#42](https://github.com/martynvdijke/traces/issues/42)
+
 ## [1.11.2](https://github.com/martynvdijke/traces/compare/v1.11.1...v1.11.2) (2026-05-09)
 
 
