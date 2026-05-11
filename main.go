@@ -352,6 +352,9 @@ func main() {
 			auth.GET("/stats", getEventStats)
 			auth.GET("/stats/distribution", getStatsDistribution)
 			auth.GET("/tags", getTags)
+			auth.POST("/tags/rename", renameTag)
+			auth.POST("/tags/delete", deleteTag)
+			auth.POST("/tags/merge", mergeTags)
 			auth.GET("/map", getMapData)
 			auth.GET("/persons", getPersons)
 			auth.GET("/autocomplete", getAutocomplete)
@@ -2642,6 +2645,189 @@ func getTags(c *gin.Context) {
 	})
 
 	c.JSON(http.StatusOK, result)
+}
+
+// @Summary Rename tag
+// @Description Rename a tag across all events
+// @Tags Tags
+// @Accept json
+// @Produce json
+// @Param body body object true "Rename tag" SchemaProperties({old_name:{type:string}, new_name:{type:string}})
+// @Success 200 {object} map[string]string
+// @Router /tags/rename [post]
+func renameTag(c *gin.Context) {
+	var input struct {
+		OldName string `json:"old_name"`
+		NewName string `json:"new_name"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if input.OldName == "" || input.NewName == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Both old_name and new_name are required"})
+		return
+	}
+
+	rows, err := db.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.OldName+"%")
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	updated := 0
+	for rows.Next() {
+		var id int
+		var tags string
+		if err := rows.Scan(&id, &tags); err != nil {
+			continue
+		}
+		parts := strings.Split(tags, ",")
+		newParts := make([]string, 0, len(parts))
+		changed := false
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == input.OldName {
+				newParts = append(newParts, input.NewName)
+				changed = true
+			} else {
+				newParts = append(newParts, p)
+			}
+		}
+		if changed {
+			newTags := strings.Join(newParts, ", ")
+			db.Exec("UPDATE timeline_events SET tags=? WHERE id=?", newTags, id)
+			updated++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": updated})
+}
+
+// @Summary Delete tag
+// @Description Remove a tag from all events
+// @Tags Tags
+// @Accept json
+// @Produce json
+// @Param body body object true "Delete tag" SchemaProperties({name:{type:string}})
+// @Success 200 {object} map[string]string
+// @Router /tags/delete [post]
+func deleteTag(c *gin.Context) {
+	var input struct {
+		Name string `json:"name"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if input.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Tag name is required"})
+		return
+	}
+
+	rows, err := db.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.Name+"%")
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	updated := 0
+	for rows.Next() {
+		var id int
+		var tags string
+		if err := rows.Scan(&id, &tags); err != nil {
+			continue
+		}
+		parts := strings.Split(tags, ",")
+		newParts := make([]string, 0, len(parts))
+		changed := false
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == input.Name {
+				changed = true
+			} else {
+				newParts = append(newParts, p)
+			}
+		}
+		if changed {
+			newTags := strings.Join(newParts, ", ")
+			db.Exec("UPDATE timeline_events SET tags=? WHERE id=?", newTags, id)
+			updated++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": updated})
+}
+
+// @Summary Merge tags
+// @Description Replace all occurrences of source tag with target tag
+// @Tags Tags
+// @Accept json
+// @Produce json
+// @Param body body object true "Merge tags" SchemaProperties({source:{type:string}, target:{type:string}})
+// @Success 200 {object} map[string]string
+// @Router /tags/merge [post]
+func mergeTags(c *gin.Context) {
+	var input struct {
+		Source string `json:"source"`
+		Target string `json:"target"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if input.Source == "" || input.Target == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Both source and target are required"})
+		return
+	}
+
+	rows, err := db.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.Source+"%")
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	updated := 0
+	for rows.Next() {
+		var id int
+		var tags string
+		if err := rows.Scan(&id, &tags); err != nil {
+			continue
+		}
+		parts := strings.Split(tags, ",")
+		newParts := make([]string, 0, len(parts))
+		changed := false
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == input.Source {
+				if input.Target != "" && !contains(newParts, input.Target) {
+					newParts = append(newParts, input.Target)
+				}
+				changed = true
+			} else if p != "" {
+				newParts = append(newParts, p)
+			}
+		}
+		if changed {
+			newTags := strings.Join(newParts, ", ")
+			db.Exec("UPDATE timeline_events SET tags=? WHERE id=?", newTags, id)
+			updated++
+		}
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": updated})
+}
+
+func contains(slice []string, s string) bool {
+	for _, v := range slice {
+		if v == s {
+			return true
+		}
+	}
+	return false
 }
 
 // @Summary List persons

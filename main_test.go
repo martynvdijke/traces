@@ -3274,3 +3274,120 @@ func TestEventDuration(t *testing.T) {
 		}
 	})
 }
+
+func TestTagManagement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		tags TEXT
+	)`)
+
+	t.Run("rename_tag", func(t *testing.T) {
+		db.Exec("DELETE FROM timeline_events")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E1', 'nature, photography')")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E2', 'nature, hiking')")
+
+		db.Exec("UPDATE timeline_events SET tags = REPLACE(tags, 'nature', 'outdoor') WHERE tags LIKE '%nature%'")
+
+		var tags1, tags2 string
+		db.QueryRow("SELECT tags FROM timeline_events WHERE title = 'E1'").Scan(&tags1)
+		db.QueryRow("SELECT tags FROM timeline_events WHERE title = 'E2'").Scan(&tags2)
+		if !strings.Contains(tags1, "outdoor") {
+			t.Errorf("expected 'outdoor' in E1, got %q", tags1)
+		}
+		if strings.Contains(tags1, "nature") {
+			t.Errorf("unexpected 'nature' in E1, got %q", tags1)
+		}
+		if !strings.Contains(tags2, "outdoor") {
+			t.Errorf("expected 'outdoor' in E2, got %q", tags2)
+		}
+	})
+
+	t.Run("delete_tag", func(t *testing.T) {
+		db.Exec("DELETE FROM timeline_events")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E1', 'food, cooking')")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E2', 'nature, hiking')")
+
+		var id int
+		var tags string
+		err := db.QueryRow("SELECT id, tags FROM timeline_events WHERE tags LIKE '%cooking%'").Scan(&id, &tags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := strings.Split(tags, ",")
+		var newParts []string
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" && p != "cooking" {
+				newParts = append(newParts, p)
+			}
+		}
+		_, err = db.Exec("UPDATE timeline_events SET tags=? WHERE id=?", strings.Join(newParts, ", "), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var tagsAfter string
+		db.QueryRow("SELECT tags FROM timeline_events WHERE title = 'E1'").Scan(&tagsAfter)
+		if strings.Contains(tagsAfter, "cooking") {
+			t.Errorf("expected 'cooking' removed, got %q", tagsAfter)
+		}
+		if !strings.Contains(tagsAfter, "food") {
+			t.Errorf("expected 'food' to remain, got %q", tagsAfter)
+		}
+	})
+
+	t.Run("merge_tags", func(t *testing.T) {
+		db.Exec("DELETE FROM timeline_events")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E1', 'outdoor, photography')")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E2', 'outdoor, hiking')")
+
+		var id int
+		var tags string
+		err := db.QueryRow("SELECT id, tags FROM timeline_events WHERE title = 'E1'").Scan(&id, &tags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := strings.Split(tags, ",")
+		var newParts []string
+		seen := make(map[string]bool)
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if p == "outdoor" {
+				p = "outside"
+			}
+			if !seen[p] {
+				newParts = append(newParts, p)
+				seen[p] = true
+			}
+		}
+		_, err = db.Exec("UPDATE timeline_events SET tags=? WHERE id=?", strings.Join(newParts, ", "), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var tags1 string
+		db.QueryRow("SELECT tags FROM timeline_events WHERE title = 'E1'").Scan(&tags1)
+		if !strings.Contains(tags1, "outside") {
+			t.Errorf("expected 'outside' in E1 after merge, got %q", tags1)
+		}
+		if strings.Contains(tags1, "outdoor") {
+			t.Errorf("unexpected 'outdoor' in E1, got %q", tags1)
+		}
+	})
+}

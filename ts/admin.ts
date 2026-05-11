@@ -1417,6 +1417,8 @@ async function loadTags(): Promise<void> {
     const res = await fetch('/api/tags');
     allTags = await res.json();
     renderTagCloud();
+    renderTagTable();
+    populateMergeSelects();
   } catch (e) { console.error('Failed to load tags', e); }
 }
 
@@ -1429,9 +1431,119 @@ function renderTagCloud(): void {
   }
   const maxCount = Math.max(...allTags.map(t => t.count), 1);
   container.innerHTML = allTags.map(t => {
-    const size = 0.75 + (t.count / maxCount) * 1.0; // 0.75rem to 1.75rem
+    const size = 0.75 + (t.count / maxCount) * 1.0;
     return '<span class="badge bg-primary me-1 mb-1" style="font-size:' + size.toFixed(1) + 'rem;cursor:pointer" onclick="filterEventsByTag(\'' + escapeHtml(t.name) + '\')" title="' + t.count + ' events">' + escapeHtml(t.name) + ' (' + t.count + ')</span>';
   }).join('');
+}
+
+function renderTagTable(): void {
+  const container = document.getElementById('tag-manager-table');
+  if (!container) return;
+  if (!allTags.length) {
+    container.innerHTML = '<div class="text-muted text-center py-3">No tags found. Tags appear as you add them to events.</div>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr>
+            <th>Tag</th>
+            <th>Count</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allTags.map(t => `
+            <tr>
+              <td><span class="badge bg-primary">${escapeHtml(t.name)}</span></td>
+              <td>${t.count}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-info me-1" onclick="renameTagPrompt('${escapeHtml(t.name)}')" title="Rename"><i class="fa-solid fa-pencil"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteTagPrompt('${escapeHtml(t.name)}')" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function populateMergeSelects(): void {
+  const source = document.getElementById('merge-source') as HTMLSelectElement;
+  const target = document.getElementById('merge-target') as HTMLSelectElement;
+  if (!source || !target) return;
+  const opts = allTags.map(t => '<option value="' + escapeHtml(t.name) + '">' + escapeHtml(t.name) + ' (' + t.count + ')</option>').join('');
+  source.innerHTML = '<option value="">Select source...</option>' + opts;
+  target.innerHTML = '<option value="">Select target...</option>' + opts;
+}
+
+async function renameTagPrompt(oldName: string): Promise<void> {
+  const newName = prompt('Rename "' + oldName + '" to:', oldName);
+  if (!newName || newName === oldName) return;
+  await ensureCSRF();
+  const res = await fetch('/api/tags/rename', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ old_name: oldName, new_name: newName })
+  });
+  if (res.ok) {
+    await loadTags();
+    showResult('tag-manager-table', 'Tag renamed successfully');
+  } else {
+    const err = await res.json();
+    alert('Rename failed: ' + (err.error || ''));
+  }
+}
+
+async function deleteTagPrompt(name: string): Promise<void> {
+  if (!confirm('Delete tag "' + name + '"? This will remove it from all events.')) return;
+  await ensureCSRF();
+  const res = await fetch('/api/tags/delete', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ name })
+  });
+  if (res.ok) {
+    await loadTags();
+    showResult('tag-manager-table', 'Tag deleted successfully');
+  } else {
+    const err = await res.json();
+    alert('Delete failed: ' + (err.error || ''));
+  }
+}
+
+async function mergeTags(): Promise<void> {
+  const source = (document.getElementById('merge-source') as HTMLSelectElement).value;
+  const target = (document.getElementById('merge-target') as HTMLSelectElement).value;
+  if (!source || !target) { alert('Select both source and target tags'); return; }
+  if (source === target) { alert('Source and target must be different'); return; }
+  if (!confirm('Merge "' + source + '" into "' + target + '"? This cannot be undone.')) return;
+  await ensureCSRF();
+  const res = await fetch('/api/tags/merge', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ source, target })
+  });
+  if (res.ok) {
+    await loadTags();
+    (document.getElementById('merge-result') as HTMLElement).innerHTML = '<div class="alert alert-success mt-2 mb-0 py-2">Merged "' + source + '" into "' + target + '"</div>';
+    setTimeout(() => { (document.getElementById('merge-result') as HTMLElement).innerHTML = ''; }, 3000);
+  } else {
+    const err = await res.json();
+    alert('Merge failed: ' + (err.error || ''));
+  }
+}
+
+function showResult(id: string, msg: string): void {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const div = document.createElement('div');
+  div.className = 'alert alert-success mt-2 mb-0 py-2';
+  div.textContent = msg;
+  el.prepend(div);
+  setTimeout(() => div.remove(), 3000);
 }
 
 function filterEventsByTag(tag: string): void {

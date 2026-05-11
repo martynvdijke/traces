@@ -926,10 +926,37 @@
             <!-- TAGS TAB -->
             <div class="tab-pane fade" id="tags-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-tags me-2 text-primary"></i>All Tags</h5>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-tags me-2 text-primary"></i>Tag Management</h5>
+                </div>
+                <div class="card mb-3">
+                    <div class="card-header"><i class="fa-solid fa-list me-2"></i>All Tags</div>
+                    <div class="card-body">
+                        <div id="tag-manager-table">
+                            <div class="text-muted text-center py-3">Loading tags...</div>
+                        </div>
+                    </div>
+                </div>
+                <div class="card mb-3">
+                    <div class="card-header"><i class="fa-solid fa-merge me-2"></i>Merge Tags</div>
+                    <div class="card-body">
+                        <div class="row g-2 align-items-end">
+                            <div class="col-md-4">
+                                <label class="form-label small">Source Tag</label>
+                                <select class="form-select form-select-sm" id="merge-source"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <label class="form-label small">Target Tag</label>
+                                <select class="form-select form-select-sm" id="merge-target"></select>
+                            </div>
+                            <div class="col-md-4">
+                                <button class="btn btn-sm btn-warning" onclick="mergeTags()"><i class="fa-solid fa-merge me-1"></i> Merge</button>
+                            </div>
+                        </div>
+                        <div id="merge-result" class="mt-2"></div>
+                    </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-filter me-2"></i>Tag Cloud</div>
+                    <div class="card-header"><i class="fa-solid fa-cloud me-2"></i>Tag Cloud</div>
                     <div class="card-body">
                         <div class="d-flex flex-wrap gap-2" id="tag-cloud"></div>
                     </div>
