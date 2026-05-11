@@ -26,6 +26,7 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/rand"
 	"crypto/sha256"
 	"crypto/tls"
@@ -38,6 +39,7 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
+	"io/fs"
 	"log"
 	"math"
 	"net/http"
@@ -54,10 +56,38 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/image/draw"
+	"golang.org/x/net/webdav"
 
-	swaggerFiles "github.com/swaggo/files"
+	swaggerFiles "github.com/swaggo/files/v2"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
+
+type swaggerFS struct{}
+
+func (swaggerFS) Mkdir(ctx context.Context, _ string, _ os.FileMode) error { return os.ErrPermission }
+func (swaggerFS) RemoveAll(ctx context.Context, _ string) error             { return os.ErrPermission }
+func (swaggerFS) Rename(ctx context.Context, _, _ string) error             { return os.ErrPermission }
+func (swaggerFS) OpenFile(ctx context.Context, name string, flag int, _ os.FileMode) (webdav.File, error) {
+	if flag != os.O_RDONLY {
+		return nil, os.ErrPermission
+	}
+	f, err := swaggerFiles.FS.Open(name)
+	if err != nil {
+		return nil, err
+	}
+	return &swaggerFile{f}, nil
+}
+func (swaggerFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
+	return fs.Stat(swaggerFiles.FS, name)
+}
+
+type swaggerFile struct{ fs.File }
+
+func (swaggerFile) Write([]byte) (int, error)          { return 0, os.ErrPermission }
+func (swaggerFile) Readdir(int) ([]os.FileInfo, error)  { return nil, nil }
+func (s swaggerFile) Seek(offset int64, whence int) (int64, error) {
+	return s.File.(io.Seeker).Seek(offset, whence)
+}
 
 func init() {
 	image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
@@ -409,7 +439,7 @@ func main() {
 		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
 	})
 
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(swaggerFiles.Handler))
+	r.GET("/swagger/*any", ginSwagger.WrapHandler(&webdav.Handler{FileSystem: swaggerFS{}}))
 
 	r.GET("/api-docs", func(c *gin.Context) {
 		c.File(filepath.Join(basePath, "static/swagger.json"))
