@@ -14,12 +14,15 @@ interface TimelineEvent {
   tags: string;
   sort_order: number;
   is_public: boolean;
+  is_favorite: boolean;
   created_at: string;
   person_id?: number;
   latitude?: number;
   longitude?: number;
   recurring: string;
   weather_data: string;
+  start_time: string;
+  end_time: string;
   user_id: number;
   person?: {
     id: number;
@@ -305,6 +308,9 @@ function updateStats(): void {
 
 let selectedFilterTags: string[] = [];
 let filterLocationTimeout: any = null;
+let showFavoritesOnly: boolean = false;
+let selectedCollectionId: string = '';
+let collections: any[] = [];
 
 function toggleFilters(): void {
   const panel = document.getElementById('advanced-filters');
@@ -317,10 +323,36 @@ function applyAdvancedFilters(): void {
   const q = (document.getElementById('search-input') as HTMLInputElement | null)?.value?.trim() || '';
   const personId = (document.getElementById('filter-person') as HTMLSelectElement | null)?.value || '';
   const location = (document.getElementById('filter-location') as HTMLInputElement | null)?.value?.trim() || '';
+  const collectionId = (document.getElementById('filter-collection') as HTMLSelectElement | null)?.value || '';
   const mediaTypes: string[] = [];
   if ((document.getElementById('filter-media-image') as HTMLInputElement | null)?.checked) mediaTypes.push('image');
   if ((document.getElementById('filter-media-video') as HTMLInputElement | null)?.checked) mediaTypes.push('video');
   if ((document.getElementById('filter-media-audio') as HTMLInputElement | null)?.checked) mediaTypes.push('audio');
+
+  selectedCollectionId = collectionId;
+
+  // If a collection is selected, load collection events directly
+  if (collectionId) {
+    fetch('/api/collections/' + collectionId + '/events')
+      .then(r => r.json())
+      .then((data: any[]) => {
+        if (Array.isArray(data)) {
+          events = data;
+          if (showFavoritesOnly) {
+            events = events.filter(e => e.is_favorite);
+          }
+          renderTimeline();
+          renderGallery();
+          renderMapInstance();
+          renderCalendar();
+          updateStats();
+          const status = document.getElementById('filter-status');
+          if (status) status.textContent = events.length + ' results';
+        }
+      })
+      .catch(() => {});
+    return;
+  }
 
   let url = '/api/events/search?year=' + currentYear;
   if (q) url += '&q=' + encodeURIComponent(q);
@@ -342,13 +374,16 @@ function applyAdvancedFilters(): void {
     .then((data: any[]) => {
       if (Array.isArray(data)) {
         events = data;
+        if (showFavoritesOnly) {
+          events = events.filter(e => e.is_favorite);
+        }
         renderTimeline();
         renderGallery();
         renderMapInstance();
         renderCalendar();
         updateStats();
         const status = document.getElementById('filter-status');
-        if (status) status.textContent = data.length + ' results';
+        if (status) status.textContent = events.length + ' results';
       }
     })
     .catch(() => {
@@ -520,8 +555,68 @@ async function loadUsers(): Promise<void> {
   } catch (e) { users = []; }
 }
 
+async function toggleFav(id: number): Promise<void> {
+  const csrf = await ensureCSRF();
+  await fetch('/api/events/favorite', {
+    method: 'POST',
+    headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id })
+  });
+  await loadData();
+  loadWrapped();
+}
+
+async function loadCollections(): Promise<void> {
+  try {
+    const res = await fetch('/api/collections');
+    collections = await res.json();
+    const sel = document.getElementById('filter-collection') as HTMLSelectElement;
+    if (sel) {
+      sel.innerHTML = '<option value="">All Collections</option>' + collections.map((c: any) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+    }
+  } catch (e) { collections = []; }
+}
+
+function toggleFavFilter(): void {
+  showFavoritesOnly = !showFavoritesOnly;
+  const btn = document.getElementById('fav-filter-btn');
+  if (btn) btn.classList.toggle('btn-primary', showFavoritesOnly);
+  if (btn) btn.classList.toggle('btn-outline-primary', !showFavoritesOnly);
+  applyAdvancedFilters();
+}
+
+async function filterByCollection(): Promise<void> {
+  const sel = document.getElementById('filter-collection') as HTMLSelectElement;
+  selectedCollectionId = sel?.value || '';
+  if (!selectedCollectionId) {
+    await loadData();
+    return;
+  }
+  try {
+    const res = await fetch('/api/collections/' + selectedCollectionId + '/events');
+    events = await res.json();
+    if (!Array.isArray(events)) events = [];
+    renderTimeline();
+    renderGallery();
+    renderMapInstance();
+    renderCalendar();
+    updateStats();
+  } catch (e) { console.error('Filter by collection failed', e); }
+}
+
+async function ensureCSRF(): Promise<string> {
+  try {
+    const res = await fetch('/api/csrf-token');
+    if (res.ok) {
+      const data = await res.json();
+      return data.token;
+    }
+  } catch (e) {}
+  return '';
+}
+
 async function loadData(): Promise<void> {
-  await Promise.all([loadEvents(), loadContributions(), loadUsers()]);
+  await Promise.all([loadEvents(), loadContributions(), loadUsers(), loadCollections()]);
   populateYearButtons();
   galleryPage = 1;
 }
@@ -620,10 +715,15 @@ function renderTimeline(): void {
 
     const recurringBadge = e.recurring ? `<span class="badge bg-info ms-1"><i class="fa-solid fa-rotate"></i> ${e.recurring}</span>` : '';
 
+    const favStar = `<i class="${e.is_favorite ? 'fa-solid' : 'fa-regular'} fa-star text-warning" style="cursor:pointer;font-size:0.85rem" onclick="event.stopPropagation();toggleFav(${e.id})" title="${e.is_favorite ? 'Unfavorite' : 'Favorite'}"></i>`;
+
     html += `
       <div class="timeline-item ${index % 2 === 0 ? 'left' : 'right'}" id="event-${e.id}">
         <div class="timeline-content" onclick="${hasMedia ? 'showMedia(' + e.id + ')' : ''}">
-          <div class="timeline-date">${formatDate(e.date)} ${recurringBadge}</div>
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="timeline-date">${formatDate(e.date)}${e.start_time ? ' <i class="fa-regular fa-clock ms-1"></i>' + e.start_time.substring(0, 5) : ''}${e.end_time ? '–' + e.end_time.substring(0, 5) : ''} ${recurringBadge}</div>
+            ${favStar}
+          </div>
           <div class="timeline-title">${escapeHtml(e.title)} ${weatherHtml}</div>
           <div class="timeline-location"><i class="fa-solid fa-location-dot me-1"></i>${escapeHtml(e.location)} ${userHtml}</div>
           ${tagList.length > 0 ? '<div class="timeline-people mb-2"><i class="fa-solid fa-tags me-1"></i>' + tagList.map(t => '<span class="badge bg-secondary me-1">' + escapeHtml(t) + '</span>').join('') + '</div>' : ''}
@@ -799,7 +899,7 @@ function showMedia(id: number): void {
     descEl.innerHTML = `
       ${event.description ? renderMarkdown(event.description) : ''}
       <div class="mt-2 small opacity-75">
-        <i class="fa-solid fa-calendar me-1"></i>${event.date}
+        <i class="fa-solid fa-calendar me-1"></i>${event.date}${event.start_time ? ' <i class="fa-regular fa-clock ms-2"></i>' + event.start_time.substring(0, 5) : ''}${event.end_time ? '–' + event.end_time.substring(0, 5) : ''}
         ${event.location ? '<i class="fa-solid fa-location-dot ms-2 me-1"></i>' + event.location : ''}
       </div>
     `;
@@ -1067,6 +1167,49 @@ async function loadMemories(): Promise<void> {
   } catch (_) { }
 }
 
+async function loadWrapped(): Promise<void> {
+  const container = document.getElementById('wrapped-content');
+  if (!container) return;
+  try {
+    const res = await fetch('/api/wrapped?year=' + currentYear);
+    if (!res.ok) { container.innerHTML = '<div class="text-center text-muted py-5">Failed to load wrapped data</div>'; return; }
+    const w = await res.json();
+
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const maxMonth = Math.max(...(Object.values(w.by_month) as number[]), 1);
+    const monthBars = monthNames.map((m, i) => {
+      const idx = String(i + 1).padStart(2, '0');
+      const val = w.by_month[idx] || 0;
+      const pct = (val / maxMonth * 100).toFixed(0);
+      return '<div class="d-flex flex-column align-items-center" style="flex:1"><div class="stats-bar-value">' + val + '</div><div class="stats-bar" style="height:' + pct + '%;background:var(--primary);border-radius:4px 4px 0 0" title="' + m + ': ' + val + '"></div><div class="stats-bar-label">' + m + '</div></div>';
+    }).join('');
+
+    container.innerHTML = `
+      <div class="text-center mb-4">
+        <h3 class="fw-bold"><i class="fa-solid fa-gift me-2 text-primary"></i>${w.year} Wrapped</h3>
+        <p class="text-muted">Your year in review</p>
+      </div>
+      <div class="row g-3 mb-4">
+        <div class="col-md-3"><div class="dist-card text-center"><h5>Total Events</h5><div class="fs-2 fw-bold text-primary">${w.total_events}</div></div></div>
+        <div class="col-md-3"><div class="dist-card text-center"><h5>Longest Streak</h5><div class="fs-2 fw-bold text-primary">${w.longest_streak} days</div></div></div>
+        <div class="col-md-3"><div class="dist-card text-center"><h5>Favorites</h5><div class="fs-2 fw-bold text-warning">${w.favorite_count}</div></div></div>
+        <div class="col-md-3"><div class="dist-card text-center"><h5>Media Items</h5><div class="fs-2 fw-bold text-primary">${w.total_media}</div></div></div>
+      </div>
+      <div class="row g-3 mb-4">
+        <div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-star me-2 text-warning"></i>Busiest Month</h5><div class="fs-4 fw-bold">${w.busiest_month || 'N/A'}</div><div class="text-muted">${w.busiest_month_count || 0} events</div></div></div>
+        <div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-pen me-2"></i>Most Detailed Event</h5><div class="fw-bold">${w.top_event ? escapeHtml(w.top_event) : 'N/A'}</div>${w.top_event_date ? '<div class="text-muted small">' + w.top_event_date + '</div>' : ''}</div></div>
+      </div>
+      ${w.most_tags_title ? '<div class="row g-3 mb-4"><div class="col-12"><div class="dist-card"><h5><i class="fa-solid fa-tags me-2"></i>Most Tagged Event</h5><div class="fw-bold">' + escapeHtml(w.most_tags_title) + '</div><div class="text-muted">' + w.most_tags_count + ' tags</div></div></div></div>' : ''}
+      <div class="dist-card">
+        <h5><i class="fa-solid fa-chart-column me-2"></i>Events by Month</h5>
+        <div class="stats-bar-chart" style="display:flex;align-items:flex-end;gap:6px;height:150px;padding-top:8px">${monthBars}</div>
+      </div>
+    `;
+  } catch (e) {
+    container.innerHTML = '<div class="text-center text-muted py-5">Failed to load wrapped data</div>';
+  }
+}
+
 function initApp(): void {
   initTheme();
 
@@ -1087,6 +1230,12 @@ function initApp(): void {
   if (statsTab) {
     statsTab.addEventListener('shown.bs.tab', () => { loadStatsDist(); });
     statsTab.addEventListener('click', () => { loadStatsDist(); });
+  }
+
+  const wrappedTab = document.getElementById('wrapped-tab');
+  if (wrappedTab) {
+    wrappedTab.addEventListener('shown.bs.tab', () => { loadWrapped(); });
+    wrappedTab.addEventListener('click', () => { loadWrapped(); });
   }
 
   const compareYear1 = document.getElementById('compare-year-1') as HTMLSelectElement | null;
@@ -1156,3 +1305,7 @@ document.addEventListener('DOMContentLoaded', initApp);
 (window as any).globalSearchFocus = globalSearchFocus;
 (window as any).selectGlobalResult = selectGlobalResult;
 (window as any).highlightGlobalItem = highlightGlobalItem;
+(window as any).toggleFav = toggleFav;
+(window as any).toggleFavFilter = toggleFavFilter;
+(window as any).filterByCollection = filterByCollection;
+(window as any).loadWrapped = loadWrapped;

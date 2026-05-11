@@ -517,6 +517,7 @@ func TestMemoriesQuery(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
@@ -763,6 +764,7 @@ func TestEventCRUD(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
@@ -1024,6 +1026,7 @@ func TestCalendarQuery(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
@@ -1113,6 +1116,7 @@ func TestRecurringEvents(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
@@ -1583,6 +1587,7 @@ func TestEventCreationWithWeatherData(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
@@ -1677,6 +1682,7 @@ func TestEventCreationWithoutThumbnail(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
@@ -1741,12 +1747,15 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
 		recurring TEXT DEFAULT '',
 		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
@@ -1764,7 +1773,7 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			"Null Thumbnail Event", "Testing NULL thumbnail scan", "2026-03-15", "Test", "image", "/media/test.jpg", "", "test", 0, 1)
 
-		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1 ORDER BY e.event_date ASC`)
 		if err != nil {
@@ -1799,7 +1808,7 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			"Null Thumbnail", "Has NULL thumbnail", "2026-06-20", "Loc2", "image", "/media/b.jpg", "", "tag2", 1)
 
-		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1 ORDER BY e.event_date ASC`)
 		if err != nil {
@@ -1866,12 +1875,15 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
 		recurring TEXT DEFAULT '',
 		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
@@ -3143,6 +3155,122 @@ func TestBackupConfigAPI(t *testing.T) {
 		}
 		if cfg.AutoPrune {
 			t.Error("auto_prune should be false")
+		}
+	})
+}
+
+func TestEventDuration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0
+	)`)
+
+	t.Run("create_with_times", func(t *testing.T) {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, event_date, event_start_time, event_end_time) VALUES (?, ?, ?, ?)`,
+			"Timed Event", "2026-06-15", "09:30", "17:00")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var startTime, endTime string
+		err = db.QueryRow("SELECT event_start_time, event_end_time FROM timeline_events WHERE id = 1").Scan(&startTime, &endTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if startTime != "09:30" {
+			t.Errorf("start_time = %q, want 09:30", startTime)
+		}
+		if endTime != "17:00" {
+			t.Errorf("end_time = %q, want 17:00", endTime)
+		}
+	})
+
+	t.Run("create_without_times", func(t *testing.T) {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES (?, ?)`,
+			"No Time Event", "2026-07-01")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var startTime, endTime string
+		err = db.QueryRow("SELECT event_start_time, event_end_time FROM timeline_events WHERE id = 2").Scan(&startTime, &endTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if startTime != "" {
+			t.Errorf("expected empty start_time, got %q", startTime)
+		}
+		if endTime != "" {
+			t.Errorf("expected empty end_time, got %q", endTime)
+		}
+	})
+
+	t.Run("update_times", func(t *testing.T) {
+		_, err := db.Exec("UPDATE timeline_events SET event_start_time=?, event_end_time=? WHERE id=1", "10:00", "18:30")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var startTime, endTime string
+		err = db.QueryRow("SELECT event_start_time, event_end_time FROM timeline_events WHERE id = 1").Scan(&startTime, &endTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if startTime != "10:00" {
+			t.Errorf("start_time = %q, want 10:00", startTime)
+		}
+		if endTime != "18:30" {
+			t.Errorf("end_time = %q, want 18:30", endTime)
+		}
+	})
+
+	t.Run("query_with_times", func(t *testing.T) {
+		rows, err := db.Query(`SELECT id, title, event_date, event_start_time, event_end_time FROM timeline_events WHERE event_start_time != '' ORDER BY event_date`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+			var id int
+			var title, date, start, end string
+			rows.Scan(&id, &title, &date, &start, &end)
+			if start == "" {
+				t.Errorf("event %d should have start_time", id)
+			}
+		}
+		if count != 1 {
+			t.Errorf("expected 1 event with start_time, got %d", count)
 		}
 	})
 }

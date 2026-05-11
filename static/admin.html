@@ -517,6 +517,8 @@
                 <li class="nav-item"><button class="nav-link" id="gotify-tab" data-bs-toggle="tab" data-bs-target="#gotify-pane" type="button"><i class="fa-solid fa-bell me-2"></i>Notifications</button></li>
                 <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button"><i class="fa-solid fa-clock-rotate-left me-2"></i>Memories</button></li>
                 <li class="nav-item"><button class="nav-link" id="immich-tab" data-bs-toggle="tab" data-bs-target="#immich-pane" type="button"><i class="fa-solid fa-cloud me-2"></i>Immich</button></li>
+                <li class="nav-item"><button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates-pane" type="button"><i class="fa-solid fa-copy me-2"></i>Templates</button></li>
+                <li class="nav-item"><button class="nav-link" id="collections-tab" data-bs-toggle="tab" data-bs-target="#collections-pane" type="button"><i class="fa-solid fa-folder me-2"></i>Collections</button></li>
                 <li class="nav-item"><button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags-pane" type="button"><i class="fa-solid fa-tags me-2"></i>Tags</button></li>
                 <li class="nav-item"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button"><i class="fa-solid fa-people-group me-2"></i>Users</button></li>
                 <li class="nav-item"><button class="nav-link" id="ollama-tab" data-bs-toggle="tab" data-bs-target="#ollama-pane" type="button"><i class="fa-solid fa-robot me-2"></i>AI</button></li>
@@ -549,25 +551,47 @@
                                 <option value="video">Videos</option>
                                 <option value="audio">Audio</option>
                             </select>
+                            <select class="form-select" id="filter-collection" style="min-width:120px" onchange="filterByCollection()">
+                                <option value="">All Collections</option>
+                            </select>
                             <select class="form-select" id="filter-year" style="min-width:100px" onchange="applyFilters()">
                             </select>
                             <button class="btn btn-primary" onclick="loadEvents()"><i class="fa-solid fa-search"></i></button>
+                        </div>
+                        <div id="batch-actions" class="d-flex gap-2 align-items-center p-2 mb-2 bg-primary-glow rounded" style="display:none">
+                            <span class="text-primary fw-bold small"><span id="batch-count">0</span> selected</span>
+                            <button class="btn btn-sm btn-outline-danger" onclick="batchDelete()"><i class="fa-solid fa-trash me-1"></i>Delete</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="batchAddTags()"><i class="fa-solid fa-tag me-1"></i>Add Tags</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="batchSetPerson()"><i class="fa-solid fa-user me-1"></i>Set Person</button>
                         </div>
                         <div class="table-responsive">
                             <table class="table table-hover">
                                 <thead>
                                     <tr>
-                                        <th class="ps-3">Date</th>
+                                        <th class="ps-3" style="width:32px"><input type="checkbox" id="select-all-events" onchange="toggleSelectAllEvents()" title="Select all"></th>
+                                        <th class="ps-1">Date</th>
                                         <th>Title</th>
                                         <th>Location</th>
                                         <th>Person</th>
                                         <th>Media</th>
+                                        <th style="width:40px">Fav</th>
                                         <th class="text-end pe-3">Actions</th>
                                     </tr>
                                 </thead>
                                 <tbody id="event-list"></tbody>
                             </table>
                         </div>
+                    </div>
+                </div>
+                <div class="card mt-3">
+                    <div class="card-header"><i class="fa-solid fa-folder me-2"></i>Add to Collection</div>
+                    <div class="card-body">
+                        <div class="d-flex gap-2 align-items-center flex-wrap">
+                            <select class="form-select" id="collection-select" style="min-width:160px"><option value="">Select collection...</option></select>
+                            <select class="form-select" id="collection-event-select" style="min-width:200px"><option value="">Select event...</option></select>
+                            <button class="btn btn-primary" onclick="addEventToCollection()"><i class="fa-solid fa-plus me-1"></i> Add</button>
+                        </div>
+                        <div id="add-to-collection-result" class="mt-2"></div>
                     </div>
                 </div>
             </div>
@@ -782,6 +806,123 @@
                 </div>
             </div>
 
+            <!-- TEMPLATES TAB -->
+            <div class="tab-pane fade" id="templates-pane">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-copy me-2 text-primary"></i>Event Templates</h5>
+                    <button class="btn btn-sm btn-success" onclick="openTemplateModal()"><i class="fa-solid fa-plus me-1"></i> Add Template</button>
+                </div>
+                <div class="card">
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-hover">
+                                <thead>
+                                    <tr>
+                                        <th>Title</th>
+                                        <th>Tags</th>
+                                        <th>Location</th>
+                                        <th>Person</th>
+                                        <th class="text-end pe-3">Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="template-list"></tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Template Modal -->
+                <div class="modal fade" id="templateModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header"><h5 class="modal-title" id="templateModalLabel">Add Template</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                            <form id="template-form">
+                                <div class="modal-body">
+                                    <input type="hidden" id="template-id" value="0">
+                                    <div class="mb-3">
+                                        <label class="form-label">Title <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="template-title" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Description</label>
+                                        <textarea class="form-control" id="template-desc" rows="3"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Tags</label>
+                                        <input type="text" class="form-control" id="template-tags" placeholder="comma, separated">
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Location</label>
+                                        <input type="text" class="form-control" id="template-location">
+                                    </div>
+                                    <div class="row g-3 mb-3">
+                                        <div class="col-sm-6">
+                                            <label class="form-label">Person</label>
+                                            <select class="form-select" id="template-person"><option value="0">None</option></select>
+                                        </div>
+                                        <div class="col-sm-6">
+                                            <label class="form-label">User</label>
+                                            <select class="form-select" id="template-user"></select>
+                                        </div>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Media Type</label>
+                                        <select class="form-select" id="template-media-type">
+                                            <option value="image">Image</option>
+                                            <option value="video">Video</option>
+                                            <option value="audio">Audio</option>
+                                        </select>
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <div id="template-result" class="me-auto"></div>
+                                    <button type="submit" class="btn btn-primary">Save Template</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- COLLECTIONS TAB -->
+            <div class="tab-pane fade" id="collections-pane">
+                <div class="d-flex justify-content-between align-items-center mb-3">
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-folder me-2 text-primary"></i>Collections</h5>
+                    <button class="btn btn-sm btn-success" onclick="openCollectionModal()"><i class="fa-solid fa-plus me-1"></i> Add Collection</button>
+                </div>
+                <div class="row g-3" id="collection-list"></div>
+
+                <!-- Collection Modal -->
+                <div class="modal fade" id="collectionModal" tabindex="-1">
+                    <div class="modal-dialog">
+                        <div class="modal-content">
+                            <div class="modal-header"><h5 class="modal-title" id="collectionModalLabel">Add Collection</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+                            <form id="collection-form">
+                                <div class="modal-body">
+                                    <input type="hidden" id="collection-id" value="0">
+                                    <div class="mb-3">
+                                        <label class="form-label">Name <span class="text-danger">*</span></label>
+                                        <input type="text" class="form-control" id="collection-name" required>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Description</label>
+                                        <textarea class="form-control" id="collection-desc" rows="2"></textarea>
+                                    </div>
+                                    <div class="mb-3">
+                                        <label class="form-label">Color</label>
+                                        <input type="color" class="form-control form-control-color" id="collection-color" value="#7c3aed" style="width:60px;height:38px;padding:3px">
+                                    </div>
+                                </div>
+                                <div class="modal-footer">
+                                    <div id="collection-result" class="me-auto"></div>
+                                    <button type="submit" class="btn btn-primary">Save Collection</button>
+                                </div>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
             <!-- TAGS TAB -->
             <div class="tab-pane fade" id="tags-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -928,10 +1069,20 @@
                             <textarea class="form-control" name="description" id="event-desc" rows="3"></textarea>
                         </div>
                         <div class="row g-3 mb-3">
-                            <div class="col-sm-6">
+                            <div class="col-sm-4">
                                 <label class="form-label">Date <span class="text-muted">(optional)</span></label>
                                 <input type="date" class="form-control" name="date" id="event-date">
                             </div>
+                            <div class="col-sm-4">
+                                <label class="form-label">Start Time <span class="text-muted">(optional)</span></label>
+                                <input type="time" class="form-control" name="start_time" id="event-start-time">
+                            </div>
+                            <div class="col-sm-4">
+                                <label class="form-label">End Time <span class="text-muted">(optional)</span></label>
+                                <input type="time" class="form-control" name="end_time" id="event-end-time">
+                            </div>
+                        </div>
+                        <div class="row g-3 mb-3">
                             <div class="col-sm-6">
                                 <label class="form-label">Location <span class="text-muted">(optional)</span></label>
                                 <div class="autocomplete-wrapper">

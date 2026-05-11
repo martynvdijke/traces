@@ -52,6 +52,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+	"github.com/rwcarlsen/goexif/exif"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/image/draw"
 
@@ -77,6 +78,7 @@ type TimelineEvent struct {
 	Tags         string   `json:"tags"`
 	SortOrder    int      `json:"sort_order"`
 	IsPublic     bool     `json:"is_public"`
+	IsFavorite   bool     `json:"is_favorite"`
 	CreatedAt    string   `json:"created_at"`
 	PersonID     *int     `json:"person_id"`
 	Latitude     *float64 `json:"latitude"`
@@ -84,6 +86,8 @@ type TimelineEvent struct {
 	Person       *Person  `json:"person,omitempty"`
 	Recurring    string   `json:"recurring"`
 	WeatherData  string   `json:"weather_data"`
+	StartTime    string   `json:"start_time"`
+	EndTime      string   `json:"end_time"`
 	UserID       int      `json:"user_id"`
 	User         *User    `json:"user,omitempty"`
 }
@@ -170,6 +174,27 @@ type BackupConfig struct {
 	AutoPrune     bool `json:"auto_prune"`
 }
 
+type EventTemplate struct {
+	ID          int    `json:"id"`
+	Title       string `json:"title"`
+	Description string `json:"description"`
+	Tags        string `json:"tags"`
+	PersonID    *int   `json:"person_id"`
+	UserID      int    `json:"user_id"`
+	Location    string `json:"location"`
+	MediaType   string `json:"media_type"`
+	CreatedAt   string `json:"created_at"`
+}
+
+type Collection struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Color       string `json:"color"`
+	EventCount  int    `json:"event_count,omitempty"`
+	CreatedAt   string `json:"created_at"`
+}
+
 type ImmichMemoryAsset struct {
 	ID               string  `json:"id"`
 	OriginalFileName string  `json:"originalFileName"`
@@ -197,7 +222,7 @@ type CalendarDay struct {
 	Count  int             `json:"count"`
 }
 
-const currentSchemaVersion = 9
+const currentSchemaVersion = 16
 const currentVersion = "1.13.0"
 
 var (
@@ -368,6 +393,19 @@ func main() {
 			auth.GET("/backups", handleListBackups)
 			auth.GET("/backup/config", getBackupConfig)
 			auth.POST("/backup/config", saveBackupConfig)
+			auth.POST("/events/favorite", toggleFavorite)
+			auth.POST("/events/batch", batchEvents)
+			auth.GET("/collections", getCollections)
+			auth.POST("/collections", saveCollection)
+			auth.DELETE("/collections", deleteCollection)
+			auth.GET("/collections/:id/events", getCollectionEvents)
+			auth.POST("/collections/:id/events", addEventToCollection)
+			auth.DELETE("/collections/:id/events", removeEventFromCollection)
+			auth.GET("/templates", getTemplates)
+			auth.POST("/templates", saveTemplate)
+			auth.DELETE("/templates", deleteTemplate)
+			auth.POST("/templates/apply", applyTemplate)
+			auth.GET("/wrapped", getWrapped)
 			auth.GET("/csrf-token", getCSRFToken)
 		}
 	}
@@ -741,7 +779,7 @@ func getEvents(c *gin.Context) {
 	sort := c.Query("sort")
 	userID := c.Query("user_id")
 
-	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
 	args := []interface{}{}
@@ -795,7 +833,7 @@ func getEvents(c *gin.Context) {
 // @Success 200 {array} object "timeline events"
 // @Router /events/full [get]
 func getEventsFull(c *gin.Context) {
-	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id ORDER BY e.event_date ASC`
 
@@ -850,12 +888,12 @@ func getPublicEvents(c *gin.Context) {
 			placeholders[i] = "?"
 			idArgs[i] = id
 		}
-		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
 		args = idArgs
 	} else if publicMode {
-		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
 		if year != "" {
@@ -864,7 +902,7 @@ func getPublicEvents(c *gin.Context) {
 		}
 		query += " ORDER BY e.event_date ASC"
 	} else {
-		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.is_public = 1`
 		if year != "" {
@@ -946,9 +984,9 @@ func saveEvent(c *gin.Context) {
 	action := "created"
 	if e.ID == 0 {
 		result, err := db.Exec(`INSERT INTO timeline_events 
-			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, person_id, latitude, longitude, recurring, weather_data, user_id) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID)
+			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, is_favorite, person_id, latitude, longitude, recurring, weather_data, event_start_time, event_end_time, user_id) 
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -957,9 +995,9 @@ func saveEvent(c *gin.Context) {
 		e.ID = int(id)
 	} else {
 		_, err := db.Exec(`UPDATE timeline_events SET 
-			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, user_id=?
+			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, is_favorite=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, event_start_time=?, event_end_time=?, user_id=?
 			WHERE id=?`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID, e.ID)
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID, e.ID)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -1127,13 +1165,36 @@ func handleUpload(c *gin.Context) {
 		}
 	}
 
+	// EXIF GPS extraction
+	var exifLat, exifLng *float64
+	if mediaType == "image" {
+		exifLat, exifLng = extractEXIFGPS(data)
+	}
+
 	sendGotifyNotification(fmt.Sprintf("New media uploaded: %s (%s)", filename, mediaType), url)
 
-	c.JSON(http.StatusOK, gin.H{
+	resp := gin.H{
 		"url":        url,
 		"media_type": mediaType,
 		"thumbnail":  thumbnailURL,
-	})
+	}
+	if exifLat != nil && exifLng != nil {
+		resp["latitude"] = *exifLat
+		resp["longitude"] = *exifLng
+	}
+	c.JSON(http.StatusOK, resp)
+}
+
+func extractEXIFGPS(data []byte) (*float64, *float64) {
+	ex, err := exif.Decode(bytes.NewReader(data))
+	if err != nil {
+		return nil, nil
+	}
+	lat, lng, err := ex.LatLong()
+	if err != nil {
+		return nil, nil
+	}
+	return &lat, &lng
 }
 
 func resizeImage(img image.Image, maxDim int) image.Image {
@@ -1195,7 +1256,7 @@ func searchEvents(c *gin.Context) {
 	month := c.Query("month")
 	userID := c.Query("user_id")
 
-	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
 	args := []interface{}{}
@@ -1377,7 +1438,7 @@ func globalSearchEvents(c *gin.Context) {
 		}
 	}
 
-	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
 	args := []interface{}{}
@@ -1609,7 +1670,7 @@ func getPersonEvents(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.person_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
@@ -1643,8 +1704,8 @@ func cloneEvent(c *gin.Context) {
 
 	var e TimelineEvent
 	var thumbnail, mediaURL, tags, recurring, weatherData sql.NullString
-	err := db.QueryRow(`SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id FROM timeline_events WHERE id = ?`, input.ID).
-		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &tags, &e.SortOrder, &recurring, &weatherData, &e.UserID)
+	err := db.QueryRow(`SELECT title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, event_start_time, event_end_time, user_id FROM timeline_events WHERE id = ?`, input.ID).
+		Scan(&e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &tags, &e.SortOrder, &recurring, &weatherData, &e.StartTime, &e.EndTime, &e.UserID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
 		return
@@ -1658,8 +1719,8 @@ func cloneEvent(c *gin.Context) {
 	e.Date = input.Date
 	e.ID = 0
 
-	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Recurring, e.WeatherData, e.UserID)
+	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, event_start_time, event_end_time, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
 	if err != nil {
 		serverError(c, err)
 		return
@@ -1749,8 +1810,8 @@ func importEvents(c *gin.Context) {
 
 	count := 0
 	for _, e := range events {
-		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, latitude, longitude, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.UserID)
+		_, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, latitude, longitude, recurring, weather_data, event_start_time, event_end_time, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
 		if err == nil {
 			count++
 		}
@@ -1776,7 +1837,7 @@ func exportEvents(c *gin.Context) {
 		format = "json"
 	}
 
-	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id`
 	args := []interface{}{}
@@ -1814,6 +1875,565 @@ func exportEvents(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, events)
+}
+
+// @Summary Toggle favorite status
+// @Description Toggle the favorite status of an event
+// @Tags Events
+// @Accept json
+// @Produce json
+// @Param body body object true "Event ID" SchemaProperties(id:{type:integer})
+// @Success 200 {object} map[string]interface{}
+// @Router /events/favorite [post]
+func toggleFavorite(c *gin.Context) {
+	var input struct {
+		ID int `json:"id"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	var current bool
+	db.QueryRow("SELECT is_favorite FROM timeline_events WHERE id=?", input.ID).Scan(&current)
+	_, err := db.Exec("UPDATE timeline_events SET is_favorite=? WHERE id=?", !current, input.ID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "is_favorite": !current})
+}
+
+// @Summary Batch operations on events
+// @Description Batch edit, delete, or export events
+// @Tags Events
+// @Accept json
+// @Produce json
+// @Param body body object true "Batch operation" SchemaProperties(ids:{type:array,items:{type:integer}}, action:{type:string}, tags:{type:string}, person_id:{type:integer}, user_id:{type:integer})
+// @Success 200 {object} map[string]interface{}
+// @Router /events/batch [post]
+func batchEvents(c *gin.Context) {
+	var input struct {
+		IDs      []int  `json:"ids"`
+		Action   string `json:"action"`
+		Tags     string `json:"tags,omitempty"`
+		PersonID *int   `json:"person_id,omitempty"`
+		UserID   *int   `json:"user_id,omitempty"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if len(input.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No event IDs provided"})
+		return
+	}
+
+	placeholders := make([]string, len(input.IDs))
+	args := make([]interface{}, len(input.IDs))
+	for i, id := range input.IDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	switch input.Action {
+	case "delete":
+		_, err := db.Exec("DELETE FROM timeline_events WHERE id IN ("+inClause+")", args...)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "deleted": len(input.IDs)})
+	case "add_tags":
+		for _, id := range input.IDs {
+			var existing string
+			db.QueryRow("SELECT COALESCE(tags,'') FROM timeline_events WHERE id=?", id).Scan(&existing)
+			newTags := existing
+			if input.Tags != "" {
+				if existing != "" {
+					newTags = existing + ", " + input.Tags
+				} else {
+					newTags = input.Tags
+				}
+			}
+			db.Exec("UPDATE timeline_events SET tags=? WHERE id=?", newTags, id)
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": len(input.IDs)})
+	case "set_person":
+		if input.PersonID == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "person_id required"})
+			return
+		}
+		_, err := db.Exec("UPDATE timeline_events SET person_id=? WHERE id IN ("+inClause+")", append([]interface{}{*input.PersonID}, args...)...)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": len(input.IDs)})
+	case "set_user":
+		if input.UserID == nil {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "user_id required"})
+			return
+		}
+		_, err := db.Exec("UPDATE timeline_events SET user_id=? WHERE id IN ("+inClause+")", append([]interface{}{*input.UserID}, args...)...)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": len(input.IDs)})
+	default:
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Unknown action"})
+	}
+}
+
+// @Summary Get collections
+// @Description Returns all collections with event counts
+// @Tags Collections
+// @Produce json
+// @Success 200 {array} Collection
+// @Router /collections [get]
+func getCollections(c *gin.Context) {
+	rows, err := db.Query(`SELECT c.id, c.name, c.description, c.color, c.created_at,
+		(SELECT COUNT(*) FROM collection_events ce WHERE ce.collection_id = c.id) as event_count
+		FROM collections c ORDER BY c.name`)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	collections := make([]Collection, 0)
+	for rows.Next() {
+		var col Collection
+		if err := rows.Scan(&col.ID, &col.Name, &col.Description, &col.Color, &col.CreatedAt, &col.EventCount); err == nil {
+			collections = append(collections, col)
+		}
+	}
+	c.JSON(http.StatusOK, collections)
+}
+
+// @Summary Create or update collection
+// @Description Creates a new collection or updates an existing one
+// @Tags Collections
+// @Accept json
+// @Produce json
+// @Param collection body object true "Collection data"
+// @Success 200 {object} Collection
+// @Router /collections [post]
+func saveCollection(c *gin.Context) {
+	var col Collection
+	if err := c.ShouldBindJSON(&col); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if col.Name == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Name is required"})
+		return
+	}
+	if col.Color == "" {
+		col.Color = "#7c3aed"
+	}
+
+	if col.ID == 0 {
+		result, err := db.Exec("INSERT INTO collections (name, description, color) VALUES (?, ?, ?)", col.Name, col.Description, col.Color)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		id, _ := result.LastInsertId()
+		col.ID = int(id)
+	} else {
+		_, err := db.Exec("UPDATE collections SET name=?, description=?, color=? WHERE id=?", col.Name, col.Description, col.Color, col.ID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+	}
+	col.CreatedAt = time.Now().Format(time.RFC3339)
+	c.JSON(http.StatusOK, col)
+}
+
+// @Summary Delete collection
+// @Description Deletes a collection by ID
+// @Tags Collections
+// @Produce json
+// @Param id query int true "Collection ID"
+// @Success 200 {object} map[string]string
+// @Router /collections [delete]
+func deleteCollection(c *gin.Context) {
+	idStr := c.Query("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid collection ID"})
+		return
+	}
+	db.Exec("DELETE FROM collection_events WHERE collection_id=?", id)
+	_, err = db.Exec("DELETE FROM collections WHERE id=?", id)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// @Summary Get events in a collection
+// @Description Returns all events for a given collection
+// @Tags Collections
+// @Produce json
+// @Param id path int true "Collection ID"
+// @Success 200 {array} TimelineEvent
+// @Router /collections/{id}/events [get]
+func getCollectionEvents(c *gin.Context) {
+	idStr := c.Param("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid collection ID"})
+		return
+	}
+
+	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
+		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+		FROM timeline_events e
+		LEFT JOIN persons p ON e.person_id = p.id
+		INNER JOIN collection_events ce ON ce.event_id = e.id
+		WHERE ce.collection_id = ?
+		ORDER BY e.event_date ASC`
+
+	rows, err := db.Query(query, id)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	events := scanEventsWithPerson(rows)
+	c.JSON(http.StatusOK, events)
+}
+
+// @Summary Add event to collection
+// @Description Add an event to a collection
+// @Tags Collections
+// @Accept json
+// @Produce json
+// @Param id path int true "Collection ID"
+// @Param body body object true "Event ID" SchemaProperties(event_id:{type:integer})
+// @Success 200 {object} map[string]string
+// @Router /collections/{id}/events [post]
+func addEventToCollection(c *gin.Context) {
+	colIDStr := c.Param("id")
+	colID, err := strconv.Atoi(colIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid collection ID"})
+		return
+	}
+	var input struct {
+		EventID int `json:"event_id"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	_, err = db.Exec("INSERT OR IGNORE INTO collection_events (collection_id, event_id) VALUES (?, ?)", colID, input.EventID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// @Summary Remove event from collection
+// @Description Remove an event from a collection
+// @Tags Collections
+// @Produce json
+// @Param id path int true "Collection ID"
+// @Param event_id query int true "Event ID"
+// @Success 200 {object} map[string]string
+// @Router /collections/{id}/events [delete]
+func removeEventFromCollection(c *gin.Context) {
+	colIDStr := c.Param("id")
+	colID, err := strconv.Atoi(colIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid collection ID"})
+		return
+	}
+	eventIDStr := c.Query("event_id")
+	eventID, err := strconv.Atoi(eventIDStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid event ID"})
+		return
+	}
+	_, err = db.Exec("DELETE FROM collection_events WHERE collection_id=? AND event_id=?", colID, eventID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// @Summary Get event templates
+// @Description Returns all event templates
+// @Tags Templates
+// @Produce json
+// @Success 200 {array} EventTemplate
+// @Router /templates [get]
+func getTemplates(c *gin.Context) {
+	rows, err := db.Query("SELECT id, title, description, tags, person_id, user_id, location, media_type, created_at FROM event_templates ORDER BY title")
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	templates := make([]EventTemplate, 0)
+	for rows.Next() {
+		var t EventTemplate
+		var pid sql.NullInt64
+		if err := rows.Scan(&t.ID, &t.Title, &t.Description, &t.Tags, &pid, &t.UserID, &t.Location, &t.MediaType, &t.CreatedAt); err == nil {
+			if pid.Valid {
+				p := int(pid.Int64)
+				t.PersonID = &p
+			}
+			templates = append(templates, t)
+		}
+	}
+	c.JSON(http.StatusOK, templates)
+}
+
+// @Summary Create or update template
+// @Description Creates a new template or updates an existing one
+// @Tags Templates
+// @Accept json
+// @Produce json
+// @Param template body object true "Template data"
+// @Success 200 {object} EventTemplate
+// @Router /templates [post]
+func saveTemplate(c *gin.Context) {
+	var t EventTemplate
+	if err := c.ShouldBindJSON(&t); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if t.Title == "" {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Title is required"})
+		return
+	}
+
+	pid := 0
+	if t.PersonID != nil {
+		pid = *t.PersonID
+	}
+
+	if t.ID == 0 {
+		result, err := db.Exec("INSERT INTO event_templates (title, description, tags, person_id, user_id, location, media_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
+			t.Title, t.Description, t.Tags, pid, t.UserID, t.Location, t.MediaType)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		id, _ := result.LastInsertId()
+		t.ID = int(id)
+	} else {
+		_, err := db.Exec("UPDATE event_templates SET title=?, description=?, tags=?, person_id=?, user_id=?, location=?, media_type=? WHERE id=?",
+			t.Title, t.Description, t.Tags, pid, t.UserID, t.Location, t.MediaType, t.ID)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+	}
+	c.JSON(http.StatusOK, t)
+}
+
+// @Summary Delete template
+// @Description Deletes a template by ID
+// @Tags Templates
+// @Produce json
+// @Param id query int true "Template ID"
+// @Success 200 {object} map[string]string
+// @Router /templates [delete]
+func deleteTemplate(c *gin.Context) {
+	idStr := c.Query("id")
+	id, err := strconv.Atoi(idStr)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid template ID"})
+		return
+	}
+	_, err = db.Exec("DELETE FROM event_templates WHERE id=?", id)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// @Summary Apply template
+// @Description Creates an event from a template with a specified date
+// @Tags Templates
+// @Accept json
+// @Produce json
+// @Param body body object true "Apply template" SchemaProperties(template_id:{type:integer}, date:{type:string})
+// @Success 200 {object} TimelineEvent
+// @Router /templates/apply [post]
+func applyTemplate(c *gin.Context) {
+	var input struct {
+		TemplateID int    `json:"template_id"`
+		Date       string `json:"date"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+	if input.Date == "" {
+		input.Date = time.Now().Format("2006-01-02")
+	}
+
+	var t EventTemplate
+	var pid sql.NullInt64
+	err := db.QueryRow("SELECT id, title, description, tags, person_id, user_id, location, media_type FROM event_templates WHERE id=?", input.TemplateID).
+		Scan(&t.ID, &t.Title, &t.Description, &t.Tags, &pid, &t.UserID, &t.Location, &t.MediaType)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Template not found"})
+		return
+	}
+	if pid.Valid {
+		p := int(pid.Int64)
+		t.PersonID = &p
+	}
+
+	event := TimelineEvent{
+		Title:       t.Title,
+		Description: t.Description,
+		Date:        input.Date,
+		Location:    t.Location,
+		Tags:        t.Tags,
+		MediaType:   t.MediaType,
+		UserID:      t.UserID,
+		PersonID:    t.PersonID,
+	}
+
+	result, err := db.Exec(`INSERT INTO timeline_events 
+		(title, description, event_date, location, media_type, tags, user_id, person_id) 
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+		event.Title, event.Description, event.Date, event.Location, event.MediaType, event.Tags, event.UserID, event.PersonID)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	id, _ := result.LastInsertId()
+	event.ID = int(id)
+
+	sendGotifyNotification(fmt.Sprintf("Event created from template: %s", event.Title), event.Description)
+	c.JSON(http.StatusOK, event)
+}
+
+// @Summary Get wrapped summary
+// @Description Returns year-end wrapped summary data
+// @Tags Stats
+// @Produce json
+// @Param year query string false "Year"
+// @Success 200 {object} map[string]interface{}
+// @Router /wrapped [get]
+func getWrapped(c *gin.Context) {
+	year := c.Query("year")
+	if year == "" {
+		year = fmt.Sprintf("%d", time.Now().Year())
+	}
+
+	var total int
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date)=?", year).Scan(&total)
+
+	var topEventTitle string
+	var topEventDate string
+	db.QueryRow(`SELECT title, event_date FROM timeline_events 
+		WHERE strftime('%Y', event_date)=? 
+		ORDER BY (LENGTH(description) - LENGTH(REPLACE(description, ' ', '')) + 1) DESC LIMIT 1`, year).Scan(&topEventTitle, &topEventDate)
+
+	var longestStreak int
+	streakRows, _ := db.Query("SELECT event_date FROM timeline_events WHERE strftime('%Y', event_date)=? GROUP BY event_date ORDER BY event_date ASC", year)
+	var prevDate time.Time
+	currentStreak := 0
+	if streakRows != nil {
+		for streakRows.Next() {
+			var dateStr string
+			streakRows.Scan(&dateStr)
+			d, err := time.Parse("2006-01-02", dateStr)
+			if err != nil {
+				continue
+			}
+			if !prevDate.IsZero() {
+				diff := d.Sub(prevDate).Hours() / 24
+				if diff <= 1 {
+					currentStreak++
+				} else {
+					if currentStreak > longestStreak {
+						longestStreak = currentStreak
+					}
+					currentStreak = 1
+				}
+			} else {
+				currentStreak = 1
+			}
+			prevDate = d
+		}
+		if currentStreak > longestStreak {
+			longestStreak = currentStreak
+		}
+		streakRows.Close()
+	}
+
+	var mostTagsTitle, mostTags string
+	db.QueryRow(`SELECT title, tags FROM timeline_events 
+		WHERE strftime('%Y', event_date)=? AND tags != '' 
+		ORDER BY (LENGTH(tags) - LENGTH(REPLACE(tags, ',', '')) + 1) DESC LIMIT 1`, year).Scan(&mostTagsTitle, &mostTags)
+
+	tagCount := 0
+	if mostTags != "" {
+		tagCount = len(strings.Split(mostTags, ","))
+	}
+
+	var favCount int
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date)=? AND is_favorite=1", year).Scan(&favCount)
+
+	var topMonth string
+	var topMonthCount int
+	db.QueryRow(`SELECT CASE CAST(strftime('%m', event_date) AS INTEGER)
+		WHEN 1 THEN 'January' WHEN 2 THEN 'February' WHEN 3 THEN 'March'
+		WHEN 4 THEN 'April' WHEN 5 THEN 'May' WHEN 6 THEN 'June'
+		WHEN 7 THEN 'July' WHEN 8 THEN 'August' WHEN 9 THEN 'September'
+		WHEN 10 THEN 'October' WHEN 11 THEN 'November' WHEN 12 THEN 'December' END,
+		COUNT(*) as cnt FROM timeline_events
+		WHERE strftime('%Y', event_date)=?
+		GROUP BY strftime('%m', event_date) ORDER BY cnt DESC LIMIT 1`, year).Scan(&topMonth, &topMonthCount)
+
+	var totalMedia int
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date)=? AND media_url != ''", year).Scan(&totalMedia)
+
+	monthlyRows, _ := db.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events
+		WHERE strftime('%Y', event_date)=? GROUP BY strftime('%m', event_date)`, year)
+	byMonth := make(map[string]int)
+	if monthlyRows != nil {
+		for monthlyRows.Next() {
+			var m string
+			var c int
+			monthlyRows.Scan(&m, &c)
+			byMonth[m] = c
+		}
+		monthlyRows.Close()
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"year":                year,
+		"total_events":        total,
+		"top_event":           topEventTitle,
+		"top_event_date":      topEventDate,
+		"longest_streak":      longestStreak,
+		"most_tags_title":     mostTagsTitle,
+		"most_tags_count":     tagCount,
+		"favorite_count":      favCount,
+		"busiest_month":       topMonth,
+		"busiest_month_count": topMonthCount,
+		"total_media":         totalMedia,
+		"by_month":            byMonth,
+	})
 }
 
 // @Summary Get event statistics
@@ -2548,7 +3168,7 @@ func getMemories(c *gin.Context) {
 
 	var rows *sql.Rows
 	if startMD <= endMD {
-		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
 			FROM timeline_events e
 			WHERE e.event_date != ''
@@ -2556,7 +3176,7 @@ func getMemories(c *gin.Context) {
 			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
 			ORDER BY e.event_date DESC`, startMD, endMD)
 	} else {
-		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
 			FROM timeline_events e
 			WHERE e.event_date != ''
@@ -2878,10 +3498,16 @@ func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
 		var lat, lng sql.NullFloat64
 		var pID sql.NullInt64
 		var pName, pAvatar, pBio, pBirth, pColor, pCreated sql.NullString
-		var thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData sql.NullString
+		var thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData, startTime, endTime sql.NullString
+		var isFav sql.NullBool
 
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &e.SortOrder, &e.IsPublic, &e.CreatedAt, &personID, &lat, &lng, &recurring, &weatherData, &e.UserID,
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &e.SortOrder, &e.IsPublic, &isFav, &e.CreatedAt, &personID, &lat, &lng, &recurring, &weatherData, &e.UserID, &startTime, &endTime,
 			&pID, &pName, &pAvatar, &pBio, &pBirth, &pColor, &pCreated)
+		if err != nil {
+			continue
+		}
+
+		e.IsFavorite = isFav.Bool
 		if err != nil {
 			continue
 		}
@@ -2892,6 +3518,8 @@ func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
 		e.Tags = tags.String
 		e.Recurring = recurring.String
 		e.WeatherData = weatherData.String
+		e.StartTime = startTime.String
+		e.EndTime = endTime.String
 
 		if personID.Valid {
 			pid := int(personID.Int64)
@@ -2953,7 +3581,7 @@ func getCalendar(c *gin.Context) {
 	}
 	lastDay := firstDay.AddDate(0, 1, -1)
 
-	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id
 		WHERE e.event_date BETWEEN ? AND ?
@@ -3365,7 +3993,7 @@ func getUserEvents(c *gin.Context) {
 		return
 	}
 
-	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.user_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
@@ -3397,8 +4025,8 @@ func generateRecurringEvents(c *gin.Context) {
 
 	var e TimelineEvent
 	var thumbnail, mediaURL, tags, recurring, weatherData sql.NullString
-	err := db.QueryRow(`SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id FROM timeline_events WHERE id = ?`, input.EventID).
-		Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &tags, &e.SortOrder, &recurring, &weatherData, &e.UserID)
+	err := db.QueryRow(`SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, event_start_time, event_end_time, user_id FROM timeline_events WHERE id = ?`, input.EventID).
+		Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &tags, &e.SortOrder, &recurring, &weatherData, &e.StartTime, &e.EndTime, &e.UserID)
 	if err != nil {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
 		return
@@ -3461,8 +4089,8 @@ func generateRecurringEvents(c *gin.Context) {
 			var existing int
 			tx.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE event_date = ? AND user_id = ? AND id = ?", d.Format("2006-01-02"), e.UserID, e.ID).Scan(&existing)
 			if existing == 0 {
-				_, err := tx.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-					e.Title, e.Description, d.Format("2006-01-02"), e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Recurring, e.WeatherData, e.UserID)
+				_, err := tx.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, event_start_time, event_end_time, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+					e.Title, e.Description, d.Format("2006-01-02"), e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
 				if err == nil {
 					generated++
 				}
@@ -3764,12 +4392,15 @@ func createTables() {
 			tags TEXT,
 			sort_order INTEGER DEFAULT 0,
 			is_public INTEGER DEFAULT 0,
+			is_favorite INTEGER DEFAULT 0,
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 			person_id INTEGER,
 			latitude REAL,
 			longitude REAL,
 			recurring TEXT DEFAULT '',
 			weather_data TEXT DEFAULT '',
+			event_start_time TEXT DEFAULT '',
+			event_end_time TEXT DEFAULT '',
 			user_id INTEGER DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS admin_users (
@@ -3839,6 +4470,30 @@ func createTables() {
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			retention_days INTEGER DEFAULT 7,
 			auto_prune INTEGER DEFAULT 1
+		)`,
+		`CREATE TABLE IF NOT EXISTS event_templates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT DEFAULT '',
+			tags TEXT DEFAULT '',
+			person_id INTEGER DEFAULT 0,
+			user_id INTEGER DEFAULT 0,
+			location TEXT DEFAULT '',
+			media_type TEXT DEFAULT 'image',
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS collections (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			description TEXT DEFAULT '',
+			color TEXT DEFAULT '#7c3aed',
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		)`,
+		`CREATE TABLE IF NOT EXISTS collection_events (
+			collection_id INTEGER NOT NULL,
+			event_id INTEGER NOT NULL,
+			added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (collection_id, event_id)
 		)`,
 	}
 
@@ -4023,6 +4678,37 @@ func runMigration(fromVersion int) {
 		_, _ = db.Exec(`INSERT OR IGNORE INTO ollama_settings (id, url, model, enabled) VALUES (1, 'http://localhost:11434', 'llama3.2', 0)`)
 	case 7:
 		createFTS5Table()
+	case 8:
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN is_favorite INTEGER DEFAULT 0`)
+	case 9:
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS event_templates (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			title TEXT NOT NULL,
+			description TEXT DEFAULT '',
+			tags TEXT DEFAULT '',
+			person_id INTEGER DEFAULT 0,
+			user_id INTEGER DEFAULT 0,
+			location TEXT DEFAULT '',
+			media_type TEXT DEFAULT 'image',
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		)`)
+	case 10:
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS collections (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			name TEXT NOT NULL,
+			description TEXT DEFAULT '',
+			color TEXT DEFAULT '#7c3aed',
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		)`)
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS collection_events (
+			collection_id INTEGER NOT NULL,
+			event_id INTEGER NOT NULL,
+			added_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			PRIMARY KEY (collection_id, event_id)
+		)`)
+	case 15:
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN event_start_time TEXT DEFAULT ''`)
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN event_end_time TEXT DEFAULT ''`)
 	}
 }
 
