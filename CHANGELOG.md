@@ -1,3 +1,19 @@
+# [1.14.0](https://github.com/martynvdijke/traces/compare/v1.13.0...v1.14.0) (2026-05-11)
+
+
+### Bug Fixes
+
+* **deps:** adapt code for swaggo/files v2 API ([4386267](https://github.com/martynvdijke/traces/commit/4386267165a28ad1c06da06e635fd504431a4636))
+* **deps:** adapt code for swaggo/files v2 API ([5287ced](https://github.com/martynvdijke/traces/commit/5287ced367a8750c8447d3689adde5e3cc272fa4))
+* **deps:** update module github.com/swaggo/files to v2 ([216f45c](https://github.com/martynvdijke/traces/commit/216f45cca2b1dd675d638d9c843a9f2213d220b6))
+
+
+### Features
+
+* add event duration with start and end time ([3672b6c](https://github.com/martynvdijke/traces/commit/3672b6c6d7d10c47d9c851f2b6d11f57cb437ab3))
+* add iCal/ICS calendar export ([e1b2ecd](https://github.com/martynvdijke/traces/commit/e1b2ecdec1eba8ec4fb7b00f0f66a2e50f8866f1))
+* add tag management with rename, delete, and merge ([d2a5395](https://github.com/martynvdijke/traces/commit/d2a53959bd7d7bacce3f60f251b75dba23511dcd))
+
 # [1.13.0](https://github.com/martynvdijke/traces/compare/v1.12.0...v1.13.0) (2026-05-09)
 
 
