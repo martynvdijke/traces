@@ -517,6 +517,7 @@ func TestMemoriesQuery(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
@@ -763,6 +764,7 @@ func TestEventCRUD(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
@@ -1024,6 +1026,7 @@ func TestCalendarQuery(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
@@ -1113,6 +1116,7 @@ func TestRecurringEvents(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
@@ -1583,6 +1587,7 @@ func TestEventCreationWithWeatherData(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
@@ -1677,6 +1682,7 @@ func TestEventCreationWithoutThumbnail(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
@@ -1741,12 +1747,15 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
 		recurring TEXT DEFAULT '',
 		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
@@ -1764,7 +1773,7 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			"Null Thumbnail Event", "Testing NULL thumbnail scan", "2026-03-15", "Test", "image", "/media/test.jpg", "", "test", 0, 1)
 
-		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1 ORDER BY e.event_date ASC`)
 		if err != nil {
@@ -1799,7 +1808,7 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			"Null Thumbnail", "Has NULL thumbnail", "2026-06-20", "Loc2", "image", "/media/b.jpg", "", "tag2", 1)
 
-		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id,
+		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1 ORDER BY e.event_date ASC`)
 		if err != nil {
@@ -1866,12 +1875,15 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 		tags TEXT,
 		sort_order INTEGER DEFAULT 0,
 		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
 		recurring TEXT DEFAULT '',
 		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
@@ -2927,6 +2939,601 @@ func TestImmichConfigHandlers(t *testing.T) {
 		}
 		if immichEnabled {
 			t.Error("immichEnabled should be false after saving disabled config")
+		}
+	})
+}
+
+func TestPruneBackups(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	origBackupPath := backupPath
+	defer func() {
+		db = origDB
+		backupPath = origBackupPath
+	}()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS backup_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		retention_days INTEGER DEFAULT 7,
+		auto_prune INTEGER DEFAULT 1
+	)`)
+	db.Exec("INSERT OR IGNORE INTO backup_settings (id, retention_days, auto_prune) VALUES (1, 7, 1)")
+
+	tmpDir, err := os.MkdirTemp("", "backup-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	backupPath = tmpDir
+
+	oldTime := time.Now().AddDate(0, 0, -15)
+	for i := 0; i < 3; i++ {
+		name := fmt.Sprintf("traces-backup-%s-%d.db", oldTime.Format("2006-01-02-150405"), i)
+		path := filepath.Join(tmpDir, name)
+		os.WriteFile(path, []byte("test"), 0644)
+		os.Chtimes(path, oldTime, oldTime)
+	}
+
+	recentTime := time.Now().AddDate(0, 0, -1)
+	for i := 0; i < 2; i++ {
+		name := fmt.Sprintf("traces-backup-%s-%d.db", recentTime.Format("2006-01-02-150405"), i)
+		path := filepath.Join(tmpDir, name)
+		os.WriteFile(path, []byte("test"), 0644)
+		os.Chtimes(path, recentTime, recentTime)
+	}
+
+	pruneBackups()
+
+	entries, _ := os.ReadDir(tmpDir)
+	if len(entries) != 2 {
+		t.Errorf("expected 2 backups after prune, got %d", len(entries))
+	}
+}
+
+func TestPruneBackupsDisabled(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	origBackupPath := backupPath
+	defer func() {
+		db = origDB
+		backupPath = origBackupPath
+	}()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS backup_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		retention_days INTEGER DEFAULT 7,
+		auto_prune INTEGER DEFAULT 1
+	)`)
+	db.Exec("INSERT OR IGNORE INTO backup_settings (id, retention_days, auto_prune) VALUES (1, 7, 0)")
+
+	tmpDir, err := os.MkdirTemp("", "backup-test-*")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(tmpDir)
+	backupPath = tmpDir
+
+	oldTime := time.Now().AddDate(0, 0, -15)
+	for i := 0; i < 3; i++ {
+		name := fmt.Sprintf("traces-backup-%s-%d.db", oldTime.Format("2006-01-02-150405"), i)
+		path := filepath.Join(tmpDir, name)
+		os.WriteFile(path, []byte("test"), 0644)
+		os.Chtimes(path, oldTime, oldTime)
+	}
+
+	pruneBackups()
+
+	entries, _ := os.ReadDir(tmpDir)
+	if len(entries) != 3 {
+		t.Errorf("expected 3 backups when prune disabled, got %d", len(entries))
+	}
+}
+
+func TestBackupConfigRoundTrip(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS backup_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		retention_days INTEGER DEFAULT 7,
+		auto_prune INTEGER DEFAULT 1
+	)`)
+	db.Exec("INSERT OR IGNORE INTO backup_settings (id, retention_days, auto_prune) VALUES (1, 7, 1)")
+
+	t.Run("default_config", func(t *testing.T) {
+		var days int
+		var auto int
+		db.QueryRow("SELECT retention_days, auto_prune FROM backup_settings WHERE id = 1").Scan(&days, &auto)
+		if days != 7 {
+			t.Errorf("retention_days = %d, want 7", days)
+		}
+		if auto != 1 {
+			t.Errorf("auto_prune = %d, want 1", auto)
+		}
+	})
+
+	t.Run("update_config", func(t *testing.T) {
+		db.Exec("UPDATE backup_settings SET retention_days=?, auto_prune=? WHERE id=1", 14, 0)
+		var days int
+		var auto int
+		db.QueryRow("SELECT retention_days, auto_prune FROM backup_settings WHERE id = 1").Scan(&days, &auto)
+		if days != 14 {
+			t.Errorf("retention_days = %d, want 14", days)
+		}
+		if auto != 0 {
+			t.Errorf("auto_prune = %d, want 0", auto)
+		}
+	})
+}
+
+func TestBackupConfigAPI(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS backup_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		retention_days INTEGER DEFAULT 7,
+		auto_prune INTEGER DEFAULT 1
+	)`)
+	db.Exec("INSERT OR IGNORE INTO backup_settings (id, retention_days, auto_prune) VALUES (1, 7, 1)")
+
+	r := setupTestRouter()
+	r.GET("/api/backup/config", getBackupConfig)
+	r.POST("/api/backup/config", saveBackupConfig)
+
+	t.Run("get_config", func(t *testing.T) {
+		req := httptest.NewRequest("GET", "/api/backup/config", nil)
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var cfg BackupConfig
+		json.Unmarshal(w.Body.Bytes(), &cfg)
+		if cfg.RetentionDays != 7 {
+			t.Errorf("retention_days = %d, want 7", cfg.RetentionDays)
+		}
+		if !cfg.AutoPrune {
+			t.Error("auto_prune should be true")
+		}
+	})
+
+	t.Run("save_config", func(t *testing.T) {
+		body, _ := json.Marshal(BackupConfig{RetentionDays: 30, AutoPrune: false})
+		req := httptest.NewRequest("POST", "/api/backup/config", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		w := httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+
+		req = httptest.NewRequest("GET", "/api/backup/config", nil)
+		w = httptest.NewRecorder()
+		r.ServeHTTP(w, req)
+
+		var cfg BackupConfig
+		json.Unmarshal(w.Body.Bytes(), &cfg)
+		if cfg.RetentionDays != 30 {
+			t.Errorf("retention_days = %d, want 30", cfg.RetentionDays)
+		}
+		if cfg.AutoPrune {
+			t.Error("auto_prune should be false")
+		}
+	})
+}
+
+func TestEventDuration(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0
+	)`)
+
+	t.Run("create_with_times", func(t *testing.T) {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, event_date, event_start_time, event_end_time) VALUES (?, ?, ?, ?)`,
+			"Timed Event", "2026-06-15", "09:30", "17:00")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var startTime, endTime string
+		err = db.QueryRow("SELECT event_start_time, event_end_time FROM timeline_events WHERE id = 1").Scan(&startTime, &endTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if startTime != "09:30" {
+			t.Errorf("start_time = %q, want 09:30", startTime)
+		}
+		if endTime != "17:00" {
+			t.Errorf("end_time = %q, want 17:00", endTime)
+		}
+	})
+
+	t.Run("create_without_times", func(t *testing.T) {
+		_, err := db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES (?, ?)`,
+			"No Time Event", "2026-07-01")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var startTime, endTime string
+		err = db.QueryRow("SELECT event_start_time, event_end_time FROM timeline_events WHERE id = 2").Scan(&startTime, &endTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if startTime != "" {
+			t.Errorf("expected empty start_time, got %q", startTime)
+		}
+		if endTime != "" {
+			t.Errorf("expected empty end_time, got %q", endTime)
+		}
+	})
+
+	t.Run("update_times", func(t *testing.T) {
+		_, err := db.Exec("UPDATE timeline_events SET event_start_time=?, event_end_time=? WHERE id=1", "10:00", "18:30")
+		if err != nil {
+			t.Fatal(err)
+		}
+		var startTime, endTime string
+		err = db.QueryRow("SELECT event_start_time, event_end_time FROM timeline_events WHERE id = 1").Scan(&startTime, &endTime)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if startTime != "10:00" {
+			t.Errorf("start_time = %q, want 10:00", startTime)
+		}
+		if endTime != "18:30" {
+			t.Errorf("end_time = %q, want 18:30", endTime)
+		}
+	})
+
+	t.Run("query_with_times", func(t *testing.T) {
+		rows, err := db.Query(`SELECT id, title, event_date, event_start_time, event_end_time FROM timeline_events WHERE event_start_time != '' ORDER BY event_date`)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer rows.Close()
+		var count int
+		for rows.Next() {
+			count++
+			var id int
+			var title, date, start, end string
+			rows.Scan(&id, &title, &date, &start, &end)
+			if start == "" {
+				t.Errorf("event %d should have start_time", id)
+			}
+		}
+		if count != 1 {
+			t.Errorf("expected 1 event with start_time, got %d", count)
+		}
+	})
+}
+
+func TestTagManagement(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		tags TEXT
+	)`)
+
+	t.Run("rename_tag", func(t *testing.T) {
+		db.Exec("DELETE FROM timeline_events")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E1', 'nature, photography')")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E2', 'nature, hiking')")
+
+		db.Exec("UPDATE timeline_events SET tags = REPLACE(tags, 'nature', 'outdoor') WHERE tags LIKE '%nature%'")
+
+		var tags1, tags2 string
+		db.QueryRow("SELECT tags FROM timeline_events WHERE title = 'E1'").Scan(&tags1)
+		db.QueryRow("SELECT tags FROM timeline_events WHERE title = 'E2'").Scan(&tags2)
+		if !strings.Contains(tags1, "outdoor") {
+			t.Errorf("expected 'outdoor' in E1, got %q", tags1)
+		}
+		if strings.Contains(tags1, "nature") {
+			t.Errorf("unexpected 'nature' in E1, got %q", tags1)
+		}
+		if !strings.Contains(tags2, "outdoor") {
+			t.Errorf("expected 'outdoor' in E2, got %q", tags2)
+		}
+	})
+
+	t.Run("delete_tag", func(t *testing.T) {
+		db.Exec("DELETE FROM timeline_events")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E1', 'food, cooking')")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E2', 'nature, hiking')")
+
+		var id int
+		var tags string
+		err := db.QueryRow("SELECT id, tags FROM timeline_events WHERE tags LIKE '%cooking%'").Scan(&id, &tags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := strings.Split(tags, ",")
+		var newParts []string
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p != "" && p != "cooking" {
+				newParts = append(newParts, p)
+			}
+		}
+		_, err = db.Exec("UPDATE timeline_events SET tags=? WHERE id=?", strings.Join(newParts, ", "), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var tagsAfter string
+		db.QueryRow("SELECT tags FROM timeline_events WHERE title = 'E1'").Scan(&tagsAfter)
+		if strings.Contains(tagsAfter, "cooking") {
+			t.Errorf("expected 'cooking' removed, got %q", tagsAfter)
+		}
+		if !strings.Contains(tagsAfter, "food") {
+			t.Errorf("expected 'food' to remain, got %q", tagsAfter)
+		}
+	})
+
+	t.Run("merge_tags", func(t *testing.T) {
+		db.Exec("DELETE FROM timeline_events")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E1', 'outdoor, photography')")
+		db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('E2', 'outdoor, hiking')")
+
+		var id int
+		var tags string
+		err := db.QueryRow("SELECT id, tags FROM timeline_events WHERE title = 'E1'").Scan(&id, &tags)
+		if err != nil {
+			t.Fatal(err)
+		}
+		parts := strings.Split(tags, ",")
+		var newParts []string
+		seen := make(map[string]bool)
+		for _, p := range parts {
+			p = strings.TrimSpace(p)
+			if p == "" {
+				continue
+			}
+			if p == "outdoor" {
+				p = "outside"
+			}
+			if !seen[p] {
+				newParts = append(newParts, p)
+				seen[p] = true
+			}
+		}
+		_, err = db.Exec("UPDATE timeline_events SET tags=? WHERE id=?", strings.Join(newParts, ", "), id)
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var tags1 string
+		db.QueryRow("SELECT tags FROM timeline_events WHERE title = 'E1'").Scan(&tags1)
+		if !strings.Contains(tags1, "outside") {
+			t.Errorf("expected 'outside' in E1 after merge, got %q", tags1)
+		}
+		if strings.Contains(tags1, "outdoor") {
+			t.Errorf("unexpected 'outdoor' in E1, got %q", tags1)
+		}
+	})
+}
+
+func TestICalendarExport(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0
+	)`)
+
+	db.Exec("INSERT INTO timeline_events (title, description, event_date, location, media_type, latitude, longitude, recurring, event_start_time, event_end_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+		"Test Event", "A test event\nwith multiline", "2026-06-15", "Test Location", "image", 40.7128, -74.0060, "", "09:30", "17:00")
+	db.Exec("INSERT INTO timeline_events (title, description, event_date, recurring) VALUES (?, ?, ?, ?)",
+		"Birthday", "Annual birthday", "2026-01-15", "yearly")
+	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES (?, ?)",
+		"No Desc Event", "2026-03-20")
+
+	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.latitude, e.longitude, e.recurring, e.weather_data, e.event_start_time, e.event_end_time
+		FROM timeline_events e ORDER BY e.event_date ASC`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+
+	var ics string
+	ics += "BEGIN:VCALENDAR\r\n"
+	ics += "VERSION:2.0\r\n"
+	ics += "PRODID:-//TRACES//Events 2026//EN\r\n"
+	ics += "CALSCALE:GREGORIAN\r\n"
+	ics += "METHOD:PUBLISH\r\n"
+	ics += "X-WR-CALNAME:TRACES 2026\r\n"
+
+	for rows.Next() {
+		var id int
+		var title, date string
+		var desc, location, mediaType, recurring, weatherData, startTime, endTime sql.NullString
+		var lat, lng sql.NullFloat64
+		if err := rows.Scan(&id, &title, &desc, &date, &location, &mediaType, &lat, &lng, &recurring, &weatherData, &startTime, &endTime); err != nil {
+			t.Fatal(err)
+		}
+		uid := fmt.Sprintf("%d-%s@traces", id, date)
+		ics += "BEGIN:VEVENT\r\n"
+		ics += "UID:" + uid + "\r\n"
+		ics += "DTSTAMP:20260511T000000Z\r\n"
+		if startTime.Valid && startTime.String != "" {
+			ics += "DTSTART:" + strings.ReplaceAll(date, "-", "") + "T" + strings.ReplaceAll(startTime.String, ":", "") + "00\r\n"
+			if endTime.Valid && endTime.String != "" {
+				ics += "DTEND:" + strings.ReplaceAll(date, "-", "") + "T" + strings.ReplaceAll(endTime.String, ":", "") + "00\r\n"
+			}
+		} else {
+			ics += "DTSTART;VALUE=DATE:" + strings.ReplaceAll(date, "-", "") + "\r\n"
+		}
+		ics += "SUMMARY:" + strings.ReplaceAll(title, "\\", "\\\\") + "\r\n"
+		if desc.Valid && desc.String != "" {
+			ics += "DESCRIPTION:" + strings.ReplaceAll(strings.ReplaceAll(desc.String, "\n", "\\n"), "\\", "\\\\") + "\r\n"
+		}
+		if location.Valid && location.String != "" {
+			ics += "LOCATION:" + strings.ReplaceAll(location.String, "\\", "\\\\") + "\r\n"
+		}
+		if lat.Valid && lng.Valid {
+			ics += "GEO:" + fmt.Sprintf("%.6f;%.6f", lat.Float64, lng.Float64) + "\r\n"
+		}
+		if recurring.Valid {
+			switch recurring.String {
+			case "yearly":
+				ics += "RRULE:FREQ=YEARLY\r\n"
+			}
+		}
+		ics += "END:VEVENT\r\n"
+	}
+	ics += "END:VCALENDAR\r\n"
+
+	t.Run("has_vcalendar_wrapper", func(t *testing.T) {
+		if !strings.Contains(ics, "BEGIN:VCALENDAR") {
+			t.Error("missing BEGIN:VCALENDAR")
+		}
+		if !strings.Contains(ics, "END:VCALENDAR") {
+			t.Error("missing END:VCALENDAR")
+		}
+		if !strings.Contains(ics, "VERSION:2.0") {
+			t.Error("missing VERSION:2.0")
+		}
+	})
+
+	t.Run("contains_all_events", func(t *testing.T) {
+		count := strings.Count(ics, "BEGIN:VEVENT")
+		if count != 3 {
+			t.Errorf("expected 3 VEVENT, got %d", count)
+		}
+	})
+
+	t.Run("recurring_event_has_rrule", func(t *testing.T) {
+		if !strings.Contains(ics, "RRULE:FREQ=YEARLY") {
+			t.Error("missing RRULE for yearly event")
+		}
+	})
+
+	t.Run("timed_event_has_dtstart_dtend", func(t *testing.T) {
+		if !strings.Contains(ics, "DTSTART:20260615T093000") {
+			t.Error("missing DTSTART with time for timed event")
+		}
+		if !strings.Contains(ics, "DTEND:20260615T170000") {
+			t.Error("missing DTEND with time for timed event")
+		}
+	})
+
+	t.Run("all_day_event_has_date_dtstart", func(t *testing.T) {
+		if !strings.Contains(ics, "DTSTART;VALUE=DATE:20260115") {
+			t.Error("missing DATE value DTSTART for all-day event")
+		}
+	})
+
+	t.Run("event_has_geo", func(t *testing.T) {
+		if !strings.Contains(ics, "GEO:40.712800;-74.006000") {
+			t.Error("missing GEO for event with coordinates")
+		}
+	})
+
+	t.Run("each_vevent_has_uid", func(t *testing.T) {
+		uidCount := strings.Count(ics, "@traces")
+		veventCount := strings.Count(ics, "BEGIN:VEVENT")
+		if uidCount != veventCount {
+			t.Errorf("expected %d UIDs for %d events, got %d", veventCount, veventCount, uidCount)
 		}
 	})
 }

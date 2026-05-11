@@ -31,6 +31,12 @@ async function init(): Promise<void> {
   loadImmichConfig();
   loadImmichMemories();
   loadBackups();
+  loadBackupConfig();
+  loadTemplates();
+  loadCollections();
+  populateTemplatePersonSelect();
+  populateTemplateUserSelect();
+  updateCollectionEventSelect();
 }
 
 function loadAdminAnalytics(): void {
@@ -64,6 +70,19 @@ function debouncedSearch(): void {
   searchTimeout = setTimeout(applyFilters, 300);
 }
 
+async function filterByCollection(): Promise<void> {
+  const colId = (document.getElementById('filter-collection') as HTMLSelectElement).value;
+  if (!colId) {
+    await loadEvents();
+    return;
+  }
+  try {
+    const res = await fetch('/api/collections/' + colId + '/events');
+    filteredEvents = await res.json();
+    renderEventList();
+  } catch (e) { console.error('Failed to filter by collection', e); }
+}
+
 function applyFilters(): void {
   const q = (document.getElementById('event-search') as HTMLInputElement).value.toLowerCase();
   const personId = (document.getElementById('filter-person') as HTMLSelectElement).value;
@@ -78,6 +97,8 @@ function applyFilters(): void {
     return true;
   });
   renderEventList();
+  const icsLink = document.getElementById('admin-ics-download') as HTMLAnchorElement;
+  if (icsLink) icsLink.href = '/api/events/ics' + (year ? '?year=' + year : '');
 }
 
 async function loadEvents(): Promise<void> {
@@ -86,6 +107,7 @@ async function loadEvents(): Promise<void> {
     events = await res.json();
     filteredEvents = [...events];
     renderEventList();
+    updateCollectionEventSelect();
   } catch (e) { console.error('Failed to load events', e); }
 }
 
@@ -113,17 +135,21 @@ function renderEventList(): void {
   if (!list) return;
   const data = filteredEvents.length ? filteredEvents : events;
   if (!data.length) {
-    list.innerHTML = '<tr><td colspan="6" class="text-center text-muted py-4">No events found</td></tr>';
+    list.innerHTML = '<tr><td colspan="8" class="text-center text-muted py-4">No events found</td></tr>';
     return;
   }
+  updateCollectionEventSelect();
   list.innerHTML = data.map((e: any) => {
     const p = getPerson(e.person_id);
-    return `<tr class="animate-in">
-      <td class="ps-3 fw-bold font-monospace" style="font-size:0.85rem">${e.date}</td>
+    const favIcon = e.is_favorite ? 'fa-solid fa-star text-warning' : 'fa-regular fa-star';
+    return `<tr class="animate-in ${e.is_favorite ? 'table-active' : ''}">
+      <td class="ps-3 text-center"><input type="checkbox" class="event-select-cb" value="${e.id}" onchange="updateBatchButton()"></td>
+      <td class="ps-1 fw-bold font-monospace" style="font-size:0.85rem">${e.date}</td>
       <td><span class="fw-medium">${escapeHtml(e.title)}</span></td>
       <td>${e.location ? '<i class="fa-solid fa-location-dot me-1 text-muted" style="font-size:0.7rem"></i>' + escapeHtml(e.location) : '<span class="text-muted">—</span>'}</td>
       <td>${p ? '<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (p.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(p.name) + '</span>' : '<span class="text-muted">—</span>'}</td>
       <td>${e.media_url ? '<span class="media-type-badge ' + e.media_type + '"><i class="fa-solid ' + getMediaIcon(e.media_type) + ' me-1"></i>' + e.media_type + '</span>' : '<span class="text-muted">—</span>'}</td>
+      <td class="text-center"><i class="${favIcon}" style="cursor:pointer" onclick="toggleFav(${e.id})" title="Toggle favorite"></i></td>
       <td class="text-end pe-3">
         <button class="btn btn-sm btn-outline-primary me-1" onclick="editEvent(${e.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
         <button class="btn btn-sm btn-outline-danger" onclick="deleteEvent(${e.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
@@ -306,7 +332,7 @@ function showPersonEvents(personId: number): void {
   const initial = person.name ? person.name[0].toUpperCase() : '?';
   list.insertAdjacentHTML('afterbegin', `
     <tr id="person-banner">
-      <td colspan="6" class="p-0">
+      <td colspan="8" class="p-0">
         <div class="person-detail-header animate-in">
           ${person.avatar_url
       ? '<img src="' + person.avatar_url + '" class="avatar-lg" alt="">'
@@ -346,6 +372,8 @@ function openEventModal(event?: any): void {
     (document.getElementById('event-title') as HTMLInputElement).value = event.title;
     (document.getElementById('event-desc') as HTMLTextAreaElement).value = event.description || '';
     (document.getElementById('event-date') as HTMLInputElement).value = event.date;
+    (document.getElementById('event-start-time') as HTMLInputElement).value = event.start_time || '';
+    (document.getElementById('event-end-time') as HTMLInputElement).value = event.end_time || '';
     (document.getElementById('event-location') as HTMLInputElement).value = event.location || '';
     (document.getElementById('event-person') as HTMLSelectElement).value = event.person_id || 0;
     (document.getElementById('event-media-type') as HTMLSelectElement).value = event.media_type || 'image';
@@ -418,6 +446,8 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
     title: title,
     description: (document.getElementById('event-desc') as HTMLTextAreaElement).value,
     date: (document.getElementById('event-date') as HTMLInputElement).value,
+    start_time: (document.getElementById('event-start-time') as HTMLInputElement).value,
+    end_time: (document.getElementById('event-end-time') as HTMLInputElement).value,
     location: (document.getElementById('event-location') as HTMLInputElement).value,
     person_id: parseInt((document.getElementById('event-person') as HTMLSelectElement).value) || 0,
     media_type: (document.getElementById('event-media-type') as HTMLSelectElement).value,
@@ -1266,6 +1296,8 @@ document.getElementById('ollama-form')!.addEventListener('submit', async (e) => 
     : '<div class="alert alert-danger">Failed to save.</div>';
 });
 
+document.getElementById('backup-config-form')!.addEventListener('submit', saveBackupConfig);
+
 async function fetchEventWeather(): Promise<void> {
   const lat = (document.getElementById('event-latitude') as HTMLInputElement).value;
   const lng = (document.getElementById('event-longitude') as HTMLInputElement).value;
@@ -1346,6 +1378,40 @@ async function createBackup(): Promise<void> {
   btn.innerHTML = orig;
 }
 
+async function loadBackupConfig(): Promise<void> {
+  try {
+    const res = await fetch('/api/backup/config', { headers: csrfHeaders() });
+    const cfg = await res.json();
+    (document.getElementById('backup-retention-days') as HTMLInputElement).value = cfg.retention_days;
+    (document.getElementById('backup-auto-prune') as HTMLInputElement).checked = cfg.auto_prune;
+  } catch (e) { console.error('Failed to load backup config', e); }
+}
+
+async function saveBackupConfig(e: Event): Promise<void> {
+  e.preventDefault();
+  const btn = e.target instanceof HTMLButtonElement ? e.target : (e.target as HTMLElement).querySelector('button[type="submit"]') as HTMLButtonElement;
+  const orig = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Saving...';
+  try {
+    const res = await fetch('/api/backup/config', {
+      method: 'POST',
+      headers: csrfHeaders('application/json'),
+      body: JSON.stringify({
+        retention_days: parseInt((document.getElementById('backup-retention-days') as HTMLInputElement).value) || 7,
+        auto_prune: (document.getElementById('backup-auto-prune') as HTMLInputElement).checked
+      })
+    });
+    if (res.ok) {
+      document.getElementById('backup-config-result')!.innerHTML = '<div class="alert alert-success mb-0">Backup config saved</div>';
+    } else {
+      document.getElementById('backup-config-result')!.innerHTML = '<div class="alert alert-danger mb-0">Failed to save backup config</div>';
+    }
+  } catch (e) { document.getElementById('backup-config-result')!.innerHTML = '<div class="alert alert-danger mb-0">Failed to save backup config</div>'; }
+  btn.disabled = false;
+  btn.innerHTML = orig;
+}
+
 let allTags: { name: string; count: number }[] = [];
 
 async function loadTags(): Promise<void> {
@@ -1353,6 +1419,8 @@ async function loadTags(): Promise<void> {
     const res = await fetch('/api/tags');
     allTags = await res.json();
     renderTagCloud();
+    renderTagTable();
+    populateMergeSelects();
   } catch (e) { console.error('Failed to load tags', e); }
 }
 
@@ -1365,9 +1433,119 @@ function renderTagCloud(): void {
   }
   const maxCount = Math.max(...allTags.map(t => t.count), 1);
   container.innerHTML = allTags.map(t => {
-    const size = 0.75 + (t.count / maxCount) * 1.0; // 0.75rem to 1.75rem
+    const size = 0.75 + (t.count / maxCount) * 1.0;
     return '<span class="badge bg-primary me-1 mb-1" style="font-size:' + size.toFixed(1) + 'rem;cursor:pointer" onclick="filterEventsByTag(\'' + escapeHtml(t.name) + '\')" title="' + t.count + ' events">' + escapeHtml(t.name) + ' (' + t.count + ')</span>';
   }).join('');
+}
+
+function renderTagTable(): void {
+  const container = document.getElementById('tag-manager-table');
+  if (!container) return;
+  if (!allTags.length) {
+    container.innerHTML = '<div class="text-muted text-center py-3">No tags found. Tags appear as you add them to events.</div>';
+    return;
+  }
+  container.innerHTML = `
+    <div class="table-responsive">
+      <table class="table table-sm table-hover">
+        <thead>
+          <tr>
+            <th>Tag</th>
+            <th>Count</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${allTags.map(t => `
+            <tr>
+              <td><span class="badge bg-primary">${escapeHtml(t.name)}</span></td>
+              <td>${t.count}</td>
+              <td>
+                <button class="btn btn-sm btn-outline-info me-1" onclick="renameTagPrompt('${escapeHtml(t.name)}')" title="Rename"><i class="fa-solid fa-pencil"></i></button>
+                <button class="btn btn-sm btn-outline-danger" onclick="deleteTagPrompt('${escapeHtml(t.name)}')" title="Delete"><i class="fa-solid fa-trash-can"></i></button>
+              </td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+  `;
+}
+
+function populateMergeSelects(): void {
+  const source = document.getElementById('merge-source') as HTMLSelectElement;
+  const target = document.getElementById('merge-target') as HTMLSelectElement;
+  if (!source || !target) return;
+  const opts = allTags.map(t => '<option value="' + escapeHtml(t.name) + '">' + escapeHtml(t.name) + ' (' + t.count + ')</option>').join('');
+  source.innerHTML = '<option value="">Select source...</option>' + opts;
+  target.innerHTML = '<option value="">Select target...</option>' + opts;
+}
+
+async function renameTagPrompt(oldName: string): Promise<void> {
+  const newName = prompt('Rename "' + oldName + '" to:', oldName);
+  if (!newName || newName === oldName) return;
+  await ensureCSRF();
+  const res = await fetch('/api/tags/rename', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ old_name: oldName, new_name: newName })
+  });
+  if (res.ok) {
+    await loadTags();
+    showResult('tag-manager-table', 'Tag renamed successfully');
+  } else {
+    const err = await res.json();
+    alert('Rename failed: ' + (err.error || ''));
+  }
+}
+
+async function deleteTagPrompt(name: string): Promise<void> {
+  if (!confirm('Delete tag "' + name + '"? This will remove it from all events.')) return;
+  await ensureCSRF();
+  const res = await fetch('/api/tags/delete', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ name })
+  });
+  if (res.ok) {
+    await loadTags();
+    showResult('tag-manager-table', 'Tag deleted successfully');
+  } else {
+    const err = await res.json();
+    alert('Delete failed: ' + (err.error || ''));
+  }
+}
+
+async function mergeTags(): Promise<void> {
+  const source = (document.getElementById('merge-source') as HTMLSelectElement).value;
+  const target = (document.getElementById('merge-target') as HTMLSelectElement).value;
+  if (!source || !target) { alert('Select both source and target tags'); return; }
+  if (source === target) { alert('Source and target must be different'); return; }
+  if (!confirm('Merge "' + source + '" into "' + target + '"? This cannot be undone.')) return;
+  await ensureCSRF();
+  const res = await fetch('/api/tags/merge', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ source, target })
+  });
+  if (res.ok) {
+    await loadTags();
+    (document.getElementById('merge-result') as HTMLElement).innerHTML = '<div class="alert alert-success mt-2 mb-0 py-2">Merged "' + source + '" into "' + target + '"</div>';
+    setTimeout(() => { (document.getElementById('merge-result') as HTMLElement).innerHTML = ''; }, 3000);
+  } else {
+    const err = await res.json();
+    alert('Merge failed: ' + (err.error || ''));
+  }
+}
+
+function showResult(id: string, msg: string): void {
+  const el = document.getElementById(id);
+  if (!el) return;
+  const div = document.createElement('div');
+  div.className = 'alert alert-success mt-2 mb-0 py-2';
+  div.textContent = msg;
+  el.prepend(div);
+  setTimeout(() => div.remove(), 3000);
 }
 
 function filterEventsByTag(tag: string): void {
@@ -1381,6 +1559,311 @@ function formatSize(bytes: number): string {
   if (bytes < 1024) return bytes + ' B';
   if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
   return (bytes / 1048576).toFixed(1) + ' MB';
+}
+
+// BATCH OPERATIONS
+function toggleSelectAllEvents(): void {
+  const checked = (document.getElementById('select-all-events') as HTMLInputElement).checked;
+  document.querySelectorAll('.event-select-cb').forEach(cb => (cb as HTMLInputElement).checked = checked);
+  updateBatchButton();
+}
+
+function updateBatchButton(): void {
+  const selected = document.querySelectorAll('.event-select-cb:checked').length;
+  const btn = document.getElementById('batch-actions') as HTMLElement;
+  if (!btn) return;
+  btn.style.display = selected > 0 ? 'flex' : 'none';
+  document.getElementById('batch-count')!.textContent = String(selected);
+}
+
+function getSelectedEventIds(): number[] {
+  const ids: number[] = [];
+  document.querySelectorAll('.event-select-cb:checked').forEach(cb => ids.push(parseInt((cb as HTMLInputElement).value)));
+  return ids;
+}
+
+async function batchDelete(): Promise<void> {
+  const ids = getSelectedEventIds();
+  if (!ids.length || !confirm('Delete ' + ids.length + ' events?')) return;
+  await ensureCSRF();
+  const res = await fetch('/api/events/batch', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ ids, action: 'delete' })
+  });
+  if (res.ok) {
+    (document.getElementById('select-all-events') as HTMLInputElement).checked = false;
+    await loadEvents();
+  } else alert('Batch delete failed');
+}
+
+async function batchAddTags(): Promise<void> {
+  const ids = getSelectedEventIds();
+  if (!ids.length) return;
+  const tags = prompt('Enter tags to add (comma separated):');
+  if (!tags) return;
+  await ensureCSRF();
+  const res = await fetch('/api/events/batch', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ ids, action: 'add_tags', tags })
+  });
+  if (res.ok) {
+    (document.getElementById('select-all-events') as HTMLInputElement).checked = false;
+    await loadEvents();
+  } else alert('Batch add tags failed');
+}
+
+async function batchSetPerson(): Promise<void> {
+  const ids = getSelectedEventIds();
+  if (!ids.length) return;
+  const personId = (document.getElementById('filter-person') as HTMLSelectElement).value;
+  if (!personId) { alert('Select a person from the filter dropdown first'); return; }
+  await ensureCSRF();
+  const res = await fetch('/api/events/batch', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ ids, action: 'set_person', person_id: parseInt(personId) })
+  });
+  if (res.ok) {
+    (document.getElementById('select-all-events') as HTMLInputElement).checked = false;
+    await loadEvents();
+  } else alert('Batch set person failed');
+}
+
+// FAVORITES
+async function toggleFav(id: number): Promise<void> {
+  await ensureCSRF();
+  await fetch('/api/events/favorite', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ id })
+  });
+  await loadEvents();
+}
+
+// TEMPLATES
+let templates: any[] = [];
+
+async function loadTemplates(): Promise<void> {
+  try {
+    const res = await fetch('/api/templates');
+    templates = await res.json();
+    renderTemplateList();
+  } catch (e) { console.error('Failed to load templates', e); }
+}
+
+function renderTemplateList(): void {
+  const list = document.getElementById('template-list');
+  if (!list) return;
+  list.innerHTML = templates.map((t: any) => {
+    const pname = t.person_id ? getPersonName(t.person_id) : '';
+    return `<tr>
+      <td><span class="fw-medium">${escapeHtml(t.title)}</span></td>
+      <td>${t.tags ? '<span class="text-muted">' + escapeHtml(t.tags) + '</span>' : '<span class="text-muted">—</span>'}</td>
+      <td>${t.location ? escapeHtml(t.location) : '<span class="text-muted">—</span>'}</td>
+      <td>${pname || '<span class="text-muted">—</span>'}</td>
+      <td class="text-end pe-3">
+        <button class="btn btn-sm btn-outline-primary me-1" onclick="editTemplate(${t.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+        <button class="btn btn-sm btn-outline-danger" onclick="deleteTemplate(${t.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+      </td>
+    </tr>`;
+  }).join('');
+}
+
+function populateTemplatePersonSelect(): void {
+  const sel = document.getElementById('template-person') as HTMLSelectElement;
+  if (!sel) return;
+  sel.innerHTML = '<option value="0">None</option>' + allPersons.map((p: any) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
+}
+
+function populateTemplateUserSelect(): void {
+  const sel = document.getElementById('template-user') as HTMLSelectElement;
+  if (!sel) return;
+  fetch('/api/users').then(r => r.json()).then(users => {
+    sel.innerHTML = users.map((u: any) => `<option value="${u.id}">${escapeHtml(u.display_name || u.username)}</option>`).join('');
+  }).catch(() => {});
+}
+
+function openTemplateModal(template?: any): void {
+  (document.getElementById('template-form') as HTMLFormElement).reset();
+  (document.getElementById('template-id') as HTMLInputElement).value = '0';
+  document.getElementById('templateModalLabel')!.textContent = 'Add Template';
+  document.getElementById('template-result')!.innerHTML = '';
+  if (template) {
+    document.getElementById('templateModalLabel')!.textContent = 'Edit Template';
+    (document.getElementById('template-id') as HTMLInputElement).value = template.id;
+    (document.getElementById('template-title') as HTMLInputElement).value = template.title;
+    (document.getElementById('template-desc') as HTMLTextAreaElement).value = template.description || '';
+    (document.getElementById('template-tags') as HTMLInputElement).value = template.tags || '';
+    (document.getElementById('template-location') as HTMLInputElement).value = template.location || '';
+    (document.getElementById('template-person') as HTMLSelectElement).value = template.person_id || 0;
+    (document.getElementById('template-user') as HTMLSelectElement).value = template.user_id || 0;
+    (document.getElementById('template-media-type') as HTMLSelectElement).value = template.media_type || 'image';
+  }
+  new bootstrap.Modal(document.getElementById('templateModal')).show();
+}
+
+function editTemplate(id: number): void {
+  const t = templates.find((t: any) => t.id === id);
+  if (t) openTemplateModal(t);
+}
+
+async function deleteTemplate(id: number): Promise<void> {
+  if (!confirm('Delete this template?')) return;
+  await ensureCSRF();
+  await fetch('/api/templates?id=' + id, { method: 'DELETE', headers: csrfHeaders() });
+  await loadTemplates();
+}
+
+document.getElementById('template-form')!.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await ensureCSRF();
+  const data = {
+    id: parseInt((document.getElementById('template-id') as HTMLInputElement).value) || 0,
+    title: (document.getElementById('template-title') as HTMLInputElement).value,
+    description: (document.getElementById('template-desc') as HTMLTextAreaElement).value,
+    tags: (document.getElementById('template-tags') as HTMLInputElement).value,
+    location: (document.getElementById('template-location') as HTMLInputElement).value,
+    person_id: parseInt((document.getElementById('template-person') as HTMLSelectElement).value) || 0,
+    user_id: parseInt((document.getElementById('template-user') as HTMLSelectElement).value) || 0,
+    media_type: (document.getElementById('template-media-type') as HTMLSelectElement).value
+  };
+  const res = await fetch('/api/templates', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify(data)
+  });
+  document.getElementById('template-result')!.innerHTML = res.ok
+    ? '<span class="text-success">Saved!</span>'
+    : '<span class="text-danger">Failed to save</span>';
+  if (res.ok) {
+    bootstrap.Modal.getInstance(document.getElementById('templateModal'))!.hide();
+    await loadTemplates();
+  }
+});
+
+// COLLECTIONS
+let collections: any[] = [];
+
+async function loadCollections(): Promise<void> {
+  try {
+    const res = await fetch('/api/collections');
+    collections = await res.json();
+    renderCollectionList();
+    updateCollectionFilter();
+  } catch (e) { console.error('Failed to load collections', e); }
+}
+
+function renderCollectionList(): void {
+  const container = document.getElementById('collection-list');
+  if (!container) return;
+  if (!collections.length) {
+    container.innerHTML = '<div class="col-12"><div class="empty-state"><i class="fa-solid fa-folder-open"></i><p>No collections yet</p></div></div>';
+    return;
+  }
+  container.innerHTML = collections.map((c: any) => {
+    const initial = c.name ? c.name[0].toUpperCase() : '?';
+    return `<div class="col-md-6 col-lg-4">
+      <div class="card h-100" style="border-left:4px solid ${c.color || '#7c3aed'}">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start mb-2">
+            <div>
+              <h6 class="fw-bold mb-1">${escapeHtml(c.name)}</h6>
+              ${c.description ? '<p class="text-muted small mb-0">' + escapeHtml(c.description.substring(0, 80)) + '</p>' : ''}
+            </div>
+            <div class="d-flex gap-1">
+              <button class="btn btn-sm btn-outline-primary" onclick="editCollection(${c.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
+              <button class="btn btn-sm btn-outline-danger" onclick="deleteCollection(${c.id})" title="Delete"><i class="fa-solid fa-trash"></i></button>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between align-items-center mt-2">
+            <span class="badge bg-primary">${c.event_count || 0} events</span>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateCollectionFilter(): void {
+  const sel = document.getElementById('filter-collection') as HTMLSelectElement;
+  if (!sel) return;
+  sel.innerHTML = '<option value="">All Collections</option>' + collections.map((c: any) => `<option value="${c.id}">${escapeHtml(c.name)}</option>`).join('');
+}
+
+function updateCollectionEventSelect(): void {
+  const sel = document.getElementById('collection-event-select') as HTMLSelectElement;
+  if (!sel) return;
+  const data = filteredEvents.length ? filteredEvents : (window as any).events || [];
+  sel.innerHTML = '<option value="">Select event...</option>' + data.map((e: any) => `<option value="${e.id}">${escapeHtml(e.title)} (${e.date})</option>`).join('');
+}
+
+function openCollectionModal(collection?: any): void {
+  (document.getElementById('collection-form') as HTMLFormElement).reset();
+  (document.getElementById('collection-id') as HTMLInputElement).value = '0';
+  (document.getElementById('collection-color') as HTMLInputElement).value = '#7c3aed';
+  document.getElementById('collectionModalLabel')!.textContent = 'Add Collection';
+  document.getElementById('collection-result')!.innerHTML = '';
+  if (collection) {
+    document.getElementById('collectionModalLabel')!.textContent = 'Edit Collection';
+    (document.getElementById('collection-id') as HTMLInputElement).value = collection.id;
+    (document.getElementById('collection-name') as HTMLInputElement).value = collection.name;
+    (document.getElementById('collection-desc') as HTMLTextAreaElement).value = collection.description || '';
+    (document.getElementById('collection-color') as HTMLInputElement).value = collection.color || '#7c3aed';
+  }
+  new bootstrap.Modal(document.getElementById('collectionModal')).show();
+}
+
+function editCollection(id: number): void {
+  const c = collections.find((c: any) => c.id === id);
+  if (c) openCollectionModal(c);
+}
+
+async function deleteCollection(id: number): Promise<void> {
+  if (!confirm('Delete this collection? Events will not be deleted.')) return;
+  await ensureCSRF();
+  await fetch('/api/collections?id=' + id, { method: 'DELETE', headers: csrfHeaders() });
+  await loadCollections();
+}
+
+document.getElementById('collection-form')!.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await ensureCSRF();
+  const data = {
+    id: parseInt((document.getElementById('collection-id') as HTMLInputElement).value) || 0,
+    name: (document.getElementById('collection-name') as HTMLInputElement).value,
+    description: (document.getElementById('collection-desc') as HTMLTextAreaElement).value,
+    color: (document.getElementById('collection-color') as HTMLInputElement).value
+  };
+  const res = await fetch('/api/collections', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify(data)
+  });
+  document.getElementById('collection-result')!.innerHTML = res.ok
+    ? '<span class="text-success">Saved!</span>'
+    : '<span class="text-danger">Failed to save</span>';
+  if (res.ok) {
+    bootstrap.Modal.getInstance(document.getElementById('collectionModal'))!.hide();
+    await loadCollections();
+  }
+});
+
+async function addEventToCollection(): Promise<void> {
+  const colId = parseInt((document.getElementById('collection-select') as HTMLSelectElement).value);
+  const eventId = parseInt((document.getElementById('collection-event-select') as HTMLSelectElement).value);
+  const result = document.getElementById('add-to-collection-result')!;
+  if (!colId || !eventId) { result.innerHTML = '<span class="text-danger">Select collection and event</span>'; return; }
+  await ensureCSRF();
+  const res = await fetch('/api/collections/' + colId + '/events', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ event_id: eventId })
+  });
+  result.innerHTML = res.ok
+    ? '<span class="text-success">Added to collection!</span>'
+    : '<span class="text-danger">Failed</span>';
 }
 
 function escapeHtml(text: string): string {
@@ -1429,3 +1912,18 @@ init();
 (window as any).debouncedSearch = debouncedSearch;
 (window as any).applyFilters = applyFilters;
 (window as any).updateUploadField = updateUploadField;
+(window as any).openTemplateModal = openTemplateModal;
+(window as any).editTemplate = editTemplate;
+(window as any).deleteTemplate = deleteTemplate;
+(window as any).openCollectionModal = openCollectionModal;
+(window as any).editCollection = editCollection;
+(window as any).deleteCollection = deleteCollection;
+(window as any).addEventToCollection = addEventToCollection;
+(window as any).loadCollections = loadCollections;
+(window as any).toggleFav = toggleFav;
+(window as any).toggleSelectAllEvents = toggleSelectAllEvents;
+(window as any).updateBatchButton = updateBatchButton;
+(window as any).batchDelete = batchDelete;
+(window as any).batchAddTags = batchAddTags;
+(window as any).batchSetPerson = batchSetPerson;
+(window as any).filterByCollection = filterByCollection;

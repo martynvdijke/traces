@@ -1,3 +1,30 @@
+# [1.13.0](https://github.com/martynvdijke/traces/compare/v1.12.0...v1.13.0) (2026-05-09)
+
+
+### Bug Fixes
+
+* install firefox for e2e tests in CI ([28f1fe0](https://github.com/martynvdijke/traces/commit/28f1fe05e1766f49aa6de4a4fc79a1f31a49ab59))
+
+
+### Features
+
+* add auto archive and delete of stale branches ([e3303ee](https://github.com/martynvdijke/traces/commit/e3303ee196ba57cf28ae4e9115464fb6d2a6b798))
+* add multi-device and multi-browser Playwright projects ([d778489](https://github.com/martynvdijke/traces/commit/d778489188f56b37b3d6aba27416630c809ba0fa))
+
+# [1.12.0](https://github.com/martynvdijke/traces/compare/v1.11.2...v1.12.0) (2026-05-09)
+
+
+### Features
+
+* add configurable auto-prune for old backups ([4efda84](https://github.com/martynvdijke/traces/commit/4efda84b8e31848235b49347104ec0a35e7e60d0)), closes [#42](https://github.com/martynvdijke/traces/issues/42)
+
+## [1.11.2](https://github.com/martynvdijke/traces/compare/v1.11.1...v1.11.2) (2026-05-09)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([4063920](https://github.com/martynvdijke/traces/commit/4063920743e829a61e2ccc841e212db4c28420d9))
+
 ## [1.11.1](https://github.com/martynvdijke/traces/compare/v1.11.0...v1.11.1) (2026-05-08)
 
 
