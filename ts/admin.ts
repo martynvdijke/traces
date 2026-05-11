@@ -97,6 +97,8 @@ function applyFilters(): void {
     return true;
   });
   renderEventList();
+  const icsLink = document.getElementById('admin-ics-download') as HTMLAnchorElement;
+  if (icsLink) icsLink.href = '/api/events/ics' + (year ? '?year=' + year : '');
 }
 
 async function loadEvents(): Promise<void> {

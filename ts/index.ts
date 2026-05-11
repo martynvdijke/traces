@@ -106,6 +106,8 @@ function changeYear(year: number): void {
   document.querySelectorAll('.year-selector .btn').forEach(b => b.classList.add('btn-outline-primary'));
   const btn = document.querySelector(`.year-selector .btn[data-year="${year}"]`);
   if (btn) { btn.classList.remove('btn-outline-primary'); btn.classList.add('btn-primary'); }
+  const icsLink = document.getElementById('ics-download') as HTMLAnchorElement;
+  if (icsLink) icsLink.href = '/api/events/ics?year=' + year;
   loadData();
   loadStatsDist();
 }

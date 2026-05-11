@@ -348,6 +348,7 @@ func main() {
 			auth.GET("/events/search", searchEvents)
 			auth.GET("/events/search/global", globalSearchEvents)
 			auth.GET("/events/export", exportEvents)
+			auth.GET("/events/ics", getEventsICS)
 			auth.GET("/contributions", getContributions)
 			auth.GET("/stats", getEventStats)
 			auth.GET("/stats/distribution", getStatsDistribution)
@@ -1878,6 +1879,112 @@ func exportEvents(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusOK, events)
+}
+
+// @Summary Export events as iCalendar
+// @Description Export events in iCalendar (.ics) format
+// @Tags Events
+// @Produce text/calendar
+// @Param year query string false "Filter by year"
+// @Success 200 {string} string "iCalendar data"
+// @Router /events/ics [get]
+func getEventsICS(c *gin.Context) {
+	year := c.Query("year")
+	if year == "" {
+		year = fmt.Sprintf("%d", time.Now().Year())
+	}
+
+	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time
+		FROM timeline_events e
+		WHERE strftime('%Y', e.event_date) = ?
+		ORDER BY e.event_date ASC`
+	rows, err := db.Query(sqlStr, year)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	now := time.Now().UTC().Format("20060102T150405Z")
+	prodid := "-//TRACES//Events " + year + "//EN"
+
+	ics := "BEGIN:VCALENDAR\r\n"
+	ics += "VERSION:2.0\r\n"
+	ics += "PRODID:" + prodid + "\r\n"
+	ics += "CALSCALE:GREGORIAN\r\n"
+	ics += "METHOD:PUBLISH\r\n"
+	ics += "X-WR-CALNAME:TRACES " + year + "\r\n"
+
+	eventCount := 0
+	for rows.Next() {
+		var id int
+		var title, desc, date, location, mediaType, recurring, weatherData, startTime, endTime string
+		var lat, lng sql.NullFloat64
+		if err := rows.Scan(&id, &title, &desc, &date, &location, &mediaType, &lat, &lng, &recurring, &weatherData, &startTime, &endTime); err != nil {
+			continue
+		}
+
+		uid := fmt.Sprintf("%d-%s@traces", id, date)
+		summary := escapeICal(title)
+		description := escapeICal(strings.ReplaceAll(desc, "\n", "\\n"))
+
+		eventCount++
+		ics += "BEGIN:VEVENT\r\n"
+		ics += "UID:" + uid + "\r\n"
+		ics += "DTSTAMP:" + now + "\r\n"
+
+		if startTime != "" {
+			st := strings.ReplaceAll(date, "-", "") + "T" + strings.ReplaceAll(startTime, ":", "") + "00"
+			ics += "DTSTART:" + st + "\r\n"
+			if endTime != "" {
+				et := strings.ReplaceAll(date, "-", "") + "T" + strings.ReplaceAll(endTime, ":", "") + "00"
+				ics += "DTEND:" + et + "\r\n"
+			} else {
+				ics += "DTEND:" + st + "\r\n"
+			}
+		} else {
+			ics += "DTSTART;VALUE=DATE:" + strings.ReplaceAll(date, "-", "") + "\r\n"
+		}
+
+		ics += "SUMMARY:" + summary + "\r\n"
+		if description != "" {
+			ics += "DESCRIPTION:" + description + "\r\n"
+		}
+		if location != "" {
+			ics += "LOCATION:" + escapeICal(location) + "\r\n"
+		}
+		if lat.Valid && lng.Valid {
+			ics += "GEO:" + fmt.Sprintf("%.6f;%.6f", lat.Float64, lng.Float64) + "\r\n"
+		}
+
+		switch recurring {
+		case "daily":
+			ics += "RRULE:FREQ=DAILY\r\n"
+		case "weekly":
+			ics += "RRULE:FREQ=WEEKLY\r\n"
+		case "monthly":
+			ics += "RRULE:FREQ=MONTHLY\r\n"
+		case "yearly":
+			ics += "RRULE:FREQ=YEARLY\r\n"
+		}
+
+		ics += "END:VEVENT\r\n"
+	}
+
+	ics += "END:VCALENDAR\r\n"
+
+	c.Header("Content-Type", "text/calendar; charset=utf-8")
+	c.Header("Content-Disposition", fmt.Sprintf("attachment; filename=traces-%s.ics", year))
+	c.String(http.StatusOK, ics)
+}
+
+func escapeICal(s string) string {
+	s = strings.ReplaceAll(s, "\\", "\\\\")
+	s = strings.ReplaceAll(s, ";", "\\;")
+	s = strings.ReplaceAll(s, ",", "\\,")
+	s = strings.ReplaceAll(s, "\r\n", "\\n")
+	s = strings.ReplaceAll(s, "\n", "\\n")
+	return s
 }
 
 // @Summary Toggle favorite status
