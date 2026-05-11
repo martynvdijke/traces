@@ -65,9 +65,9 @@ import (
 
 type webdavFS struct{ fsFS fs.FS }
 
-func (w webdavFS) Mkdir(ctx context.Context, _ string, _ os.FileMode) error  { return os.ErrPermission }
-func (w webdavFS) RemoveAll(ctx context.Context, _ string) error              { return os.ErrPermission }
-func (w webdavFS) Rename(ctx context.Context, _, _ string) error              { return os.ErrPermission }
+func (w webdavFS) Mkdir(ctx context.Context, _ string, _ os.FileMode) error { return os.ErrPermission }
+func (w webdavFS) RemoveAll(ctx context.Context, _ string) error            { return os.ErrPermission }
+func (w webdavFS) Rename(ctx context.Context, _, _ string) error            { return os.ErrPermission }
 func (w webdavFS) OpenFile(ctx context.Context, name string, flag int, _ os.FileMode) (webdav.File, error) {
 	if flag != os.O_RDONLY {
 		return nil, os.ErrPermission
@@ -84,7 +84,7 @@ func (w webdavFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
 
 type webdavFile struct{ fs.File }
 
-func (webdavFile) Write([]byte) (int, error)         { return 0, os.ErrPermission }
+func (webdavFile) Write([]byte) (int, error)          { return 0, os.ErrPermission }
 func (webdavFile) Readdir(int) ([]os.FileInfo, error) { return nil, nil }
 func (f webdavFile) Seek(offset int64, whence int) (int64, error) {
 	return f.File.(io.Seeker).Seek(offset, whence)
@@ -3831,9 +3831,6 @@ func scanEventsWithPerson(rows *sql.Rows) []TimelineEvent {
 		}
 
 		e.IsFavorite = isFav.Bool
-		if err != nil {
-			continue
-		}
 
 		e.MediaURL = mediaURL.String
 		e.Thumbnail = thumbnail.String
@@ -5029,6 +5026,10 @@ func runMigration(fromVersion int) {
 			added_at TEXT DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (collection_id, event_id)
 		)`)
+	case 11:
+	case 12:
+	case 13:
+	case 14:
 	case 15:
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN event_start_time TEXT DEFAULT ''`)
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN event_end_time TEXT DEFAULT ''`)

@@ -3537,3 +3537,463 @@ func TestICalendarExport(t *testing.T) {
 		}
 	})
 }
+
+func TestEmailConfigAPI(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS email_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		smtp_host TEXT DEFAULT '',
+		smtp_port INTEGER DEFAULT 587,
+		smtp_user TEXT DEFAULT '',
+		smtp_pass TEXT DEFAULT '',
+		from_addr TEXT DEFAULT '',
+		to_addr TEXT DEFAULT ''
+	)`)
+
+	r := gin.New()
+	r.GET("/api/email/config", getEmailConfig)
+	r.POST("/api/email/config", saveEmailConfig)
+	r.POST("/api/email/test", testEmail)
+
+	t.Run("get_config_returns_defaults_when_no_row", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/email/config", nil)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var cfg EmailConfig
+		if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
+			t.Fatal(err)
+		}
+		if cfg.SMTPPort != 587 {
+			t.Errorf("port = %d, want 587", cfg.SMTPPort)
+		}
+		if cfg.SMTPHost != "" {
+			t.Errorf("host = %q, want empty", cfg.SMTPHost)
+		}
+	})
+
+	t.Run("save_config", func(t *testing.T) {
+		db.Exec("DELETE FROM email_settings")
+		db.Exec("INSERT INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)")
+
+		body, _ := json.Marshal(EmailConfig{
+			SMTPHost: "smtp.gmail.com",
+			SMTPPort: 465,
+			SMTPUser: "user@gmail.com",
+			SMTPPass: "app-password",
+			FromAddr: "from@gmail.com",
+			ToAddr:   "to@gmail.com",
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/email/config", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200: %s", w.Code, w.Body.String())
+		}
+		var result map[string]string
+		json.Unmarshal(w.Body.Bytes(), &result)
+		if result["status"] != "ok" {
+			t.Errorf("status = %q, want 'ok'", result["status"])
+		}
+
+		var host, user, pass, fromAddr, toAddr string
+		var port int
+		err = db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&host, &port, &user, &pass, &fromAddr, &toAddr)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if host != "smtp.gmail.com" {
+			t.Errorf("host = %q", host)
+		}
+		if port != 465 {
+			t.Errorf("port = %d", port)
+		}
+		if user != "user@gmail.com" {
+			t.Errorf("user = %q", user)
+		}
+		if pass != "app-password" {
+			t.Errorf("pass = %q", pass)
+		}
+		if fromAddr != "from@gmail.com" {
+			t.Errorf("from = %q", fromAddr)
+		}
+		if toAddr != "to@gmail.com" {
+			t.Errorf("to = %q", toAddr)
+		}
+	})
+
+	t.Run("get_config_after_save", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/email/config", nil)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		var cfg EmailConfig
+		json.Unmarshal(w.Body.Bytes(), &cfg)
+		if cfg.SMTPHost != "smtp.gmail.com" {
+			t.Errorf("host = %q", cfg.SMTPHost)
+		}
+		if cfg.SMTPPort != 465 {
+			t.Errorf("port = %d", cfg.SMTPPort)
+		}
+		if cfg.SMTPUser != "user@gmail.com" {
+			t.Errorf("user = %q", cfg.SMTPUser)
+		}
+		if cfg.ToAddr != "to@gmail.com" {
+			t.Errorf("to = %q", cfg.ToAddr)
+		}
+	})
+
+	t.Run("save_config_defaults_port", func(t *testing.T) {
+		db.Exec("DELETE FROM email_settings")
+		db.Exec("INSERT INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)")
+
+		body, _ := json.Marshal(EmailConfig{
+			SMTPHost: "smtp.example.com",
+			SMTPPort: 0,
+		})
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/email/config", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+
+		var port int
+		db.QueryRow("SELECT smtp_port FROM email_settings WHERE id = 1").Scan(&port)
+		if port != 587 {
+			t.Errorf("port = %d, want 587 (default)", port)
+		}
+	})
+
+	t.Run("test_email_fails_when_not_configured", func(t *testing.T) {
+		db.Exec("DELETE FROM email_settings")
+		db.Exec("INSERT INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)")
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/email/test", nil)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400: body=%s", w.Code, w.Body.String())
+		}
+		var result map[string]string
+		json.Unmarshal(w.Body.Bytes(), &result)
+		if result["error"] != "Email not configured" {
+			t.Errorf("error = %q, want 'Email not configured'", result["error"])
+		}
+	})
+}
+
+func TestSendMemoriesEmailHandler(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS memories_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		enabled INTEGER DEFAULT 1,
+		days_window INTEGER DEFAULT 3,
+		email_enabled INTEGER DEFAULT 0,
+		last_sent_date TEXT DEFAULT ''
+	)`)
+	db.Exec("INSERT OR IGNORE INTO memories_settings (id, enabled, days_window, email_enabled) VALUES (1, 1, 3, 0)")
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS email_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		smtp_host TEXT DEFAULT '',
+		smtp_port INTEGER DEFAULT 587,
+		smtp_user TEXT DEFAULT '',
+		smtp_pass TEXT DEFAULT '',
+		from_addr TEXT DEFAULT '',
+		to_addr TEXT DEFAULT ''
+	)`)
+	db.Exec("INSERT OR IGNORE INTO email_settings (id, smtp_host, smtp_port) VALUES (1, 'smtp.example.com', 587)")
+
+	r := gin.New()
+	r.POST("/api/memories/send", sendMemoriesEmailHandler)
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT
+	)`)
+
+	t.Run("fails_when_email_not_fully_configured", func(t *testing.T) {
+		db.Exec("UPDATE email_settings SET to_addr='' WHERE id=1")
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/memories/send", nil)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400: body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("fails_when_memories_disabled", func(t *testing.T) {
+		db.Exec("UPDATE email_settings SET to_addr='to@test.com' WHERE id=1")
+		db.Exec("UPDATE memories_settings SET enabled=0 WHERE id=1")
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/memories/send", nil)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusBadRequest {
+			t.Errorf("status = %d, want 400: body=%s", w.Code, w.Body.String())
+		}
+	})
+
+	t.Run("succeeds_when_no_memories_found", func(t *testing.T) {
+		db.Exec("UPDATE memories_settings SET enabled=1 WHERE id=1")
+		db.Exec("UPDATE email_settings SET to_addr='to@test.com' WHERE id=1")
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/memories/send", nil)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("status = %d, want 200: body=%s", w.Code, w.Body.String())
+		}
+		var result map[string]string
+		json.Unmarshal(w.Body.Bytes(), &result)
+		if result["message"] != "No memories for today" {
+			t.Errorf("message = %q, want 'No memories for today'", result["message"])
+		}
+	})
+}
+
+func TestMigrationFromV8ToCurrent(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	defer func() { db = origDB }()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	_, _ = db.Exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
+	_, _ = db.Exec("INSERT INTO schema_version (version) VALUES (8)")
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN media_caption TEXT`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN tags TEXT`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN sort_order INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN is_public INTEGER DEFAULT 0`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN person_id INTEGER`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN latitude REAL`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN longitude REAL`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN recurring TEXT DEFAULT ''`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN weather_data TEXT DEFAULT ''`)
+	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN user_id INTEGER DEFAULT 0`)
+
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS admin_users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE,
+		password TEXT
+	)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS share_tokens (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		token TEXT UNIQUE,
+		event_ids TEXT,
+		year TEXT,
+		expires_at TEXT
+	)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT NOT NULL,
+		avatar_url TEXT DEFAULT '',
+		bio TEXT DEFAULT '',
+		birth_date TEXT DEFAULT '',
+		color TEXT DEFAULT '#7c3aed',
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS gotify_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		url TEXT DEFAULT '',
+		token TEXT DEFAULT '',
+		enabled INTEGER DEFAULT 0
+	)`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO gotify_settings (id, url, token, enabled) VALUES (1, 'https://gotify.example.com', 'token-123', 1)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS memories_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		enabled INTEGER DEFAULT 1,
+		days_window INTEGER DEFAULT 3,
+		email_enabled INTEGER DEFAULT 0,
+		last_sent_date TEXT DEFAULT ''
+	)`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO memories_settings (id, enabled, days_window, email_enabled) VALUES (1, 1, 5, 1)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS email_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		smtp_host TEXT DEFAULT '',
+		smtp_port INTEGER DEFAULT 587,
+		smtp_user TEXT DEFAULT '',
+		smtp_pass TEXT DEFAULT '',
+		from_addr TEXT DEFAULT '',
+		to_addr TEXT DEFAULT ''
+	)`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO email_settings (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr) VALUES (1, 'smtp.test.com', 587, 'user', 'pass', 'from@test.com', 'to@test.com')`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE,
+		display_name TEXT DEFAULT '',
+		color TEXT DEFAULT '#7c3aed',
+		avatar_url TEXT DEFAULT '',
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO users (id, username, display_name, color) VALUES (1, 'admin', 'Admin', '#7c3aed')`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS ollama_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		url TEXT DEFAULT 'http://localhost:11434',
+		model TEXT DEFAULT 'llama3.2',
+		enabled INTEGER DEFAULT 0
+	)`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO ollama_settings (id, url, model, enabled) VALUES (1, 'http://ollama:11434', 'mistral', 1)`)
+	_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS immich_settings (
+		id INTEGER PRIMARY KEY CHECK (id = 1),
+		url TEXT DEFAULT '',
+		api_key TEXT DEFAULT '',
+		enabled INTEGER DEFAULT 0
+	)`)
+	_, _ = db.Exec(`INSERT OR IGNORE INTO immich_settings (id, url, api_key, enabled) VALUES (1, 'https://immich.test.com', 'key-123', 1)`)
+
+	_, _ = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, tags)
+		VALUES ('Test Event 1', 'Description 1', '2026-06-15', 'Location 1', 'image', 'tag1, tag2')`)
+	_, _ = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, tags)
+		VALUES ('Test Event 2', 'Description 2', '2026-07-20', 'Location 2', 'video', 'tag3')`)
+
+	_, _ = db.Exec(`INSERT INTO persons (name, color) VALUES ('Alice', '#ff0000')`)
+	_, _ = db.Exec(`INSERT INTO admin_users (username, password) VALUES ('admin', 'hash-placeholder')`)
+
+	var version int
+	_ = db.QueryRow("SELECT version FROM schema_version").Scan(&version)
+	if version != 8 {
+		t.Fatalf("expected schema version 8, got %d", version)
+	}
+
+	var eventCount int
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&eventCount)
+	if eventCount != 2 {
+		t.Fatalf("expected 2 events before migration, got %d", eventCount)
+	}
+
+	var emailHost string
+	db.QueryRow("SELECT smtp_host FROM email_settings WHERE id = 1").Scan(&emailHost)
+	if emailHost != "smtp.test.com" {
+		t.Fatalf("expected email host 'smtp.test.com' before migration, got %q", emailHost)
+	}
+
+	for version < currentSchemaVersion {
+		runMigration(version)
+		version++
+		db.Exec("DELETE FROM schema_version")
+		db.Exec("INSERT INTO schema_version (version) VALUES (?)", version)
+	}
+
+	var migratedVersion int
+	db.QueryRow("SELECT version FROM schema_version").Scan(&migratedVersion)
+	if migratedVersion != currentSchemaVersion {
+		t.Errorf("schema version after migration = %d, want %d", migratedVersion, currentSchemaVersion)
+	}
+
+	createTables()
+
+	eventCount = 0
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&eventCount)
+	if eventCount != 2 {
+		t.Errorf("event count after migration = %d, want 2 (data should survive)", eventCount)
+	}
+
+	var title, date string
+	db.QueryRow("SELECT title, event_date FROM timeline_events WHERE id = 1").Scan(&title, &date)
+	if title != "Test Event 1" {
+		t.Errorf("event 1 title = %q, want 'Test Event 1'", title)
+	}
+	if date != "2026-06-15" {
+		t.Errorf("event 1 date = %q, want '2026-06-15'", date)
+	}
+
+	db.QueryRow("SELECT smtp_host FROM email_settings WHERE id = 1").Scan(&emailHost)
+	if emailHost != "smtp.test.com" {
+		t.Errorf("email host after migration = %q, want 'smtp.test.com'", emailHost)
+	}
+
+	var gotifyURL string
+	db.QueryRow("SELECT url FROM gotify_settings WHERE id = 1").Scan(&gotifyURL)
+	if gotifyURL != "https://gotify.example.com" {
+		t.Errorf("gotify url after migration = %q, want 'https://gotify.example.com'", gotifyURL)
+	}
+
+	var personCount int
+	db.QueryRow("SELECT COUNT(*) FROM persons").Scan(&personCount)
+	if personCount != 1 {
+		t.Errorf("persons count after migration = %d, want 1", personCount)
+	}
+
+	var userName string
+	db.QueryRow("SELECT username FROM users WHERE id = 1").Scan(&userName)
+	if userName != "admin" {
+		t.Errorf("user after migration = %q, want 'admin'", userName)
+	}
+
+	colExists := false
+	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='collections'").Scan(&colExists)
+	if !colExists {
+		t.Error("collections table should exist after migration")
+	}
+	colExists = false
+	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='event_templates'").Scan(&colExists)
+	if !colExists {
+		t.Error("event_templates table should exist after migration")
+	}
+
+	t.Run("new_columns_exist", func(t *testing.T) {
+		var colCount int
+		db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('timeline_events') WHERE name IN ('is_favorite', 'event_start_time', 'event_end_time')").Scan(&colCount)
+		if colCount != 3 {
+			t.Errorf("expected 3 new columns (is_favorite, event_start_time, event_end_time), found %d", colCount)
+		}
+	})
+}
