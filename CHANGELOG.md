@@ -1,3 +1,10 @@
+## [1.14.3](https://github.com/martynvdijke/traces/compare/v1.14.2...v1.14.3) (2026-05-12)
+
+
+### Bug Fixes
+
+* align getMemories scan with SELECT column count ([20049f5](https://github.com/martynvdijke/traces/commit/20049f5d1f1e7f53775c4a657cf5f1d32887253d))
+
 ## [1.14.2](https://github.com/martynvdijke/traces/compare/v1.14.1...v1.14.2) (2026-05-12)
 
 

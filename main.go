@@ -253,7 +253,7 @@ type CalendarDay struct {
 }
 
 const currentSchemaVersion = 16
-const currentVersion = "1.14.2"
+const currentVersion = "1.14.3"
 
 var (
 	publicMode    bool = false
