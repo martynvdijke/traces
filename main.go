@@ -3535,17 +3535,21 @@ func getMemories(c *gin.Context) {
 	for rows.Next() {
 		var me MemoryEvent
 		var personID sql.NullInt64
-		var thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData sql.NullString
-		err := rows.Scan(&me.ID, &me.Title, &me.Description, &me.Date, &me.Location, &me.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &me.SortOrder, &me.IsPublic, &me.CreatedAt, &personID, &me.Latitude, &me.Longitude, &recurring, &weatherData, &me.UserID, &me.YearsAgo)
+		var thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData, startTime, endTime sql.NullString
+		var isFav sql.NullBool
+		err := rows.Scan(&me.ID, &me.Title, &me.Description, &me.Date, &me.Location, &me.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &me.SortOrder, &me.IsPublic, &isFav, &me.CreatedAt, &personID, &me.Latitude, &me.Longitude, &recurring, &weatherData, &me.UserID, &startTime, &endTime, &me.YearsAgo)
 		if err != nil {
 			continue
 		}
+		me.IsFavorite = isFav.Bool
 		me.MediaURL = mediaURL.String
 		me.Thumbnail = thumbnail.String
 		me.MediaCaption = mediaCaption.String
 		me.Tags = tags.String
 		me.Recurring = recurring.String
 		me.WeatherData = weatherData.String
+		me.StartTime = startTime.String
+		me.EndTime = endTime.String
 		if personID.Valid {
 			pid := int(personID.Int64)
 			me.PersonID = &pid
