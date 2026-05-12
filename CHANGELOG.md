@@ -1,3 +1,10 @@
+## [1.14.4](https://github.com/martynvdijke/traces/compare/v1.14.3...v1.14.4) (2026-05-12)
+
+
+### Bug Fixes
+
+* update Open-Meteo daily humidity parameter to relative_humidity_2m_mean ([a5e33cf](https://github.com/martynvdijke/traces/commit/a5e33cfd98f81bbd2436998b4f3d94d6deee45a9))
+
 ## [1.14.3](https://github.com/martynvdijke/traces/compare/v1.14.2...v1.14.3) (2026-05-12)
 
 

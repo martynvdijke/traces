@@ -3,7 +3,7 @@
   "info": {
     "title": "TRACES API",
     "description": "A timeline API for managing events with multimedia (images, videos, audio) throughout the year.",
-    "version": "1.14.3",
+    "version": "1.14.4",
     "contact": {
       "name": "API Support"
     }
