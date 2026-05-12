@@ -1,3 +1,10 @@
+## [1.14.2](https://github.com/martynvdijke/traces/compare/v1.14.1...v1.14.2) (2026-05-12)
+
+
+### Bug Fixes
+
+* replace deprecated window.event with button parameter in admin handlers ([14b6df2](https://github.com/martynvdijke/traces/commit/14b6df26709ba96835479efa9a1611d30dca241e))
+
 ## [1.14.1](https://github.com/martynvdijke/traces/compare/v1.14.0...v1.14.1) (2026-05-12)
 
 # [1.14.0](https://github.com/martynvdijke/traces/compare/v1.13.0...v1.14.0) (2026-05-11)
