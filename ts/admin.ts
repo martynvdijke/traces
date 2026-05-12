@@ -29,7 +29,6 @@ async function init(): Promise<void> {
   loadUsers();
   loadOllamaConfig();
   loadImmichConfig();
-  loadImmichMemories();
   loadBackups();
   loadBackupConfig();
   loadTemplates();
@@ -37,6 +36,10 @@ async function init(): Promise<void> {
   populateTemplatePersonSelect();
   populateTemplateUserSelect();
   updateCollectionEventSelect();
+
+  document.getElementById('integrations-tab')?.addEventListener('shown.bs.tab', () => {
+    loadImmichMemories();
+  });
 }
 
 function loadAdminAnalytics(): void {
