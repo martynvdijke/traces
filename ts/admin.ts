@@ -1019,9 +1019,8 @@ async function loadMemories(): Promise<void> {
   }
 }
 
-async function sendMemoriesNow(): Promise<void> {
-  const evt = (window as any).event;
-  const btn = evt.target as HTMLButtonElement;
+async function sendMemoriesNow(btn?: HTMLButtonElement): Promise<void> {
+  if (!btn) return;
   const origText = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin me-1"></i> Sending...';
@@ -1325,13 +1324,12 @@ async function fetchEventWeather(): Promise<void> {
   } catch (e) { el.textContent = 'Weather fetch failed'; }
 }
 
-async function autoTagEvent(): Promise<void> {
+async function autoTagEvent(btn?: HTMLButtonElement): Promise<void> {
   const title = (document.getElementById('event-title') as HTMLInputElement).value;
   const desc = (document.getElementById('event-desc') as HTMLTextAreaElement).value;
   const loc = (document.getElementById('event-location') as HTMLInputElement).value;
   if (!title) { alert('Enter a title first'); return; }
-  const evt = (window as any).event;
-  const btn = evt.target as HTMLButtonElement;
+  if (!btn) return;
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Analyzing...';
@@ -1361,9 +1359,8 @@ async function loadBackups(): Promise<void> {
   } catch (e) { tbody.innerHTML = '<tr><td colspan="3" class="text-muted">Failed to load backups</td></tr>'; }
 }
 
-async function createBackup(): Promise<void> {
-  const evt = (window as any).event;
-  const btn = evt.target as HTMLButtonElement;
+async function createBackup(btn?: HTMLButtonElement): Promise<void> {
+  if (!btn) return;
   const orig = btn.innerHTML;
   btn.disabled = true;
   btn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Backing up...';

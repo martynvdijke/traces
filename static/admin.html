@@ -785,7 +785,7 @@
                             </div>
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
-                                <button type="button" class="btn btn-outline-info" onclick="sendMemoriesNow()"><i class="fa-solid fa-envelope me-1"></i> Send Memories Now</button>
+                                <button type="button" class="btn btn-outline-info" onclick="sendMemoriesNow(this)"><i class="fa-solid fa-envelope me-1"></i> Send Memories Now</button>
                                 <button type="button" class="btn btn-outline-secondary" onclick="loadMemories()"><i class="fa-solid fa-rotate me-1"></i> Preview</button>
                             </div>
                         </form>
@@ -999,7 +999,7 @@
             <div class="tab-pane fade" id="backup-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="fw-bold mb-0"><i class="fa-solid fa-database me-2 text-primary"></i>Database Backup</h5>
-                    <button class="btn btn-sm btn-primary" onclick="createBackup()"><i class="fa-solid fa-circle-plus me-1"></i> Create Backup</button>
+                    <button class="btn btn-sm btn-primary" onclick="createBackup(this)"><i class="fa-solid fa-circle-plus me-1"></i> Create Backup</button>
                 </div>
                 <div class="card mb-3">
                     <div class="card-header"><i class="fa-solid fa-gear me-2"></i>Auto-Prune Settings</div>
@@ -1155,7 +1155,7 @@
                         </div>
                         <div class="mb-3">
                             <button type="button" class="btn btn-outline-info btn-sm" onclick="fetchEventWeather()"><i class="fa-solid fa-cloud-sun me-1"></i> Fetch Weather</button>
-                            <button type="button" class="btn btn-outline-warning btn-sm ms-1" onclick="autoTagEvent()"><i class="fa-solid fa-wand-magic-sparkles me-1"></i> Auto-Tag</button>
+                            <button type="button" class="btn btn-outline-warning btn-sm ms-1" onclick="autoTagEvent(this)"><i class="fa-solid fa-wand-magic-sparkles me-1"></i> Auto-Tag</button>
                             <span id="weather-display" class="ms-2 small text-muted"></span>
                         </div>
                         <div class="mb-3">
