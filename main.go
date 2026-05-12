@@ -3972,10 +3972,10 @@ func fetchWeather(c *gin.Context) {
 
 	var apiURL string
 	if time.Since(eventDate) < 16*24*time.Hour {
-		apiURL = fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&daily=temperature_2m_max,temperature_2m_min,weathercode,wind_speed_10m_max,relative_humidity_2m&timezone=auto&start_date=%s&end_date=%s",
+		apiURL = fmt.Sprintf("https://api.open-meteo.com/v1/forecast?latitude=%.4f&longitude=%.4f&daily=temperature_2m_max,temperature_2m_min,weathercode,wind_speed_10m_max,relative_humidity_2m_mean&timezone=auto&start_date=%s&end_date=%s",
 			input.Latitude, input.Longitude, input.Date, input.Date)
 	} else {
-		apiURL = fmt.Sprintf("https://archive-api.open-meteo.com/v1/archive?latitude=%.4f&longitude=%.4f&daily=temperature_2m_max,temperature_2m_min,weathercode,wind_speed_10m_max,relative_humidity_2m&timezone=auto&start_date=%s&end_date=%s",
+		apiURL = fmt.Sprintf("https://archive-api.open-meteo.com/v1/archive?latitude=%.4f&longitude=%.4f&daily=temperature_2m_max,temperature_2m_min,weathercode,wind_speed_10m_max,relative_humidity_2m_mean&timezone=auto&start_date=%s&end_date=%s",
 			input.Latitude, input.Longitude, input.Date, input.Date)
 	}
 
@@ -4000,7 +4000,7 @@ func fetchWeather(c *gin.Context) {
 			TemperatureMin []float64 `json:"temperature_2m_min"`
 			WeatherCode    []int     `json:"weathercode"`
 			WindSpeedMax   []float64 `json:"wind_speed_10m_max"`
-			Humidity       []float64 `json:"relative_humidity_2m"`
+			Humidity       []float64 `json:"relative_humidity_2m_mean"`
 		} `json:"daily"`
 	}
 
