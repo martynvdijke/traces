@@ -12,7 +12,7 @@ require (
 	github.com/swaggo/swag v1.16.6
 	golang.org/x/crypto v0.51.0
 	golang.org/x/image v0.40.0
-	golang.org/x/net v0.53.0
+	golang.org/x/net v0.54.0
 )
 
 require (
