@@ -1,3 +1,10 @@
+## [1.14.5](https://github.com/martynvdijke/traces/compare/v1.14.4...v1.14.5) (2026-05-13)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([f3b337a](https://github.com/martynvdijke/traces/commit/f3b337a98169ef6bfd2d15778042752f832f226b))
+
 ## [1.14.4](https://github.com/martynvdijke/traces/compare/v1.14.3...v1.14.4) (2026-05-12)
 
 
