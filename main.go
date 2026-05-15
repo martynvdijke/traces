@@ -368,6 +368,7 @@ func main() {
 		api.GET("/share", getShareLink)
 		api.GET("/config", getPublicConfig)
 		api.GET("/manifest.json", serveManifest)
+		api.GET("/health", handleHealth)
 		api.GET("/sw.js", serveServiceWorker)
 
 		auth := api.Group("")
@@ -662,6 +663,19 @@ func handleCheckSetup(c *gin.Context) {
 	var count int
 	db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
 	c.JSON(http.StatusOK, gin.H{"setup": count > 0})
+}
+
+// @Summary Health check
+// @Description Returns server health status and version
+// @Tags System
+// @Produce json
+// @Success 200 {object} map[string]string
+// @Router /health [get]
+func handleHealth(c *gin.Context) {
+	c.JSON(http.StatusOK, gin.H{
+		"status":  "ok",
+		"version": currentVersion,
+	})
 }
 
 // @Summary Login admin user

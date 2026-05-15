@@ -34,6 +34,7 @@ func setupTestRouter() *gin.Engine {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
 	r.POST("/api/logout", handleLogout)
+	r.GET("/api/health", handleHealth)
 
 	return r
 }
@@ -321,6 +322,24 @@ func TestAPIEndpoints(t *testing.T) {
 		}
 		var resp map[string]string
 		json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["version"] != currentVersion {
+			t.Errorf("version = %q, want %q", resp["version"], currentVersion)
+		}
+	})
+
+	t.Run("health_endpoint", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/health", nil)
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Errorf("status = %d, want %d", w.Code, http.StatusOK)
+		}
+		var resp map[string]string
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["status"] != "ok" {
+			t.Errorf("status = %q, want 'ok'", resp["status"])
+		}
 		if resp["version"] != currentVersion {
 			t.Errorf("version = %q, want %q", resp["version"], currentVersion)
 		}
