@@ -1,3 +1,11 @@
+# [1.16.0](https://github.com/martynvdijke/traces/compare/v1.15.0...v1.16.0) (2026-05-15)
+
+
+### Features
+
+* add location timeline path on map ([ad8fe05](https://github.com/martynvdijke/traces/commit/ad8fe059021c5a9f630af600b8e6dfc3fddb4395))
+* add recycle bin with soft delete and trash management ([da26dc3](https://github.com/martynvdijke/traces/commit/da26dc366a35d0c1abc8cf96fd7ece10087d0b99))
+
 # [1.15.0](https://github.com/martynvdijke/traces/compare/v1.14.6...v1.15.0) (2026-05-15)
 
 
