@@ -286,6 +286,13 @@
             <div class="tab-pane fade" id="map-pane">
                 <section class="map-section mb-4">
                     <h4 class="mb-3"><i class="fa-solid fa-map-location-dot me-2"></i>Event Map</h4>
+                    <div class="d-flex gap-2 mb-2 align-items-center">
+                        <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" id="show-location-path" onchange="renderMapInstance()">
+                            <label class="form-check-label small" for="show-location-path"><i class="fa-solid fa-route me-1"></i>Location Timeline Path</label>
+                        </div>
+                        <span class="text-muted small">connects geo-tagged events in chronological order</span>
+                    </div>
                     <div class="card">
                         <div class="card-body p-2">
                             <div id="map-container">

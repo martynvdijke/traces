@@ -69,6 +69,7 @@ let galleryPage: number = 1;
 const galleryLimit: number = 12;
 let mapInstance: any = null;
 let mapMarkers: any[] = [];
+let mapPathLine: any = null;
 let users: any[] = [];
 
 const monthNames: string[] = [
@@ -880,6 +881,22 @@ function renderMapInstance(): void {
     mapMarkers.push(m);
     bounds.push([e.latitude!, e.longitude!]);
   });
+
+  const showPath = (document.getElementById('show-location-path') as HTMLInputElement)?.checked;
+  if (mapPathLine) {
+    mapInstance.removeLayer(mapPathLine);
+    mapPathLine = null;
+  }
+  if (showPath && geoEvents.length > 1) {
+    const sorted = [...geoEvents].sort((a, b) => a.date.localeCompare(b.date));
+    const latlngs: [number, number][] = sorted.map(e => [e.latitude!, e.longitude!]);
+    mapPathLine = L.polyline(latlngs, {
+      color: '#7c3aed',
+      weight: 3,
+      opacity: 0.6,
+      dashArray: '8, 8'
+    }).addTo(mapInstance);
+  }
 
   if (bounds.length > 0) {
     mapInstance.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
