@@ -1,3 +1,11 @@
+# [1.15.0](https://github.com/martynvdijke/traces/compare/v1.14.6...v1.15.0) (2026-05-15)
+
+
+### Features
+
+* add health check endpoint ([6cd5aea](https://github.com/martynvdijke/traces/commit/6cd5aeaef63511f27b2366cefb9709f6eac1805c))
+* add server-side markdown rendering with goldmark ([cf26cff](https://github.com/martynvdijke/traces/commit/cf26cff6370aea529b533e1e8edae79ac9ec83d5))
+
 ## [1.14.6](https://github.com/martynvdijke/traces/compare/v1.14.5...v1.14.6) (2026-05-15)
 
 ## [1.14.5](https://github.com/martynvdijke/traces/compare/v1.14.4...v1.14.5) (2026-05-13)
