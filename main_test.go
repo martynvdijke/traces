@@ -1956,6 +1956,35 @@ func TestMarkdownInDescription(t *testing.T) {
 		event_date TEXT
 	)`)
 
+	t.Run("render_markdown_go", func(t *testing.T) {
+		tests := []struct {
+			name     string
+			input    string
+			wantHTML []string
+		}{
+			{"bold", "**bold**", []string{"<strong>bold</strong>"}},
+			{"italic", "*italic*", []string{"<em>italic</em>"}},
+			{"heading", "## Heading", []string{"<h2>Heading</h2>"}},
+			{"link", "[text](https://example.com)", []string{"<a href=\"https://example.com\"", "text</a>"}},
+			{"list", "- item", []string{"<li>item</li>", "<ul>"}},
+			{"blockquote", "> quote", []string{"<blockquote>", "quote"}},
+			{"code", "`code`", []string{"<code>code</code>"}},
+			{"empty", "", []string{}},
+			{"xss", "<script>alert('xss')</script>", []string{}}, // goldmark strips raw HTML by default
+		}
+
+		for _, tt := range tests {
+			t.Run(tt.name, func(t *testing.T) {
+				got := RenderMarkdown(tt.input)
+				for _, want := range tt.wantHTML {
+					if !strings.Contains(got, want) {
+						t.Errorf("RenderMarkdown(%q) = %q, want contains %q", tt.input, got, want)
+					}
+				}
+			})
+		}
+	})
+
 	t.Run("store_markdown_description", func(t *testing.T) {
 		md := "## Heading\n\nThis is **bold** and *italic*.\n\n- List item 1\n- List item 2"
 		_, err := db.Exec("INSERT INTO timeline_events (title, description, event_date) VALUES (?, ?, ?)", "MD Event", md, "2026-06-15")

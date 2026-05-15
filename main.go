@@ -58,6 +58,7 @@ import (
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/webdav"
+	"github.com/yuin/goldmark"
 
 	swaggerFiles "github.com/swaggo/files/v2"
 	ginSwagger "github.com/swaggo/gin-swagger"
@@ -5160,6 +5161,19 @@ func EscapeHtml(text string) string {
 	text = strings.ReplaceAll(text, `"`, "&quot;")
 	text = strings.ReplaceAll(text, "'", "&#039;")
 	return text
+}
+
+var mdRenderer = goldmark.New()
+
+func RenderMarkdown(text string) string {
+	if text == "" {
+		return ""
+	}
+	var buf bytes.Buffer
+	if err := mdRenderer.Convert([]byte(text), &buf); err != nil {
+		return EscapeHtml(text)
+	}
+	return buf.String()
 }
 
 func GetMediaIcon(mediaType string) string {
