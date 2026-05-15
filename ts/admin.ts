@@ -40,6 +40,9 @@ async function init(): Promise<void> {
   document.getElementById('integrations-tab')?.addEventListener('shown.bs.tab', () => {
     loadImmichMemories();
   });
+  document.getElementById('trash-tab')?.addEventListener('shown.bs.tab', () => {
+    loadTrash();
+  });
 }
 
 function loadAdminAnalytics(): void {
@@ -1907,6 +1910,63 @@ init();
 (window as any).addTag = addTag;
 (window as any).removeTag = removeTag;
 (window as any).loadTags = loadTags;
+function loadTrash(): void {
+  fetch('/api/events/trash', { credentials: 'same-origin' })
+    .then(r => r.json())
+    .then((events: any[]) => {
+      const list = document.getElementById('trash-list');
+      if (!list) return;
+      if (events.length === 0) {
+        list.innerHTML = '<div class="text-muted py-4 text-center"><i class="fa-solid fa-trash-can me-2"></i>Trash is empty</div>';
+        return;
+      }
+      let html = '<div class="table-responsive"><table class="table table-sm"><thead><tr><th>Title</th><th>Date</th><th>Deleted</th><th>Actions</th></tr></thead><tbody>';
+      for (const e of events) {
+        html += '<tr><td class="fw-medium">' + escapeHtml(e.title) + '</td><td>' + e.date + '</td><td class="text-muted small">' + (e.deleted_at ? new Date(e.deleted_at).toLocaleString() : '') + '</td>'
+          + '<td><button class="btn btn-sm btn-outline-success me-1" onclick="restoreEvent(' + e.id + ')"><i class="fa-solid fa-rotate-left"></i> Restore</button>'
+          + '<button class="btn btn-sm btn-outline-danger" onclick="permanentDelete(' + e.id + ')"><i class="fa-solid fa-xmark"></i> Delete</button></td></tr>';
+      }
+      html += '</tbody></table></div>';
+      list.innerHTML = html;
+    })
+    .catch(() => {
+      const list = document.getElementById('trash-list');
+      if (list) list.innerHTML = '<div class="text-danger py-4 text-center">Failed to load trash</div>';
+    });
+}
+
+function restoreEvent(id: number): void {
+  fetch('/api/events/restore', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ ids: [id] }),
+    credentials: 'same-origin',
+  }).then(r => r.json()).then(() => loadTrash());
+}
+
+function permanentDelete(id: number): void {
+  if (!confirm('Permanently delete this event?')) return;
+  fetch('/api/events/batch', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify({ ids: [id], action: 'permanent_delete' }),
+    credentials: 'same-origin',
+  }).then(r => r.json()).then(() => loadTrash());
+}
+
+function emptyTrash(): void {
+  if (!confirm('Permanently delete ALL trashed events?')) return;
+  fetch('/api/events/empty-trash', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    credentials: 'same-origin',
+  }).then(r => r.json()).then(() => loadTrash());
+}
+
+(window as any).loadTrash = loadTrash;
+(window as any).restoreEvent = restoreEvent;
+(window as any).permanentDelete = permanentDelete;
+(window as any).emptyTrash = emptyTrash;
 (window as any).filterEventsByTag = filterEventsByTag;
 (window as any).filterPersonSelect = filterPersonSelect;
 (window as any).debouncedSearch = debouncedSearch;

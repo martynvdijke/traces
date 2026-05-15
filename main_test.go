@@ -2419,7 +2419,8 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 		weather_data TEXT DEFAULT '',
 		event_start_time TEXT DEFAULT '',
 		event_end_time TEXT DEFAULT '',
-		user_id INTEGER DEFAULT 0
+		user_id INTEGER DEFAULT 0,
+		deleted_at TEXT DEFAULT ''
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -4529,6 +4530,176 @@ func TestMigrationFromV8ToCurrent(t *testing.T) {
 		db.QueryRow("SELECT COUNT(*) FROM pragma_table_info('timeline_events') WHERE name IN ('is_favorite', 'event_start_time', 'event_end_time')").Scan(&colCount)
 		if colCount != 3 {
 			t.Errorf("expected 3 new columns (is_favorite, event_start_time, event_end_time), found %d", colCount)
+		}
+	})
+}
+
+func TestRecycleBin(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	origSessionStore := sessionStore
+	origCSRFTokens := csrfTokens
+	defer func() {
+		db = origDB
+		sessionStore = origSessionStore
+		csrfTokens = origCSRFTokens
+	}()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	sessionStore = make(map[string]int64)
+	csrfTokens = make(map[string]string)
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0,
+		deleted_at TEXT DEFAULT ''
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT,
+		avatar_url TEXT,
+		bio TEXT,
+		birth_date TEXT,
+		color TEXT,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	router := gin.New()
+	auth := router.Group("")
+	auth.Use(func(c *gin.Context) {
+		cookie, err := c.Cookie("session")
+		if err != nil || sessionStore[cookie] == 0 {
+			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
+			return
+		}
+		c.Next()
+	})
+	auth.GET("/api/events", getEvents)
+	auth.GET("/api/events/trash", getTrashEvents)
+	auth.POST("/api/events/restore", restoreEvents)
+	auth.POST("/api/events/empty-trash", emptyTrash)
+	auth.POST("/api/events", saveEvent)
+
+	sessionID := "test-trash-session"
+	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+
+	t.Run("soft_delete_moves_event_to_trash", func(t *testing.T) {
+		_, err := db.Exec("INSERT INTO timeline_events (title, description, event_date) VALUES (?, ?, ?)", "Trash Event", "Will be deleted", "2026-07-04")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '')").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 active event, got %d", count)
+		}
+
+		_, err = db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=1")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '')").Scan(&count)
+		if count != 0 {
+			t.Errorf("expected 0 active events after soft delete, got %d", count)
+		}
+	})
+
+	t.Run("trash_endpoint_returns_deleted_events", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/events/trash", nil)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("GET /api/events/trash status = %d", w.Code)
+		}
+
+		var events []TimelineEvent
+		json.Unmarshal(w.Body.Bytes(), &events)
+		if len(events) != 1 {
+			t.Fatalf("expected 1 trashed event, got %d", len(events))
+		}
+		if events[0].Title != "Trash Event" {
+			t.Errorf("trashed event title = %q", events[0].Title)
+		}
+		if events[0].DeletedAt == "" {
+			t.Error("expected deleted_at to be set")
+		}
+	})
+
+	t.Run("restore_endpoint_brings_event_back", func(t *testing.T) {
+		body := `{"ids":[1]}`
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/events/restore", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("POST /api/events/restore status = %d", w.Code)
+		}
+
+		var resp map[string]interface{}
+		json.Unmarshal(w.Body.Bytes(), &resp)
+		if resp["status"] != "ok" {
+			t.Errorf("status = %q", resp["status"])
+		}
+
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '')").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 active event after restore, got %d", count)
+		}
+	})
+
+	t.Run("empty_trash_permanently_deletes", func(t *testing.T) {
+		_, err := db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=1")
+		if err != nil {
+			t.Fatal(err)
+		}
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/events/empty-trash", nil)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("POST /api/events/empty-trash status = %d", w.Code)
+		}
+
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&count)
+		if count != 0 {
+			t.Errorf("expected 0 events after empty trash, got %d", count)
 		}
 	})
 }

@@ -121,6 +121,7 @@ type TimelineEvent struct {
 	EndTime      string   `json:"end_time"`
 	UserID       int      `json:"user_id"`
 	User         *User    `json:"user,omitempty"`
+	DeletedAt    string   `json:"deleted_at"`
 }
 
 type EventStats struct {
@@ -253,7 +254,7 @@ type CalendarDay struct {
 	Count  int             `json:"count"`
 }
 
-const currentSchemaVersion = 16
+const currentSchemaVersion = 17
 const currentVersion = "1.15.0"
 
 var (
@@ -429,6 +430,9 @@ func main() {
 			auth.GET("/backups", handleListBackups)
 			auth.GET("/backup/config", getBackupConfig)
 			auth.POST("/backup/config", saveBackupConfig)
+			auth.GET("/events/trash", getTrashEvents)
+			auth.POST("/events/restore", restoreEvents)
+			auth.POST("/events/empty-trash", emptyTrash)
 			auth.POST("/events/favorite", toggleFavorite)
 			auth.POST("/events/batch", batchEvents)
 			auth.GET("/collections", getCollections)
@@ -830,7 +834,7 @@ func getEvents(c *gin.Context) {
 
 	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
 	args := []interface{}{}
 
 	if year != "" {
@@ -884,7 +888,7 @@ func getEvents(c *gin.Context) {
 func getEventsFull(c *gin.Context) {
 	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id ORDER BY e.event_date ASC`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') ORDER BY e.event_date ASC`
 
 	rows, err := db.Query(query)
 	if err != nil {
@@ -939,12 +943,12 @@ func getPublicEvents(c *gin.Context) {
 		}
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
 		args = idArgs
 	} else if publicMode {
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
 		if year != "" {
 			query += " AND strftime('%Y', e.event_date) = ?"
 			args = append(args, year)
@@ -953,7 +957,7 @@ func getPublicEvents(c *gin.Context) {
 	} else {
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.is_public = 1`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.is_public = 1`
 		if year != "" {
 			query += " AND strftime('%Y', e.event_date) = ?"
 			args = append(args, year)
@@ -985,7 +989,7 @@ func getContributions(c *gin.Context) {
 		year = fmt.Sprintf("%d", time.Now().Year())
 	}
 
-	rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE strftime('%Y', event_date) = ?`, year)
+	rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date) = ?`, year)
 	if err != nil {
 		serverError(c, err)
 		return
@@ -1077,7 +1081,7 @@ func deleteEvent(c *gin.Context) {
 	var title string
 	db.QueryRow("SELECT title FROM timeline_events WHERE id=?", id).Scan(&title)
 
-	_, err = db.Exec("DELETE FROM timeline_events WHERE id=?", id)
+	_, err = db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=?", id)
 	if err != nil {
 		serverError(c, err)
 		return
@@ -1085,6 +1089,144 @@ func deleteEvent(c *gin.Context) {
 
 	sendGotifyNotification(fmt.Sprintf("Event deleted: %s", title), "")
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
+// @Summary Get trashed events
+// @Description List soft-deleted events in the recycle bin
+// @Tags Events
+// @Produce json
+// @Success 200 {array} object "trashed events"
+// @Router /events/trash [get]
+func getTrashEvents(c *gin.Context) {
+	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time, e.deleted_at,
+		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.deleted_at != '' AND e.deleted_at IS NOT NULL ORDER BY e.deleted_at DESC`)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	defer rows.Close()
+
+	events := make([]TimelineEvent, 0)
+	for rows.Next() {
+		var e TimelineEvent
+		var p Person
+		var personID sql.NullInt64
+		var lat, lng sql.NullFloat64
+		var pID sql.NullInt64
+		var pName, pAvatar, pBio, pBirth, pColor, pCreated sql.NullString
+		var title, desc, date, location, mediaType, thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData, startTime, endTime, deletedAt sql.NullString
+		var sortOrder sql.NullInt64
+		var isFav, isPub sql.NullBool
+		var createdAt sql.NullString
+		var userID sql.NullInt64
+
+		err := rows.Scan(&e.ID, &title, &desc, &date, &location, &mediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &sortOrder, &isPub, &isFav, &createdAt, &personID, &lat, &lng, &recurring, &weatherData, &userID, &startTime, &endTime, &deletedAt,
+			&pID, &pName, &pAvatar, &pBio, &pBirth, &pColor, &pCreated)
+		if err != nil {
+			continue
+		}
+
+		e.Title = title.String
+		e.Description = desc.String
+		e.Date = date.String
+		e.Location = location.String
+		e.MediaType = mediaType.String
+		e.MediaURL = mediaURL.String
+		e.Thumbnail = thumbnail.String
+		e.MediaCaption = mediaCaption.String
+		e.Tags = tags.String
+		e.SortOrder = int(sortOrder.Int64)
+		e.IsPublic = isPub.Bool
+		e.IsFavorite = isFav.Bool
+		e.CreatedAt = createdAt.String
+		e.Recurring = recurring.String
+		e.WeatherData = weatherData.String
+		e.StartTime = startTime.String
+		e.EndTime = endTime.String
+		e.DeletedAt = deletedAt.String
+		e.UserID = int(userID.Int64)
+
+		if personID.Valid {
+			pid := int(personID.Int64)
+			e.PersonID = &pid
+		}
+		if lat.Valid {
+			v := lat.Float64
+			e.Latitude = &v
+		}
+		if lng.Valid {
+			v := lng.Float64
+			e.Longitude = &v
+		}
+
+		if pID.Valid {
+			p.ID = int(pID.Int64)
+			p.Name = pName.String
+			p.AvatarURL = pAvatar.String
+			p.Bio = pBio.String
+			p.BirthDate = pBirth.String
+			p.Color = pColor.String
+			p.CreatedAt = pCreated.String
+			e.Person = &p
+		}
+
+		events = append(events, e)
+	}
+	c.JSON(http.StatusOK, events)
+}
+
+// @Summary Restore events from trash
+// @Description Restore soft-deleted events
+// @Tags Events
+// @Accept json
+// @Produce json
+// @Param ids body object true "Event IDs to restore" SchemaProperties({ids:{type:array,items:{type:integer}}})
+// @Success 200 {object} map[string]interface{}
+// @Router /events/restore [post]
+func restoreEvents(c *gin.Context) {
+	var input struct {
+		IDs []int `json:"ids"`
+	}
+	if err := c.ShouldBindJSON(&input); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid request body"})
+		return
+	}
+	if len(input.IDs) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No event IDs provided"})
+		return
+	}
+
+	placeholders := make([]string, len(input.IDs))
+	args := make([]interface{}, len(input.IDs))
+	for i, id := range input.IDs {
+		placeholders[i] = "?"
+		args[i] = id
+	}
+	inClause := strings.Join(placeholders, ",")
+
+	_, err := db.Exec("UPDATE timeline_events SET deleted_at='' WHERE id IN ("+inClause+")", args...)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "restored": len(input.IDs)})
+}
+
+// @Summary Empty trash
+// @Description Permanently delete all trashed events
+// @Tags Events
+// @Produce json
+// @Success 200 {object} map[string]interface{}
+// @Router /events/empty-trash [post]
+func emptyTrash(c *gin.Context) {
+	res, err := db.Exec("DELETE FROM timeline_events WHERE deleted_at != '' AND deleted_at IS NOT NULL")
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+	count, _ := res.RowsAffected()
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "permanently_deleted": count})
 }
 
 // @Summary Upload media file
@@ -1307,7 +1449,7 @@ func searchEvents(c *gin.Context) {
 
 	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
 	args := []interface{}{}
 
 	if query != "" {
@@ -1721,7 +1863,7 @@ func getPersonEvents(c *gin.Context) {
 
 	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.person_id = ? ORDER BY e.event_date ASC`, id)
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.person_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
 		serverError(c, err)
 		return
@@ -1941,7 +2083,7 @@ func getEventsICS(c *gin.Context) {
 
 	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time
 		FROM timeline_events e
-		WHERE strftime('%Y', e.event_date) = ?
+		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND strftime('%Y', e.event_date) = ?
 		ORDER BY e.event_date ASC`
 	rows, err := db.Query(sqlStr, year)
 	if err != nil {
@@ -2093,6 +2235,13 @@ func batchEvents(c *gin.Context) {
 
 	switch input.Action {
 	case "delete":
+		_, err := db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id IN ("+inClause+")", args...)
+		if err != nil {
+			serverError(c, err)
+			return
+		}
+		c.JSON(http.StatusOK, gin.H{"status": "ok", "deleted": len(input.IDs)})
+	case "permanent_delete":
 		_, err := db.Exec("DELETE FROM timeline_events WHERE id IN ("+inClause+")", args...)
 		if err != nil {
 			serverError(c, err)
@@ -3102,7 +3251,7 @@ func deletePerson(c *gin.Context) {
 func getMapData(c *gin.Context) {
 	year := c.Query("year")
 	query := `SELECT id, title, description, event_date, location, media_type, media_url, latitude, longitude 
-		FROM timeline_events WHERE latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0 AND longitude != 0`
+		FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0 AND longitude != 0`
 	args := []interface{}{}
 
 	if year != "" {
@@ -3923,7 +4072,7 @@ func getCalendar(c *gin.Context) {
 	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id
-		WHERE e.event_date BETWEEN ? AND ?
+		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.event_date BETWEEN ? AND ?
 		ORDER BY e.event_date ASC, e.id ASC`, startDate, lastDay.Format("2006-01-02"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
@@ -4334,7 +4483,7 @@ func getUserEvents(c *gin.Context) {
 
 	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.user_id = ? ORDER BY e.event_date ASC`, id)
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.user_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
 		serverError(c, err)
 		return
@@ -5052,6 +5201,8 @@ func runMigration(fromVersion int) {
 	case 15:
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN event_start_time TEXT DEFAULT ''`)
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN event_end_time TEXT DEFAULT ''`)
+	case 16:
+		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN deleted_at TEXT DEFAULT ''`)
 	}
 }
 
