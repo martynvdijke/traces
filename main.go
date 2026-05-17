@@ -60,6 +60,8 @@ import (
 	"golang.org/x/net/webdav"
 	"github.com/yuin/goldmark"
 
+	"github.com/prometheus/client_golang/prometheus/promhttp"
+
 	swaggerFiles "github.com/swaggo/files/v2"
 	ginSwagger "github.com/swaggo/gin-swagger"
 )
@@ -342,6 +344,18 @@ func main() {
 	r := gin.Default()
 	r.MaxMultipartMemory = 32 << 20
 
+	tp, err := initTelemetry()
+	if err != nil {
+		log.Printf("Failed to initialize telemetry: %v", err)
+	} else {
+		r.Use(metricsMiddleware())
+		defer func() {
+			if err := tp.Shutdown(context.Background()); err != nil {
+				log.Printf("Error shutting down tracer provider: %v", err)
+			}
+		}()
+	}
+
 	r.Use(func(c *gin.Context) {
 		c.Header("X-Frame-Options", "DENY")
 		c.Header("X-Content-Type-Options", "nosniff")
@@ -371,6 +385,7 @@ func main() {
 		api.GET("/config", getPublicConfig)
 		api.GET("/manifest.json", serveManifest)
 		api.GET("/health", handleHealth)
+		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 		api.GET("/sw.js", serveServiceWorker)
 
 		auth := api.Group("")
