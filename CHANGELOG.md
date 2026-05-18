@@ -1,3 +1,10 @@
+# [1.17.0](https://github.com/martynvdijke/traces/compare/v1.16.1...v1.17.0) (2026-05-18)
+
+
+### Features
+
+* add opentelemetry tracing and prometheus metrics support ([dae9efe](https://github.com/martynvdijke/traces/commit/dae9efe8fd771e9e57eec860c3fe89c3db65c488))
+
 ## [1.16.1](https://github.com/martynvdijke/traces/compare/v1.16.0...v1.16.1) (2026-05-16)
 
 
