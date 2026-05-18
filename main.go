@@ -55,10 +55,10 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rwcarlsen/goexif/exif"
+	"github.com/yuin/goldmark"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/webdav"
-	"github.com/yuin/goldmark"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
@@ -324,6 +324,7 @@ func main() {
 	defer db.Close()
 
 	initDB()
+	initTemplates()
 
 	if immichURL == "" {
 		var cfg ImmichConfig
@@ -464,6 +465,8 @@ func main() {
 			auth.GET("/csrf-token", getCSRFToken)
 		}
 	}
+
+	registerHTMXRoutes(r)
 
 	r.GET("/sw.js", serveServiceWorker)
 

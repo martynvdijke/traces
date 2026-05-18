@@ -4703,3 +4703,191 @@ func TestRecycleBin(t *testing.T) {
 		}
 	})
 }
+
+func TestHTMXEndpoints(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	origSessionStore := sessionStore
+	origCSRFTokens := csrfTokens
+	defer func() {
+		db = origDB
+		sessionStore = origSessionStore
+		csrfTokens = origCSRFTokens
+	}()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	initDB()
+	initTemplates()
+
+	sessionStore = make(map[string]int64)
+	csrfTokens = make(map[string]string)
+
+	r := gin.New()
+
+	auth := r.Group("/api/admin")
+	auth.Use(authMiddlewareGin(), csrfMiddleware())
+	{
+		auth.GET("/events", htmxListEvents)
+		auth.POST("/events", htmxSaveEvent)
+		auth.DELETE("/events/:id", htmxDeleteEvent)
+		auth.GET("/events/:id/edit", htmxEditEventForm)
+		auth.GET("/persons", htmxListPersons)
+		auth.POST("/persons", htmxSavePerson)
+		auth.DELETE("/persons/:id", htmxDeletePerson)
+		auth.GET("/tags", htmxListTags)
+		auth.GET("/collections", htmxListCollections)
+		auth.POST("/collections", htmxSaveCollection)
+		auth.GET("/templates", htmxListTemplates)
+		auth.POST("/templates", htmxSaveTemplate)
+		auth.GET("/users", htmxListUsers)
+		auth.POST("/users", htmxSaveUser)
+		auth.GET("/trash", htmxListTrash)
+		auth.POST("/trash/:id/restore", htmxRestoreEvent)
+		auth.POST("/trash/empty", htmxEmptyTrash)
+	}
+
+	sessionID := "htmx-test-session"
+	csrfToken := "htmx-test-csrf-token"
+	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+	csrfTokens[sessionID] = csrfToken
+
+	t.Run("htmx_events_list_returns_html", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/admin/events", nil)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		contentType := w.Header().Get("Content-Type")
+		if !strings.Contains(contentType, "text/html") {
+			t.Errorf("Content-Type = %q, want text/html", contentType)
+		}
+		if !strings.Contains(w.Body.String(), "tr") && !strings.Contains(w.Body.String(), "No events found") {
+			t.Error("response should contain HTML table or message")
+		}
+	})
+
+	t.Run("htmx_persons_list_returns_html", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/admin/persons", nil)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		contentType := w.Header().Get("Content-Type")
+		if !strings.Contains(contentType, "text/html") {
+			t.Errorf("Content-Type = %q, want text/html", contentType)
+		}
+	})
+
+	t.Run("htmx_tags_list_returns_html", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/admin/tags", nil)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		contentType := w.Header().Get("Content-Type")
+		if !strings.Contains(contentType, "text/html") {
+			t.Errorf("Content-Type = %q, want text/html", contentType)
+		}
+	})
+
+	t.Run("htmx_create_event_via_form", func(t *testing.T) {
+		body := "title=HTMX+Test+Event&date=2026-06-15&location=Test&media_type=image&tags=test"
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/admin/events", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-CSRF-Token", csrfToken)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("POST /api/admin/events status = %d, body = %s", w.Code, w.Body.String())
+		}
+
+		var eventCount int
+		db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&eventCount)
+		if eventCount < 1 {
+			t.Errorf("expected at least 1 event in database, got %d. Body: %s", eventCount, w.Body.String())
+		}
+	})
+
+	t.Run("htmx_create_person_via_form", func(t *testing.T) {
+		body := "name=HTMX+Person&bio=Test+bio&color=%23ff0000"
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/admin/persons", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-CSRF-Token", csrfToken)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), "HTMX Person") {
+			t.Error("response should contain the new person name")
+		}
+
+		var count int
+		db.QueryRow("SELECT COUNT(*) FROM persons WHERE name='HTMX Person'").Scan(&count)
+		if count != 1 {
+			t.Errorf("expected 1 person, got %d", count)
+		}
+	})
+
+	t.Run("htmx_create_collection_via_form", func(t *testing.T) {
+		body := "name=HTMX+Collection&description=Test+collection&color=%2300ff00"
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("POST", "/api/admin/collections", strings.NewReader(body))
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		req.Header.Set("X-CSRF-Token", csrfToken)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		if !strings.Contains(w.Body.String(), "HTMX Collection") {
+			t.Error("response should contain the new collection name")
+		}
+	})
+
+	t.Run("htmx_trash_endpoint_returns_html", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/admin/trash", nil)
+		req.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, want 200", w.Code)
+		}
+		contentType := w.Header().Get("Content-Type")
+		if !strings.Contains(contentType, "text/html") {
+			t.Errorf("Content-Type = %q, want text/html", contentType)
+		}
+	})
+
+	t.Run("htmx_endpoints_reject_unauthorized", func(t *testing.T) {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/admin/events", nil)
+		r.ServeHTTP(w, req)
+
+		if w.Code != http.StatusUnauthorized {
+			t.Errorf("status = %d, want 401", w.Code)
+		}
+	})
+}

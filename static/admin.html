@@ -557,6 +557,7 @@
                             <select class="form-select" id="filter-year" style="min-width:100px" onchange="applyFilters()">
                             </select>
                             <button class="btn btn-primary" onclick="loadEvents()"><i class="fa-solid fa-search"></i></button>
+            <button class="btn btn-outline-info btn-sm" hx-get="/api/admin/events" hx-target="#event-list" hx-swap="innerHTML" title="HTMX Refresh"><i class="fa-solid fa-rotate"></i></button>
                             <a class="btn btn-sm btn-outline-secondary" id="admin-ics-download" href="/api/events/ics" title="Download iCal" download><i class="fa-solid fa-calendar-plus"></i></a>
                         </div>
                         <div id="batch-actions" class="d-flex gap-2 align-items-center p-2 mb-2 bg-primary-glow rounded" style="display:none">
@@ -601,13 +602,13 @@
             <div class="tab-pane fade" id="trash-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="fw-bold mb-0"><i class="fa-solid fa-trash-can me-2 text-danger"></i>Trash</h5>
-                    <button class="btn btn-sm btn-danger" onclick="emptyTrash()" id="empty-trash-btn"><i class="fa-solid fa-trash-can me-1"></i> Empty Trash</button>
+                    <button class="btn btn-sm btn-danger" hx-post="/api/admin/trash/empty" hx-target="#trash-list" hx-confirm="Permanently delete ALL trashed events?" id="empty-trash-btn"><i class="fa-solid fa-trash-can me-1"></i> Empty Trash</button>
                 </div>
 
                 <div class="card">
                     <div class="card-body">
-                        <div id="trash-list">
-                            <div class="text-muted py-4 text-center">Loading...</div>
+                        <div id="trash-list" hx-get="/api/admin/trash" hx-trigger="load" hx-swap="innerHTML">
+                            <div class="text-muted py-4 text-center"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>
                         </div>
                     </div>
                 </div>
@@ -824,7 +825,7 @@
             <div class="tab-pane fade" id="templates-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="fw-bold mb-0"><i class="fa-solid fa-copy me-2 text-primary"></i>Event Templates</h5>
-                    <button class="btn btn-sm btn-success" onclick="openTemplateModal()"><i class="fa-solid fa-plus me-1"></i> Add Template</button>
+                    <button class="btn btn-sm btn-success" hx-get="/api/admin/templates/0/edit" hx-target="#templateFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#templateModal"><i class="fa-solid fa-plus me-1"></i> Add Template</button>
                 </div>
                 <div class="card">
                     <div class="card-body">
@@ -839,7 +840,9 @@
                                         <th class="text-end pe-3">Actions</th>
                                     </tr>
                                 </thead>
-                                <tbody id="template-list"></tbody>
+                                <tbody id="template-list" hx-get="/api/admin/templates" hx-trigger="load" hx-swap="innerHTML">
+                                    <tr><td colspan="5" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</td></tr>
+                                </tbody>
                             </table>
                         </div>
                     </div>
@@ -850,49 +853,9 @@
                     <div class="modal-dialog">
                         <div class="modal-content">
                             <div class="modal-header"><h5 class="modal-title" id="templateModalLabel">Add Template</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                            <form id="template-form">
-                                <div class="modal-body">
-                                    <input type="hidden" id="template-id" value="0">
-                                    <div class="mb-3">
-                                        <label class="form-label">Title <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="template-title" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Description</label>
-                                        <textarea class="form-control" id="template-desc" rows="3"></textarea>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Tags</label>
-                                        <input type="text" class="form-control" id="template-tags" placeholder="comma, separated">
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Location</label>
-                                        <input type="text" class="form-control" id="template-location">
-                                    </div>
-                                    <div class="row g-3 mb-3">
-                                        <div class="col-sm-6">
-                                            <label class="form-label">Person</label>
-                                            <select class="form-select" id="template-person"><option value="0">None</option></select>
-                                        </div>
-                                        <div class="col-sm-6">
-                                            <label class="form-label">User</label>
-                                            <select class="form-select" id="template-user"></select>
-                                        </div>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Media Type</label>
-                                        <select class="form-select" id="template-media-type">
-                                            <option value="image">Image</option>
-                                            <option value="video">Video</option>
-                                            <option value="audio">Audio</option>
-                                        </select>
-                                    </div>
-                                </div>
-                                <div class="modal-footer">
-                                    <div id="template-result" class="me-auto"></div>
-                                    <button type="submit" class="btn btn-primary">Save Template</button>
-                                </div>
-                            </form>
+                            <div class="modal-body" id="templateFormContainer">
+                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -902,36 +865,20 @@
             <div class="tab-pane fade" id="collections-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="fw-bold mb-0"><i class="fa-solid fa-folder me-2 text-primary"></i>Collections</h5>
-                    <button class="btn btn-sm btn-success" onclick="openCollectionModal()"><i class="fa-solid fa-plus me-1"></i> Add Collection</button>
+                    <button class="btn btn-sm btn-success" hx-get="/api/admin/collections/0/edit" hx-target="#collectionFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#collectionModal"><i class="fa-solid fa-plus me-1"></i> Add Collection</button>
                 </div>
-                <div class="row g-3" id="collection-list"></div>
+                <div class="row g-3" id="collection-list" hx-get="/api/admin/collections" hx-trigger="load" hx-swap="innerHTML">
+                    <div class="col-12"><div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div></div>
+                </div>
 
                 <!-- Collection Modal -->
                 <div class="modal fade" id="collectionModal" tabindex="-1">
                     <div class="modal-dialog">
                         <div class="modal-content">
                             <div class="modal-header"><h5 class="modal-title" id="collectionModalLabel">Add Collection</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
-                            <form id="collection-form">
-                                <div class="modal-body">
-                                    <input type="hidden" id="collection-id" value="0">
-                                    <div class="mb-3">
-                                        <label class="form-label">Name <span class="text-danger">*</span></label>
-                                        <input type="text" class="form-control" id="collection-name" required>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Description</label>
-                                        <textarea class="form-control" id="collection-desc" rows="2"></textarea>
-                                    </div>
-                                    <div class="mb-3">
-                                        <label class="form-label">Color</label>
-                                        <input type="color" class="form-control form-control-color" id="collection-color" value="#7c3aed" style="width:60px;height:38px;padding:3px">
-                                    </div>
-                                </div>
-                                <div class="modal-footer">
-                                    <div id="collection-result" class="me-auto"></div>
-                                    <button type="submit" class="btn btn-primary">Save Collection</button>
-                                </div>
-                            </form>
+                            <div class="modal-body" id="collectionFormContainer">
+                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -945,7 +892,7 @@
                 <div class="card mb-3">
                     <div class="card-header"><i class="fa-solid fa-list me-2"></i>All Tags</div>
                     <div class="card-body">
-                        <div id="tag-manager-table">
+                        <div id="tag-manager-table" hx-get="/api/admin/tags" hx-trigger="load" hx-swap="innerHTML">
                             <div class="text-muted text-center py-3">Loading tags...</div>
                         </div>
                     </div>
@@ -981,9 +928,11 @@
             <div class="tab-pane fade" id="users-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="fw-bold mb-0"><i class="fa-solid fa-people-group me-2 text-primary"></i>Family Users</h5>
-                    <button class="btn btn-sm btn-success" onclick="openUserModal()"><i class="fa-solid fa-plus me-1"></i> Add User</button>
+                    <button class="btn btn-sm btn-success" hx-get="/api/admin/users/0/edit" hx-target="#userFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#userModal"><i class="fa-solid fa-plus me-1"></i> Add User</button>
                 </div>
-                <div class="row g-3" id="user-list"></div>
+                <div class="row g-3" id="user-list" hx-get="/api/admin/users" hx-trigger="load" hx-swap="innerHTML">
+                    <div class="col-12"><div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div></div>
+                </div>
             </div>
 
             <!-- OLLAMA TAB -->
@@ -1060,35 +1009,20 @@
         </div>
     </div>
 
-    <!-- USER MODAL -->
-    <div class="modal fade" id="userModal" tabindex="-1">
-        <div class="modal-dialog modal-dialog-scrollable">
-            <div class="modal-content">
-                <div class="modal-header">
-                    <h5 class="modal-title" id="userModalLabel">Edit User</h5>
-                    <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                <!-- USER MODAL -->
+                <div class="modal fade" id="userModal" tabindex="-1">
+                    <div class="modal-dialog modal-dialog-scrollable">
+                        <div class="modal-content">
+                            <div class="modal-header">
+                                <h5 class="modal-title" id="userModalLabel">Edit User</h5>
+                                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                            </div>
+                            <div class="modal-body" id="userFormContainer">
+                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                            </div>
+                        </div>
+                    </div>
                 </div>
-                <div class="modal-body">
-                    <form id="user-form">
-                        <input type="hidden" name="id" id="user-id">
-                        <div class="mb-3">
-                            <label class="form-label">Username</label>
-                            <input type="text" class="form-control" name="username" id="user-username" required>
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Display Name</label>
-                            <input type="text" class="form-control" name="display_name" id="user-display-name">
-                        </div>
-                        <div class="mb-3">
-                            <label class="form-label">Color</label>
-                            <input type="color" class="form-control form-control-color" name="color" id="user-color" value="#7c3aed" style="width:60px;height:40px">
-                        </div>
-                        <button type="submit" class="btn btn-primary w-100">Save User</button>
-                    </form>
-                </div>
-            </div>
-        </div>
-    </div>
 
     <!-- EVENT MODAL -->
     <div class="modal fade" id="eventModal" tabindex="-1">
@@ -1294,8 +1228,33 @@
         </div>
     </div>
 
+    <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
     <script type="module" src="/static/js/admin.js"></script>
+    <script>
+    // Auto-fetch CSRF token for htmx requests
+    document.addEventListener('DOMContentLoaded', function() {
+        fetch('/api/csrf-token').then(r => r.json()).then(d => { window.__csrfToken = d.token; }).catch(function(){});
+    });
+    document.addEventListener('htmx:configRequest', function(evt) {
+        if (window.__csrfToken && (evt.detail.verb === 'post' || evt.detail.verb === 'delete' || evt.detail.verb === 'put')) {
+            evt.detail.headers['X-CSRF-Token'] = window.__csrfToken;
+        }
+    });
+    document.addEventListener('htmx:afterRequest', function(evt) {
+        if (evt.detail.successful) {
+            var modal = evt.detail.target.closest('.modal');
+            if (modal) {
+                var bsModal = bootstrap.Modal.getInstance(modal);
+                if (bsModal) bsModal.hide();
+            }
+        }
+    });
+    // Reload events when htmx triggers refresh
+    document.addEventListener('reloadEvents', function() {
+        loadEvents();
+    });
+    </script>
 </body>
 </html>
