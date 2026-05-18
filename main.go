@@ -652,8 +652,11 @@ func getCSRFToken(c *gin.Context) {
 		return
 	}
 	sessionMu.Lock()
-	token := fmt.Sprintf("%x", sha256.Sum256([]byte(cookie+time.Now().String())))
-	csrfTokens[cookie] = token
+	token, ok := csrfTokens[cookie]
+	if !ok {
+		token = fmt.Sprintf("%x", sha256.Sum256([]byte(cookie+"-csrf")))
+		csrfTokens[cookie] = token
+	}
 	sessionMu.Unlock()
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
@@ -758,13 +761,11 @@ func handleLogin(c *gin.Context) {
 		sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
 		csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
 		sessionMu.Unlock()
-		c.SetCookie("session", sessionID, 86400, "/", "", true, true)
 		http.SetCookie(c.Writer, &http.Cookie{
 			Name:     "session",
 			Value:    sessionID,
 			Path:     "/",
 			MaxAge:   86400,
-			Secure:   true,
 			HttpOnly: true,
 			SameSite: http.SameSiteLaxMode,
 		})
@@ -798,7 +799,6 @@ func handleLogin(c *gin.Context) {
 		Value:    sessionID,
 		Path:     "/",
 		MaxAge:   86400,
-		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
@@ -823,7 +823,6 @@ func handleLogout(c *gin.Context) {
 		Value:    "",
 		Path:     "/",
 		MaxAge:   -1,
-		Secure:   true,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})

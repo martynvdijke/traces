@@ -100,9 +100,8 @@ test.describe('HTMX Integration', () => {
       headers: {
         Cookie: `session=${sessionCookie}`,
         'X-CSRF-Token': csrfToken,
-        'Content-Type': 'application/x-www-form-urlencoded'
       },
-      data: {
+      form: {
         title: 'HTMX E2E Event',
         description: 'Created via htmx endpoint',
         date: '2026-06-01',
@@ -155,9 +154,8 @@ test.describe('HTMX Integration', () => {
       headers: {
         Cookie: `session=${sessionCookie}`,
         'X-CSRF-Token': csrfToken,
-        'Content-Type': 'application/x-www-form-urlencoded'
       },
-      data: {
+      form: {
         name: 'HTMX Test Collection',
         description: 'Created via htmx',
         color: '#ff0000'
@@ -191,9 +189,8 @@ test.describe('HTMX Integration', () => {
       headers: {
         Cookie: `session=${sessionCookie}`,
         'X-CSRF-Token': csrfToken,
-        'Content-Type': 'application/x-www-form-urlencoded'
       },
-      data: {
+      form: {
         username: 'htmxuser',
         display_name: 'HTMX User',
         color: '#00ff00'

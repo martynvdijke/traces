@@ -190,7 +190,16 @@ func htmxReadForm(c *gin.Context) map[string]string {
 	for k := range c.Request.PostForm {
 		data[k] = c.Request.PostForm.Get(k)
 	}
-	if len(data) == 0 && len(body) > 0 {
+	bodyStr := strings.TrimSpace(string(body))
+	useJSON := false
+	if len(body) > 0 {
+		if len(data) == 0 {
+			useJSON = true
+		} else if bodyStr[0] == '{' || bodyStr[0] == '[' {
+			useJSON = true
+		}
+	}
+	if useJSON {
 		var jsonData map[string]string
 		if err := json.Unmarshal(body, &jsonData); err == nil {
 			for k, v := range jsonData {
