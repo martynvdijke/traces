@@ -1247,7 +1247,7 @@ function openUserModal(userId?: number): void {
   new bootstrap.Modal(document.getElementById('userModal')).show();
 }
 
-document.getElementById('user-form')!.addEventListener('submit', async (e) => {
+document.getElementById('user-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const data = {
     id: parseInt((document.getElementById('user-id') as HTMLInputElement).value) || 0,
@@ -1719,7 +1719,7 @@ async function deleteTemplate(id: number): Promise<void> {
   await loadTemplates();
 }
 
-document.getElementById('template-form')!.addEventListener('submit', async (e) => {
+document.getElementById('template-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   await ensureCSRF();
   const data = {
@@ -1830,7 +1830,7 @@ async function deleteCollection(id: number): Promise<void> {
   await loadCollections();
 }
 
-document.getElementById('collection-form')!.addEventListener('submit', async (e) => {
+document.getElementById('collection-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   await ensureCSRF();
   const data = {

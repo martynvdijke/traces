@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bytes"
 	"database/sql"
+	"encoding/json"
+	"io"
 	"net/http"
 	"os"
 	"strconv"
@@ -53,7 +56,7 @@ func registerHTMXRoutes(r *gin.Engine) {
 }
 
 func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string) ([]EventRow, error) {
-	query := `SELECT e.id, e.title, e.event_date, e.location, e.media_type, e.media_url, e.is_favorite, e.person_id, e.tags, e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
+	query := `SELECT e.id, e.title, e.event_date, e.location, e.media_type, COALESCE(e.media_url,''), e.is_favorite, e.person_id, COALESCE(e.tags,''), e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
 		p.name, p.color
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
 	args := []interface{}{}
@@ -176,32 +179,56 @@ func htmxSearchEvents(c *gin.Context) {
 	renderTemplate(c.Writer, "event-list", events)
 }
 
+func htmxReadForm(c *gin.Context) map[string]string {
+	data := make(map[string]string)
+	body, err := c.GetRawData()
+	if err != nil {
+		return data
+	}
+	c.Request.Body = io.NopCloser(bytes.NewReader(body))
+	c.Request.ParseForm()
+	for k := range c.Request.PostForm {
+		data[k] = c.Request.PostForm.Get(k)
+	}
+	if len(data) == 0 && len(body) > 0 {
+		var jsonData map[string]string
+		if err := json.Unmarshal(body, &jsonData); err == nil {
+			for k, v := range jsonData {
+				data[k] = v
+			}
+		}
+	}
+	return data
+}
+
 func htmxSaveEvent(c *gin.Context) {
-	idStr := c.PostForm("id")
-	title := strings.TrimSpace(c.PostForm("title"))
+	data := htmxReadForm(c)
+
+	idStr := data["id"]
+	title := strings.TrimSpace(data["title"])
 	if title == "" {
 		c.String(http.StatusBadRequest, "Title is required")
 		return
 	}
 
-	date := c.PostForm("date")
+	date := data["date"]
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
 	}
-	location := c.PostForm("location")
-	tags := c.PostForm("tags")
-	mediaType := c.PostForm("media_type")
+	location := data["location"]
+	tags := data["tags"]
+	mediaType := data["media_type"]
 	if mediaType == "" {
 		mediaType = "image"
 	}
-	recurring := c.PostForm("recurring")
-	startTime := c.PostForm("start_time")
-	endTime := c.PostForm("end_time")
-	latStr := c.PostForm("latitude")
-	lngStr := c.PostForm("longitude")
-	personName := c.PostForm("person_name")
+	recurring := data["recurring"]
+	startTime := data["start_time"]
+	endTime := data["end_time"]
+	latStr := data["latitude"]
+	lngStr := data["longitude"]
+	personName := data["person_name"]
 
-	desc := c.PostForm("description")
+	desc := data["description"]
 
 	id := parseIntOrZero(idStr)
 
@@ -361,11 +388,12 @@ func htmxListPersons(c *gin.Context) {
 }
 
 func htmxSavePerson(c *gin.Context) {
-	id := parseIntOrZero(c.PostForm("id"))
-	name := c.PostForm("name")
-	bio := c.PostForm("bio")
-	birthDate := c.PostForm("birth_date")
-	color := c.PostForm("color")
+	data := htmxReadForm(c)
+	id := parseIntOrZero(data["id"])
+	name := data["name"]
+	bio := data["bio"]
+	birthDate := data["birth_date"]
+	color := data["color"]
 	if color == "" {
 		color = "#7c3aed"
 	}
@@ -472,10 +500,11 @@ func htmxListCollections(c *gin.Context) {
 }
 
 func htmxSaveCollection(c *gin.Context) {
-	id := parseIntOrZero(c.PostForm("id"))
-	name := c.PostForm("name")
-	description := c.PostForm("description")
-	color := c.PostForm("color")
+	data := htmxReadForm(c)
+	id := parseIntOrZero(data["id"])
+	name := data["name"]
+	description := data["description"]
+	color := data["color"]
 	if color == "" {
 		color = "#7c3aed"
 	}
@@ -548,10 +577,11 @@ func htmxListTemplates(c *gin.Context) {
 }
 
 func htmxSaveTemplate(c *gin.Context) {
-	id := parseIntOrZero(c.PostForm("id"))
-	title := c.PostForm("title")
-	tags := c.PostForm("tags")
-	location := c.PostForm("location")
+	data := htmxReadForm(c)
+	id := parseIntOrZero(data["id"])
+	title := data["title"]
+	tags := data["tags"]
+	location := data["location"]
 
 	if id == 0 {
 		db.Exec("INSERT INTO event_templates (title, tags, location) VALUES (?, ?, ?)", title, tags, location)
@@ -602,7 +632,7 @@ func htmxEditTemplateForm(c *gin.Context) {
 func htmxListUsers(c *gin.Context) {
 	rows, err := db.Query(`SELECT u.id, u.username, COALESCE(u.display_name,''), COALESCE(u.color,'#7c3aed'),
 		(SELECT COUNT(*) FROM timeline_events WHERE user_id = u.id) as event_count
-		FROM admin_users u ORDER BY u.username ASC`)
+		FROM users u ORDER BY u.display_name ASC`)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
@@ -624,18 +654,19 @@ func htmxListUsers(c *gin.Context) {
 }
 
 func htmxSaveUser(c *gin.Context) {
-	id := parseIntOrZero(c.PostForm("id"))
-	username := c.PostForm("username")
-	displayName := c.PostForm("display_name")
-	color := c.PostForm("color")
+	data := htmxReadForm(c)
+	id := parseIntOrZero(data["id"])
+	username := data["username"]
+	displayName := data["display_name"]
+	color := data["color"]
 	if color == "" {
 		color = "#7c3aed"
 	}
 
 	if id == 0 {
-		db.Exec("INSERT INTO admin_users (username, display_name, color) VALUES (?, ?, ?)", username, displayName, color)
+		db.Exec("INSERT INTO users (username, display_name, color) VALUES (?, ?, ?)", username, displayName, color)
 	} else {
-		db.Exec("UPDATE admin_users SET username=?, display_name=?, color=? WHERE id=?", username, displayName, color, id)
+		db.Exec("UPDATE users SET username=?, display_name=?, color=? WHERE id=?", username, displayName, color, id)
 	}
 
 	htmxListUsers(c)
@@ -649,8 +680,8 @@ func htmxDeleteUser(c *gin.Context) {
 		return
 	}
 
-	db.Exec("UPDATE timeline_events SET user_id = NULL WHERE user_id = ?", id)
-	db.Exec("DELETE FROM admin_users WHERE id=?", id)
+	db.Exec("UPDATE timeline_events SET user_id = 0 WHERE user_id = ?", id)
+	db.Exec("DELETE FROM users WHERE id=?", id)
 
 	htmxListUsers(c)
 }
@@ -669,7 +700,7 @@ func htmxEditUserForm(c *gin.Context) {
 	}
 
 	var u UserRow
-	err = db.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(color,'#7c3aed'), 0 FROM admin_users WHERE id=?", id).Scan(
+	err = db.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(color,'#7c3aed'), 0 FROM users WHERE id=?", id).Scan(
 		&u.ID, &u.Username, &u.DisplayName, &u.Color, &u.EventCount)
 	if err != nil {
 		c.String(http.StatusNotFound, "User not found")
