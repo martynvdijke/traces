@@ -1,3 +1,16 @@
+# [1.18.0](https://github.com/martynvdijke/traces/compare/v1.17.0...v1.18.0) (2026-05-18)
+
+
+### Bug Fixes
+
+* **csrf:** persist CSRF token across requests, fix Secure cookies and form-encoded POST tests ([a682b95](https://github.com/martynvdijke/traces/commit/a682b95b4f4a8bed9d74092e46ef262a2bb2129e))
+* resolve admin page JS crash and htmx handler regressions ([885239c](https://github.com/martynvdijke/traces/commit/885239ce2e8f7ac21b499a2caf28de7d0ae03529))
+
+
+### Features
+
+* migrate CRUD-heavy admin sections to htmx ([4a6059b](https://github.com/martynvdijke/traces/commit/4a6059bce96ec84688ed6f7cf54f5f9886d837a9))
+
 # [1.17.0](https://github.com/martynvdijke/traces/compare/v1.16.1...v1.17.0) (2026-05-18)
 
 
