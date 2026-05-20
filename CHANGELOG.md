@@ -1,3 +1,10 @@
+## [1.18.1](https://github.com/martynvdijke/traces/compare/v1.18.0...v1.18.1) (2026-05-20)
+
+
+### Bug Fixes
+
+* ensure Gotify notification always fires on release workflow ([6961c13](https://github.com/martynvdijke/traces/commit/6961c137bbcc0d2a6517377894a390a8eb1eaa8f))
+
 # [1.18.0](https://github.com/martynvdijke/traces/compare/v1.17.0...v1.18.0) (2026-05-18)
 
 
