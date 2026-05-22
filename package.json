@@ -1,6 +1,6 @@
 {
   "name": "traces",
-  "version": "1.18.2",
+  "version": "1.18.3",
   "description": "A Go-based timeline application for tracking events throughout the year with multimedia support.",
   "main": "index.js",
   "scripts": {
