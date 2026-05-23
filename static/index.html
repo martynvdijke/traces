@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>TRACES - Your Year in Review</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -102,14 +102,14 @@
                             <div class="global-search-dropdown" id="global-search-dropdown" style="display:none"></div>
                         </div>
                         <button class="btn btn-sm btn-outline-secondary" onclick="searchEvents()">
-                            <i class="fa-solid fa-search"></i>
+                            <i class="fa-solid fa-search" aria-hidden="true"></i>
                         </button>
                     </div>
                     <ul class="mb-0 d-flex flex-wrap gap-2 gap-md-3 list-unstyled justify-content-center">
-                        <li><a href="/admin.html" class="text-uppercase small"><i class="fa-solid fa-lock me-1"></i><span class="d-none d-lg-inline">Admin</span></a></li>
+                        <li><a href="/admin.html" class="text-uppercase small"><i class="fa-solid fa-lock me-1" aria-hidden="true"></i><span class="d-none d-lg-inline">Admin</span></a></li>
                     </ul>
                     <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Theme">
-                        <i class="fa-solid fa-moon"></i>
+                        <i class="fa-solid fa-moon" aria-hidden="true"></i>
                     </button>
                 </nav>
             </div>
@@ -120,8 +120,8 @@
         <section class="year-selector mb-4">
             <div class="row align-items-center g-3">
                 <div class="col-md-4 d-flex align-items-center gap-2">
-                    <h2 class="mb-0"><i class="fa-solid fa-calendar me-2"></i>Year <span id="current-year">2026</span></h2>
-                    <a class="btn btn-sm btn-outline-secondary" id="ics-download" href="/api/events/ics?year=2026" title="Download Calendar (iCal)" download><i class="fa-solid fa-calendar-plus"></i></a>
+                    <h2 class="mb-0"><i class="fa-solid fa-calendar me-2" aria-hidden="true"></i>Year <span id="current-year">2026</span></h2>
+                    <a class="btn btn-sm btn-outline-secondary" id="ics-download" href="/api/events/ics?year=2026" title="Download Calendar (iCal)" download><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i></a>
                 </div>
                 <div class="col-md-8">
                     <div class="d-flex gap-2 flex-wrap align-items-center" id="year-buttons">
@@ -173,9 +173,9 @@
                 <div class="col-lg-8">
                     <div class="contribution-card">
                         <div class="contribution-header">
-                            <h3><i class="fa-solid fa-chart-pie me-2"></i>Activity Overview</h3>
+                            <h3><i class="fa-solid fa-chart-pie me-2" aria-hidden="true"></i>Activity Overview</h3>
                             <div>
-                                <button class="btn btn-sm btn-outline-primary me-1" onclick="toggleFilters()" title="Advanced Filters"><i class="fa-solid fa-filter"></i></button>
+                                <button class="btn btn-sm btn-outline-primary me-1" onclick="toggleFilters()" title="Advanced Filters"><i class="fa-solid fa-filter" aria-hidden="true"></i></button>
                                 <span class="badge bg-primary" id="total-events">0 events</span>
                             </div>
                         </div>
@@ -197,22 +197,22 @@
                 <div class="col-lg-4">
                     <div class="stats-grid">
                         <div class="stat-card">
-                            <i class="fa-solid fa-image"></i>
+                            <i class="fa-solid fa-image" aria-hidden="true"></i>
                             <span class="stat-value" id="stat-images">0</span>
                             <span class="stat-label">Images</span>
                         </div>
                         <div class="stat-card">
-                            <i class="fa-solid fa-video"></i>
+                            <i class="fa-solid fa-video" aria-hidden="true"></i>
                             <span class="stat-value" id="stat-videos">0</span>
                             <span class="stat-label">Videos</span>
                         </div>
                         <div class="stat-card">
-                            <i class="fa-solid fa-music"></i>
+                            <i class="fa-solid fa-music" aria-hidden="true"></i>
                             <span class="stat-value" id="stat-audio">0</span>
                             <span class="stat-label">Audio</span>
                         </div>
                         <div class="stat-card">
-                            <i class="fa-solid fa-map-marker-alt"></i>
+                            <i class="fa-solid fa-map-marker-alt" aria-hidden="true"></i>
                             <span class="stat-value" id="stat-locations">0</span>
                             <span class="stat-label">Locations</span>
                         </div>
@@ -224,12 +224,12 @@
         <div id="memories-section" class="memories-section mb-4" style="display:none"></div>
 
         <ul class="nav main-tabs" id="mainTabs" role="tablist">
-            <li class="nav-item"><button class="nav-link active" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timeline-pane" type="button"><i class="fa-solid fa-clock me-1"></i> Timeline</button></li>
-            <li class="nav-item"><button class="nav-link" id="calendar-tab" data-bs-toggle="tab" data-bs-target="#calendar-pane" type="button"><i class="fa-solid fa-calendar-days me-1"></i> Calendar</button></li>
-            <li class="nav-item"><button class="nav-link" id="gallery-tab" data-bs-toggle="tab" data-bs-target="#gallery-pane" type="button"><i class="fa-solid fa-images me-1"></i> Photos</button></li>
-            <li class="nav-item"><button class="nav-link" id="map-tab" data-bs-toggle="tab" data-bs-target="#map-pane" type="button"><i class="fa-solid fa-map-location-dot me-1"></i> Map</button></li>
-            <li class="nav-item"><button class="nav-link" id="compare-tab" data-bs-toggle="tab" data-bs-target="#compare-pane" type="button"><i class="fa-solid fa-chart-bar me-1"></i> Compare</button></li>
-            <li class="nav-item"><button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-pane" type="button"><i class="fa-solid fa-chart-simple me-1"></i> Stats</button></li>
+            <li class="nav-item"><button class="nav-link active" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timeline-pane" type="button"><i class="fa-solid fa-clock me-1" aria-hidden="true"></i> Timeline</button></li>
+            <li class="nav-item"><button class="nav-link" id="calendar-tab" data-bs-toggle="tab" data-bs-target="#calendar-pane" type="button"><i class="fa-solid fa-calendar-days me-1" aria-hidden="true"></i> Calendar</button></li>
+            <li class="nav-item"><button class="nav-link" id="gallery-tab" data-bs-toggle="tab" data-bs-target="#gallery-pane" type="button"><i class="fa-solid fa-images me-1" aria-hidden="true"></i> Photos</button></li>
+            <li class="nav-item"><button class="nav-link" id="map-tab" data-bs-toggle="tab" data-bs-target="#map-pane" type="button"><i class="fa-solid fa-map-location-dot me-1" aria-hidden="true"></i> Map</button></li>
+            <li class="nav-item"><button class="nav-link" id="compare-tab" data-bs-toggle="tab" data-bs-target="#compare-pane" type="button"><i class="fa-solid fa-chart-bar me-1" aria-hidden="true"></i> Compare</button></li>
+            <li class="nav-item"><button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-pane" type="button"><i class="fa-solid fa-chart-simple me-1" aria-hidden="true"></i> Stats</button></li>
         </ul>
 
         <div class="tab-content">
@@ -260,9 +260,9 @@
             <div class="tab-pane fade" id="calendar-pane">
                 <section class="calendar-section mb-4">
                     <div class="calendar-nav">
-                        <button class="btn btn-outline-primary btn-sm" onclick="calendarPrevMonth()"><i class="fa-solid fa-chevron-left"></i></button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="calendarPrevMonth()"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
                         <h3 id="calendar-title"></h3>
-                        <button class="btn btn-outline-primary btn-sm" onclick="calendarNextMonth()"><i class="fa-solid fa-chevron-right"></i></button>
+                        <button class="btn btn-outline-primary btn-sm" onclick="calendarNextMonth()"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
                         <button class="btn btn-outline-secondary btn-sm ms-auto" onclick="calendarToday()">Today</button>
                     </div>
                     <div class="calendar-grid" id="calendar-grid"></div>
@@ -275,7 +275,7 @@
 
             <div class="tab-pane fade" id="gallery-pane">
                 <section id="gallery" class="gallery-section mb-4">
-                    <h4 class="mb-3"><i class="fa-solid fa-images me-2"></i>Media Gallery</h4>
+                    <h4 class="mb-3"><i class="fa-solid fa-images me-2" aria-hidden="true"></i>Media Gallery</h4>
                     <div class="row g-4" id="gallery-container"></div>
                     <div class="text-center mt-4">
                         <button class="btn btn-outline-primary" onclick="loadMoreGallery()" id="load-more-btn">Load More</button>
@@ -285,11 +285,11 @@
 
             <div class="tab-pane fade" id="map-pane">
                 <section class="map-section mb-4">
-                    <h4 class="mb-3"><i class="fa-solid fa-map-location-dot me-2"></i>Event Map</h4>
+                    <h4 class="mb-3"><i class="fa-solid fa-map-location-dot me-2" aria-hidden="true"></i>Event Map</h4>
                     <div class="d-flex gap-2 mb-2 align-items-center">
                         <div class="form-check form-switch mb-0">
                             <input class="form-check-input" type="checkbox" id="show-location-path" onchange="renderMapInstance()">
-                            <label class="form-check-label small" for="show-location-path"><i class="fa-solid fa-route me-1"></i>Location Timeline Path</label>
+                            <label class="form-check-label small" for="show-location-path"><i class="fa-solid fa-route me-1" aria-hidden="true"></i>Location Timeline Path</label>
                         </div>
                         <span class="text-muted small">connects geo-tagged events in chronological order</span>
                     </div>
@@ -297,7 +297,7 @@
                         <div class="card-body p-2">
                             <div id="map-container">
                                 <div class="text-center text-muted py-5" id="map-placeholder">
-                                    <i class="fa-solid fa-map-location-dot fa-3x mb-3"></i>
+                                    <i class="fa-solid fa-map-location-dot fa-3x mb-3" aria-hidden="true"></i>
                                     <p>Loading map...</p>
                                 </div>
                             </div>
@@ -308,7 +308,7 @@
 
             <div class="tab-pane fade" id="compare-pane">
                 <section class="compare-section mb-4">
-                    <h4 class="mb-3"><i class="fa-solid fa-chart-bar me-2"></i>Year Comparison</h4>
+                    <h4 class="mb-3"><i class="fa-solid fa-chart-bar me-2" aria-hidden="true"></i>Year Comparison</h4>
                     <div class="row g-4">
                         <div class="col-md-5">
                             <div class="card">
@@ -320,7 +320,7 @@
                         </div>
                         <div class="col-md-2 d-flex align-items-center justify-content-center">
                             <div class="text-center">
-                                <i class="fa-solid fa-arrows-left-right fa-2x text-muted"></i>
+                                <i class="fa-solid fa-arrows-left-right fa-2x text-muted" aria-hidden="true"></i>
                             </div>
                         </div>
                         <div class="col-md-5">
@@ -342,7 +342,7 @@
 
             <div class="tab-pane fade" id="stats-pane">
                 <section class="stats-section mb-4">
-                    <h4 class="mb-3"><i class="fa-solid fa-chart-simple me-2"></i>Event Distributions</h4>
+                    <h4 class="mb-3"><i class="fa-solid fa-chart-simple me-2" aria-hidden="true"></i>Event Distributions</h4>
                     <div id="stats-distribution-container">
                         <div class="text-center text-muted py-5">Loading statistics...</div>
                     </div>
@@ -369,7 +369,7 @@
 
     <footer class="py-5 mt-5">
         <div class="container text-center">
-            <p class="mb-0 text-uppercase fw-bold"><i class="fa-solid fa-clock mx-2"></i> 2026 TRACES <i class="fa-solid fa-clock mx-2"></i></p>
+            <p class="mb-0 text-uppercase fw-bold"><i class="fa-solid fa-clock mx-2" aria-hidden="true"></i> 2026 TRACES <i class="fa-solid fa-clock mx-2" aria-hidden="true"></i></p>
             <span class="small opacity-50 text-uppercase letter-spacing-2 mt-2 d-block">Your memories, beautifully preserved.</span>
             <span class="small opacity-50 text-uppercase letter-spacing-2 mt-2 d-block" id="version-display">Version loading...</span>
         </div>

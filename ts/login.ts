@@ -1,7 +1,14 @@
 export {};
 
+function showLoginError(msg: string) {
+  const el = document.getElementById('login-error');
+  if (el) { el.textContent = msg; el.classList.remove('d-none'); }
+}
+
 document.getElementById('login-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const errEl = document.getElementById('login-error');
+  if (errEl) errEl.classList.add('d-none');
   const formData = new FormData(e.target as HTMLFormElement);
   try {
     const res = await fetch('/api/login', {
@@ -16,10 +23,10 @@ document.getElementById('login-form')?.addEventListener('submit', async (e) => {
       window.location.href = '/admin.html';
     } else {
       const data = await res.json();
-      alert(data.error || 'Invalid credentials');
+      showLoginError(data.error || 'Invalid credentials');
     }
   } catch (err) {
-    alert('Login failed: ' + (err as Error).message);
+    showLoginError('Login failed: ' + (err as Error).message);
   }
 });
 

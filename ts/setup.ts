@@ -1,10 +1,17 @@
 export {};
 
+function showSetupError(msg: string) {
+  const el = document.getElementById('setup-error');
+  if (el) { el.textContent = msg; el.classList.remove('d-none'); }
+}
+
 document.getElementById('setup-form')?.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const errEl = document.getElementById('setup-error');
+  if (errEl) errEl.classList.add('d-none');
   const formData = new FormData(e.target as HTMLFormElement);
   if (formData.get('password') !== formData.get('confirm_password')) {
-    alert('Passwords do not match');
+    showSetupError('Passwords do not match');
     return;
   }
   try {
@@ -21,10 +28,10 @@ document.getElementById('setup-form')?.addEventListener('submit', async (e) => {
       window.location.href = '/admin.html';
     } else {
       const data = await res.json();
-      alert(data.error || 'Setup failed');
+      showSetupError(data.error || 'Setup failed');
     }
   } catch (err) {
-    alert('Setup failed: ' + (err as Error).message);
+    showSetupError('Setup failed: ' + (err as Error).message);
   }
 });
 

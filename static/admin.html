@@ -5,7 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>TRACES Admin</title>
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
-    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.7.2/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -500,10 +500,10 @@
 <body>
     <header class="admin-header">
         <div class="container d-flex justify-content-between align-items-center">
-            <h1 class="mb-0"><i class="fa-solid fa-clock me-2"></i>TRACES</h1>
+            <h1 class="mb-0"><i class="fa-solid fa-clock me-2" aria-hidden="true"></i>TRACES</h1>
             <div class="d-flex gap-2 flex-wrap justify-content-center">
-                <a href="/" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-eye me-1"></i> Timeline</a>
-                <button class="btn btn-danger btn-sm" onclick="logout()"><i class="fa-solid fa-sign-out-alt me-1"></i> Logout</button>
+                <a href="/" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-eye me-1" aria-hidden="true"></i> Timeline</a>
+                <button class="btn btn-danger btn-sm" onclick="logout()"><i class="fa-solid fa-sign-out-alt me-1" aria-hidden="true"></i> Logout</button>
             </div>
         </div>
     </header>
@@ -511,18 +511,18 @@
     <div class="nav-tabs-wrapper">
         <div class="container">
             <ul class="nav nav-tabs" id="adminTabs" role="tablist">
-                <li class="nav-item"><button class="nav-link active" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button"><i class="fa-solid fa-calendar me-2"></i>Events</button></li>
-                <li class="nav-item"><button class="nav-link" id="trash-tab" data-bs-toggle="tab" data-bs-target="#trash-pane" type="button"><i class="fa-solid fa-trash-can me-2"></i>Trash</button></li>
-                <li class="nav-item"><button class="nav-link" id="persons-tab" data-bs-toggle="tab" data-bs-target="#persons-pane" type="button"><i class="fa-solid fa-users me-2"></i>Persons</button></li>
-                <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button"><i class="fa-solid fa-upload me-2"></i>Upload</button></li>
-                <li class="nav-item"><button class="nav-link" id="integrations-tab" data-bs-toggle="tab" data-bs-target="#integrations-pane" type="button"><i class="fa-solid fa-plug me-2"></i>Integrations</button></li>
-                <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button"><i class="fa-solid fa-clock-rotate-left me-2"></i>Memories</button></li>
-                <li class="nav-item"><button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates-pane" type="button"><i class="fa-solid fa-copy me-2"></i>Templates</button></li>
-                <li class="nav-item"><button class="nav-link" id="collections-tab" data-bs-toggle="tab" data-bs-target="#collections-pane" type="button"><i class="fa-solid fa-folder me-2"></i>Collections</button></li>
-                <li class="nav-item"><button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags-pane" type="button"><i class="fa-solid fa-tags me-2"></i>Tags</button></li>
-                <li class="nav-item"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button"><i class="fa-solid fa-people-group me-2"></i>Users</button></li>
-                <li class="nav-item"><button class="nav-link" id="ollama-tab" data-bs-toggle="tab" data-bs-target="#ollama-pane" type="button"><i class="fa-solid fa-robot me-2"></i>AI</button></li>
-                <li class="nav-item"><button class="nav-link" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup-pane" type="button"><i class="fa-solid fa-database me-2"></i>Backup</button></li>
+                <li class="nav-item"><button class="nav-link active" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button"><i class="fa-solid fa-calendar me-2" aria-hidden="true"></i>Events</button></li>
+                <li class="nav-item"><button class="nav-link" id="trash-tab" data-bs-toggle="tab" data-bs-target="#trash-pane" type="button"><i class="fa-solid fa-trash-can me-2" aria-hidden="true"></i>Trash</button></li>
+                <li class="nav-item"><button class="nav-link" id="persons-tab" data-bs-toggle="tab" data-bs-target="#persons-pane" type="button"><i class="fa-solid fa-users me-2" aria-hidden="true"></i>Persons</button></li>
+                <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button"><i class="fa-solid fa-upload me-2" aria-hidden="true"></i>Upload</button></li>
+                <li class="nav-item"><button class="nav-link" id="integrations-tab" data-bs-toggle="tab" data-bs-target="#integrations-pane" type="button"><i class="fa-solid fa-plug me-2" aria-hidden="true"></i>Integrations</button></li>
+                <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button"><i class="fa-solid fa-clock-rotate-left me-2" aria-hidden="true"></i>Memories</button></li>
+                <li class="nav-item"><button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates-pane" type="button"><i class="fa-solid fa-copy me-2" aria-hidden="true"></i>Templates</button></li>
+                <li class="nav-item"><button class="nav-link" id="collections-tab" data-bs-toggle="tab" data-bs-target="#collections-pane" type="button"><i class="fa-solid fa-folder me-2" aria-hidden="true"></i>Collections</button></li>
+                <li class="nav-item"><button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags-pane" type="button"><i class="fa-solid fa-tags me-2" aria-hidden="true"></i>Tags</button></li>
+                <li class="nav-item"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button"><i class="fa-solid fa-people-group me-2" aria-hidden="true"></i>Users</button></li>
+                <li class="nav-item"><button class="nav-link" id="ollama-tab" data-bs-toggle="tab" data-bs-target="#ollama-pane" type="button"><i class="fa-solid fa-robot me-2" aria-hidden="true"></i>AI</button></li>
+                <li class="nav-item"><button class="nav-link" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup-pane" type="button"><i class="fa-solid fa-database me-2" aria-hidden="true"></i>Backup</button></li>
             </ul>
         </div>
     </div>
@@ -532,8 +532,8 @@
             <!-- EVENTS TAB -->
             <div class="tab-pane fade show active" id="events-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-calendar me-2 text-primary"></i>Events</h5>
-                    <button class="btn btn-sm btn-success" onclick="openEventModal()"><i class="fa-solid fa-plus me-1"></i> Add Event</button>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-calendar me-2 text-primary" aria-hidden="true"></i>Events</h5>
+                    <button class="btn btn-sm btn-success" onclick="openEventModal()"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i> Add Event</button>
                 </div>
 
                 <div class="card">
@@ -556,15 +556,15 @@
                             </select>
                             <select class="form-select" id="filter-year" style="min-width:100px" onchange="applyFilters()">
                             </select>
-                            <button class="btn btn-primary" onclick="loadEvents()"><i class="fa-solid fa-search"></i></button>
-            <button class="btn btn-outline-info btn-sm" hx-get="/api/admin/events" hx-target="#event-list" hx-swap="innerHTML" title="HTMX Refresh"><i class="fa-solid fa-rotate"></i></button>
-                            <a class="btn btn-sm btn-outline-secondary" id="admin-ics-download" href="/api/events/ics" title="Download iCal" download><i class="fa-solid fa-calendar-plus"></i></a>
+                            <button class="btn btn-primary" onclick="loadEvents()"><i class="fa-solid fa-search" aria-hidden="true"></i></button>
+            <button class="btn btn-outline-info btn-sm" hx-get="/api/admin/events" hx-target="#event-list" hx-swap="innerHTML" title="HTMX Refresh"><i class="fa-solid fa-rotate" aria-hidden="true"></i></button>
+                            <a class="btn btn-sm btn-outline-secondary" id="admin-ics-download" href="/api/events/ics" title="Download iCal" download><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i></a>
                         </div>
                         <div id="batch-actions" class="d-flex gap-2 align-items-center p-2 mb-2 bg-primary-glow rounded" style="display:none">
                             <span class="text-primary fw-bold small"><span id="batch-count">0</span> selected</span>
-                            <button class="btn btn-sm btn-outline-danger" onclick="batchDelete()"><i class="fa-solid fa-trash me-1"></i>Delete</button>
-                            <button class="btn btn-sm btn-outline-primary" onclick="batchAddTags()"><i class="fa-solid fa-tag me-1"></i>Add Tags</button>
-                            <button class="btn btn-sm btn-outline-secondary" onclick="batchSetPerson()"><i class="fa-solid fa-user me-1"></i>Set Person</button>
+                            <button class="btn btn-sm btn-outline-danger" onclick="batchDelete()"><i class="fa-solid fa-trash me-1" aria-hidden="true"></i>Delete</button>
+                            <button class="btn btn-sm btn-outline-primary" onclick="batchAddTags()"><i class="fa-solid fa-tag me-1" aria-hidden="true"></i>Add Tags</button>
+                            <button class="btn btn-sm btn-outline-secondary" onclick="batchSetPerson()"><i class="fa-solid fa-user me-1" aria-hidden="true"></i>Set Person</button>
                         </div>
                         <div class="table-responsive">
                             <table class="table table-hover">
@@ -586,12 +586,12 @@
                     </div>
                 </div>
                 <div class="card mt-3">
-                    <div class="card-header"><i class="fa-solid fa-folder me-2"></i>Add to Collection</div>
+                    <div class="card-header"><i class="fa-solid fa-folder me-2" aria-hidden="true"></i>Add to Collection</div>
                     <div class="card-body">
                         <div class="d-flex gap-2 align-items-center flex-wrap">
                             <select class="form-select" id="collection-select" style="min-width:160px"><option value="">Select collection...</option></select>
                             <select class="form-select" id="collection-event-select" style="min-width:200px"><option value="">Select event...</option></select>
-                            <button class="btn btn-primary" onclick="addEventToCollection()"><i class="fa-solid fa-plus me-1"></i> Add</button>
+                            <button class="btn btn-primary" onclick="addEventToCollection()"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i> Add</button>
                         </div>
                         <div id="add-to-collection-result" class="mt-2"></div>
                     </div>
@@ -601,14 +601,14 @@
             <!-- TRASH TAB -->
             <div class="tab-pane fade" id="trash-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-trash-can me-2 text-danger"></i>Trash</h5>
-                    <button class="btn btn-sm btn-danger" hx-post="/api/admin/trash/empty" hx-target="#trash-list" hx-confirm="Permanently delete ALL trashed events?" id="empty-trash-btn"><i class="fa-solid fa-trash-can me-1"></i> Empty Trash</button>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-trash-can me-2 text-danger" aria-hidden="true"></i>Trash</h5>
+                    <button class="btn btn-sm btn-danger" hx-post="/api/admin/trash/empty" hx-target="#trash-list" hx-confirm="Permanently delete ALL trashed events?" id="empty-trash-btn"><i class="fa-solid fa-trash-can me-1" aria-hidden="true"></i> Empty Trash</button>
                 </div>
 
                 <div class="card">
                     <div class="card-body">
                         <div id="trash-list" hx-get="/api/admin/trash" hx-trigger="load" hx-swap="innerHTML">
-                            <div class="text-muted py-4 text-center"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div>
+                            <div class="text-muted py-4 text-center"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Loading...</div>
                         </div>
                     </div>
                 </div>
@@ -617,8 +617,8 @@
             <!-- PERSONS TAB -->
             <div class="tab-pane fade" id="persons-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-users me-2 text-primary"></i>People</h5>
-                    <button class="btn btn-sm btn-success" onclick="openPersonModal()"><i class="fa-solid fa-plus me-1"></i> Add Person</button>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-users me-2 text-primary" aria-hidden="true"></i>People</h5>
+                    <button class="btn btn-sm btn-success" onclick="openPersonModal()"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i> Add Person</button>
                 </div>
                 <div class="mb-3">
                     <input type="text" class="form-control" id="person-search" placeholder="Search people..." oninput="renderPersonList()">
@@ -629,7 +629,7 @@
             <!-- UPLOAD TAB -->
             <div class="tab-pane fade" id="upload-pane">
                 <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-upload me-2"></i>Upload Media</div>
+                    <div class="card-header"><i class="fa-solid fa-upload me-2" aria-hidden="true"></i>Upload Media</div>
                     <div class="card-body">
                         <form id="upload-form">
                             <div class="mb-3">
@@ -641,12 +641,12 @@
                                 </select>
                             </div>
                             <div class="upload-zone" id="upload-drop-zone" style="border:2px dashed var(--border);border-radius:8px;padding:2rem;text-align:center;cursor:pointer;transition:border-color 0.2s,background 0.2s;background:var(--bg)">
-                                <i class="fa-solid fa-cloud-arrow-up" style="font-size:3rem;color:var(--text-muted)"></i>
+                                <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true" style="font-size:3rem;color:var(--text-muted)"></i>
                                 <p class="mt-3 mb-2 text-muted">Drag &amp; drop a file here or tap to browse</p>
                                 <input type="file" class="form-control d-none" id="media-file" accept="image/*">
                                 <div class="d-flex justify-content-center gap-2 flex-wrap mt-2">
-                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('media-file').click()"><i class="fa-solid fa-folder-open me-1"></i> Browse Files</button>
-                                    <button type="button" class="btn btn-outline-success btn-sm" id="camera-btn" onclick="openCamera()"><i class="fa-solid fa-camera me-1"></i> Take Photo</button>
+                                    <button type="button" class="btn btn-outline-primary btn-sm" onclick="document.getElementById('media-file').click()"><i class="fa-solid fa-folder-open me-1" aria-hidden="true"></i> Browse Files</button>
+                                    <button type="button" class="btn btn-outline-success btn-sm" id="camera-btn" onclick="openCamera()"><i class="fa-solid fa-camera me-1" aria-hidden="true"></i> Take Photo</button>
                                 </div>
                                 <input type="file" id="camera-input" accept="image/*" capture="environment" style="display:none">
                             </div>
@@ -654,7 +654,7 @@
                                 <img id="upload-preview-img" class="img-fluid rounded shadow-sm" style="max-height:300px" alt="Preview">
                                 <p class="mt-1 text-muted" id="upload-preview-name"></p>
                             </div>
-                            <button type="submit" class="btn btn-primary w-100 mt-3"><i class="fa-solid fa-upload me-1"></i> Upload</button>
+                            <button type="submit" class="btn btn-primary w-100 mt-3"><i class="fa-solid fa-upload me-1" aria-hidden="true"></i> Upload</button>
                         </form>
                         <div id="upload-result" class="mt-3"></div>
                     </div>
@@ -664,11 +664,11 @@
             <!-- INTEGRATIONS TAB -->
             <div class="tab-pane fade" id="integrations-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-plug me-2 text-primary"></i>Integrations</h5>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-plug me-2 text-primary" aria-hidden="true"></i>Integrations</h5>
                 </div>
 
                 <div class="card mb-3">
-                    <div class="card-header"><i class="fa-solid fa-bell me-2"></i>Gotify Notifications</div>
+                    <div class="card-header"><i class="fa-solid fa-bell me-2" aria-hidden="true"></i>Gotify Notifications</div>
                     <div class="card-body">
                         <form id="gotify-form">
                             <div class="mb-3">
@@ -684,8 +684,8 @@
                                 <label class="form-check-label fw-bold">Enable Notifications</label>
                             </div>
                             <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
-                                <button type="button" class="btn btn-outline-secondary" onclick="testGotify()"><i class="fa-solid fa-paper-plane me-1"></i> Test</button>
+                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="testGotify()"><i class="fa-solid fa-paper-plane me-1" aria-hidden="true"></i> Test</button>
                             </div>
                         </form>
                         <div id="gotify-result" class="mt-3"></div>
@@ -693,7 +693,7 @@
                 </div>
 
                 <div class="card mb-3">
-                    <div class="card-header"><i class="fa-solid fa-envelope me-2"></i>Email Settings</div>
+                    <div class="card-header"><i class="fa-solid fa-envelope me-2" aria-hidden="true"></i>Email Settings</div>
                     <div class="card-body">
                         <form id="email-form">
                             <div class="row g-3 mb-3">
@@ -725,8 +725,8 @@
                                 <input type="email" class="form-control" id="email-to" placeholder="recipient@example.com">
                             </div>
                             <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
-                                <button type="button" class="btn btn-outline-secondary" onclick="testEmailConfig()"><i class="fa-solid fa-paper-plane me-1"></i> Test Email</button>
+                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="testEmailConfig()"><i class="fa-solid fa-paper-plane me-1" aria-hidden="true"></i> Test Email</button>
                             </div>
                         </form>
                         <div id="email-result" class="mt-3"></div>
@@ -734,7 +734,7 @@
                 </div>
 
                 <div class="card mb-3">
-                    <div class="card-header"><i class="fa-solid fa-cloud me-2"></i>Immich Connection</div>
+                    <div class="card-header"><i class="fa-solid fa-cloud me-2" aria-hidden="true"></i>Immich Connection</div>
                     <div class="card-body">
                         <form id="immich-form">
                             <div class="mb-3">
@@ -748,8 +748,8 @@
                                 <div class="text-muted" style="font-size:0.85rem">Generate an API key in Immich under Account Settings &gt; API Keys</div>
                             </div>
                             <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
-                                <button type="button" class="btn btn-outline-secondary" onclick="testImmich()"><i class="fa-solid fa-plug me-1"></i> Test Connection</button>
+                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="testImmich()"><i class="fa-solid fa-plug me-1" aria-hidden="true"></i> Test Connection</button>
                             </div>
                         </form>
                         <div id="immich-result" class="mt-3"></div>
@@ -758,15 +758,15 @@
 
                 <div class="card">
                     <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="fa-solid fa-clock-rotate-left me-2"></i>Today's Immich Memories</span>
+                        <span><i class="fa-solid fa-clock-rotate-left me-2" aria-hidden="true"></i>Today's Immich Memories</span>
                         <div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="loadImmichMemories()"><i class="fa-solid fa-rotate me-1"></i> Refresh</button>
-                            <button type="button" class="btn btn-sm btn-success" onclick="importSelectedImmichMemories()"><i class="fa-solid fa-download me-1"></i> Import Selected</button>
+                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="loadImmichMemories()"><i class="fa-solid fa-rotate me-1" aria-hidden="true"></i> Refresh</button>
+                            <button type="button" class="btn btn-sm btn-success" onclick="importSelectedImmichMemories()"><i class="fa-solid fa-download me-1" aria-hidden="true"></i> Import Selected</button>
                         </div>
                     </div>
                     <div class="card-body">
                         <div id="immich-memories-list">
-                            <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading...</div>
+                            <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2" aria-hidden="true"></i>Loading...</div>
                         </div>
                         <div id="immich-import-result" class="mt-3"></div>
                     </div>
@@ -776,11 +776,11 @@
             <!-- MEMORIES TAB -->
             <div class="tab-pane fade" id="memories-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-clock-rotate-left me-2 text-primary"></i>Memories</h5>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-clock-rotate-left me-2 text-primary" aria-hidden="true"></i>Memories</h5>
                 </div>
 
                 <div class="card mb-3">
-                    <div class="card-header"><i class="fa-solid fa-gear me-2"></i>Settings</div>
+                    <div class="card-header"><i class="fa-solid fa-gear me-2" aria-hidden="true"></i>Settings</div>
                     <div class="card-body">
                         <form id="memories-form">
                             <div class="form-check form-switch mb-3">
@@ -802,9 +802,9 @@
                                 <div class="text-muted" style="font-size:0.85rem">Send memories via email daily (requires email config below)</div>
                             </div>
                             <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
-                                <button type="button" class="btn btn-outline-info" onclick="sendMemoriesNow(this)"><i class="fa-solid fa-envelope me-1"></i> Send Memories Now</button>
-                                <button type="button" class="btn btn-outline-secondary" onclick="loadMemories()"><i class="fa-solid fa-rotate me-1"></i> Preview</button>
+                                <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
+                                <button type="button" class="btn btn-outline-info" onclick="sendMemoriesNow(this)"><i class="fa-solid fa-envelope me-1" aria-hidden="true"></i> Send Memories Now</button>
+                                <button type="button" class="btn btn-outline-secondary" onclick="loadMemories()"><i class="fa-solid fa-rotate me-1" aria-hidden="true"></i> Preview</button>
                             </div>
                         </form>
                         <div id="memories-config-result" class="mt-3"></div>
@@ -812,10 +812,10 @@
                 </div>
 
                 <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-clock-rotate-left me-2"></i>Today's Memories</div>
+                    <div class="card-header"><i class="fa-solid fa-clock-rotate-left me-2" aria-hidden="true"></i>Today's Memories</div>
                     <div class="card-body">
                         <div id="memories-list">
-                            <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading...</div>
+                            <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2" aria-hidden="true"></i>Loading...</div>
                         </div>
                     </div>
                 </div>
@@ -824,8 +824,8 @@
             <!-- TEMPLATES TAB -->
             <div class="tab-pane fade" id="templates-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-copy me-2 text-primary"></i>Event Templates</h5>
-                    <button class="btn btn-sm btn-success" hx-get="/api/admin/templates/0/edit" hx-target="#templateFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#templateModal"><i class="fa-solid fa-plus me-1"></i> Add Template</button>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-copy me-2 text-primary" aria-hidden="true"></i>Event Templates</h5>
+                    <button class="btn btn-sm btn-success" hx-get="/api/admin/templates/0/edit" hx-target="#templateFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#templateModal"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i> Add Template</button>
                 </div>
                 <div class="card">
                     <div class="card-body">
@@ -841,7 +841,7 @@
                                     </tr>
                                 </thead>
                                 <tbody id="template-list" hx-get="/api/admin/templates" hx-trigger="load" hx-swap="innerHTML">
-                                    <tr><td colspan="5" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</td></tr>
+                                    <tr><td colspan="5" class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Loading...</td></tr>
                                 </tbody>
                             </table>
                         </div>
@@ -854,7 +854,7 @@
                         <div class="modal-content">
                             <div class="modal-header"><h5 class="modal-title" id="templateModalLabel">Add Template</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                             <div class="modal-body" id="templateFormContainer">
-                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i></div>
                             </div>
                         </div>
                     </div>
@@ -864,11 +864,11 @@
             <!-- COLLECTIONS TAB -->
             <div class="tab-pane fade" id="collections-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-folder me-2 text-primary"></i>Collections</h5>
-                    <button class="btn btn-sm btn-success" hx-get="/api/admin/collections/0/edit" hx-target="#collectionFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#collectionModal"><i class="fa-solid fa-plus me-1"></i> Add Collection</button>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-folder me-2 text-primary" aria-hidden="true"></i>Collections</h5>
+                    <button class="btn btn-sm btn-success" hx-get="/api/admin/collections/0/edit" hx-target="#collectionFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#collectionModal"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i> Add Collection</button>
                 </div>
                 <div class="row g-3" id="collection-list" hx-get="/api/admin/collections" hx-trigger="load" hx-swap="innerHTML">
-                    <div class="col-12"><div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div></div>
+                    <div class="col-12"><div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Loading...</div></div>
                 </div>
 
                 <!-- Collection Modal -->
@@ -877,7 +877,7 @@
                         <div class="modal-content">
                             <div class="modal-header"><h5 class="modal-title" id="collectionModalLabel">Add Collection</h5><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
                             <div class="modal-body" id="collectionFormContainer">
-                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i></div>
                             </div>
                         </div>
                     </div>
@@ -887,10 +887,10 @@
             <!-- TAGS TAB -->
             <div class="tab-pane fade" id="tags-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-tags me-2 text-primary"></i>Tag Management</h5>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-tags me-2 text-primary" aria-hidden="true"></i>Tag Management</h5>
                 </div>
                 <div class="card mb-3">
-                    <div class="card-header"><i class="fa-solid fa-list me-2"></i>All Tags</div>
+                    <div class="card-header"><i class="fa-solid fa-list me-2" aria-hidden="true"></i>All Tags</div>
                     <div class="card-body">
                         <div id="tag-manager-table" hx-get="/api/admin/tags" hx-trigger="load" hx-swap="innerHTML">
                             <div class="text-muted text-center py-3">Loading tags...</div>
@@ -898,7 +898,7 @@
                     </div>
                 </div>
                 <div class="card mb-3">
-                    <div class="card-header"><i class="fa-solid fa-merge me-2"></i>Merge Tags</div>
+                    <div class="card-header"><i class="fa-solid fa-merge me-2" aria-hidden="true"></i>Merge Tags</div>
                     <div class="card-body">
                         <div class="row g-2 align-items-end">
                             <div class="col-md-4">
@@ -910,14 +910,14 @@
                                 <select class="form-select form-select-sm" id="merge-target"></select>
                             </div>
                             <div class="col-md-4">
-                                <button class="btn btn-sm btn-warning" onclick="mergeTags()"><i class="fa-solid fa-merge me-1"></i> Merge</button>
+                                <button class="btn btn-sm btn-warning" onclick="mergeTags()"><i class="fa-solid fa-merge me-1" aria-hidden="true"></i> Merge</button>
                             </div>
                         </div>
                         <div id="merge-result" class="mt-2"></div>
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-cloud me-2"></i>Tag Cloud</div>
+                    <div class="card-header"><i class="fa-solid fa-cloud me-2" aria-hidden="true"></i>Tag Cloud</div>
                     <div class="card-body">
                         <div class="d-flex flex-wrap gap-2" id="tag-cloud"></div>
                     </div>
@@ -927,18 +927,18 @@
             <!-- USERS TAB -->
             <div class="tab-pane fade" id="users-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-people-group me-2 text-primary"></i>Family Users</h5>
-                    <button class="btn btn-sm btn-success" hx-get="/api/admin/users/0/edit" hx-target="#userFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#userModal"><i class="fa-solid fa-plus me-1"></i> Add User</button>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-people-group me-2 text-primary" aria-hidden="true"></i>Family Users</h5>
+                    <button class="btn btn-sm btn-success" hx-get="/api/admin/users/0/edit" hx-target="#userFormContainer" hx-trigger="click" data-bs-toggle="modal" data-bs-target="#userModal"><i class="fa-solid fa-plus me-1" aria-hidden="true"></i> Add User</button>
                 </div>
                 <div class="row g-3" id="user-list" hx-get="/api/admin/users" hx-trigger="load" hx-swap="innerHTML">
-                    <div class="col-12"><div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin"></i> Loading...</div></div>
+                    <div class="col-12"><div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i> Loading...</div></div>
                 </div>
             </div>
 
             <!-- OLLAMA TAB -->
             <div class="tab-pane fade" id="ollama-pane">
                 <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-robot me-2"></i>AI Auto-Tagging (Ollama)</div>
+                    <div class="card-header"><i class="fa-solid fa-robot me-2" aria-hidden="true"></i>AI Auto-Tagging (Ollama)</div>
                     <div class="card-body">
                         <form id="ollama-form">
                             <div class="mb-3">
@@ -954,7 +954,7 @@
                                 <label class="form-check-label fw-bold">Enable AI Auto-Tagging</label>
                                 <div class="text-muted" style="font-size:0.85rem">When enabled, the event editor will show an "Auto-Tag" button that uses Ollama to suggest tags</div>
                             </div>
-                            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
+                            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
                         </form>
                         <div id="ollama-result" class="mt-3"></div>
                     </div>
@@ -964,11 +964,11 @@
             <!-- BACKUP TAB -->
             <div class="tab-pane fade" id="backup-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
-                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-database me-2 text-primary"></i>Database Backup</h5>
-                    <button class="btn btn-sm btn-primary" onclick="createBackup(this)"><i class="fa-solid fa-circle-plus me-1"></i> Create Backup</button>
+                    <h5 class="fw-bold mb-0"><i class="fa-solid fa-database me-2 text-primary" aria-hidden="true"></i>Database Backup</h5>
+                    <button class="btn btn-sm btn-primary" onclick="createBackup(this)"><i class="fa-solid fa-circle-plus me-1" aria-hidden="true"></i> Create Backup</button>
                 </div>
                 <div class="card mb-3">
-                    <div class="card-header"><i class="fa-solid fa-gear me-2"></i>Auto-Prune Settings</div>
+                    <div class="card-header"><i class="fa-solid fa-gear me-2" aria-hidden="true"></i>Auto-Prune Settings</div>
                     <div class="card-body">
                         <form id="backup-config-form">
                             <div class="mb-3">
@@ -981,13 +981,13 @@
                                 <label class="form-check-label fw-bold">Enable Auto-Prune</label>
                                 <div class="text-muted" style="font-size:0.85rem">When enabled, old backups are automatically pruned after each new backup</div>
                             </div>
-                            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1"></i> Save</button>
+                            <button type="submit" class="btn btn-primary"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
                         </form>
                         <div id="backup-config-result" class="mt-3"></div>
                     </div>
                 </div>
                 <div class="card">
-                    <div class="card-header"><i class="fa-solid fa-clock-rotate-left me-2"></i>Backup History</div>
+                    <div class="card-header"><i class="fa-solid fa-clock-rotate-left me-2" aria-hidden="true"></i>Backup History</div>
                     <div class="card-body">
                         <p class="text-muted small mb-3">Automatic weekly backups run every Sunday at 3 AM. You can also manually create a backup below.</p>
                         <div class="table-responsive">
@@ -1018,7 +1018,7 @@
                                 <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
                             </div>
                             <div class="modal-body" id="userFormContainer">
-                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin"></i></div>
+                                <div class="text-center py-4"><i class="fa-solid fa-spinner fa-spin" aria-hidden="true"></i></div>
                             </div>
                         </div>
                     </div>
@@ -1069,19 +1069,19 @@
 
                         <!-- Inline Media Upload -->
                         <div class="mb-3 p-3 border rounded" style="border-color: var(--border) !important">
-                            <label class="form-label fw-bold"><i class="fa-solid fa-camera me-1"></i>Media <span class="text-muted">(optional)</span></label>
+                            <label class="form-label fw-bold"><i class="fa-solid fa-camera me-1" aria-hidden="true"></i>Media <span class="text-muted">(optional)</span></label>
                             <div class="upload-zone" id="event-upload-zone" style="border:2px dashed var(--border);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s;background:var(--bg)">
-                                <i class="fa-solid fa-cloud-arrow-up" style="font-size:2rem;color:var(--text-muted)"></i>
+                                <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true" style="font-size:2rem;color:var(--text-muted)"></i>
                                 <p class="mt-2 mb-1 text-muted">Tap to pick a file or drop one here</p>
                                 <input type="file" id="event-media-input" accept="image/*,video/*,audio/*" style="display:none">
-                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('event-media-input').click()"><i class="fa-solid fa-folder-open me-1"></i> Choose File</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('event-media-input').click()"><i class="fa-solid fa-folder-open me-1" aria-hidden="true"></i> Choose File</button>
                             </div>
                             <div id="event-media-preview" class="mt-2 text-center" style="display:none">
                                 <img id="event-media-img" class="img-fluid rounded shadow-sm" style="max-height:200px" alt="Preview">
                                 <video id="event-media-video" class="img-fluid rounded shadow-sm" style="max-height:200px;display:none" controls></video>
-                                <div id="event-media-audio" class="p-3 bg-light rounded" style="display:none"><i class="fa-solid fa-music fa-3x text-muted"></i></div>
+                                <div id="event-media-audio" class="p-3 bg-light rounded" style="display:none"><i class="fa-solid fa-music fa-3x text-muted" aria-hidden="true"></i></div>
                                 <p class="mt-1 text-muted small" id="event-media-name"></p>
-                                <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearEventMedia()"><i class="fa-solid fa-xmark me-1"></i> Remove</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearEventMedia()"><i class="fa-solid fa-xmark me-1" aria-hidden="true"></i> Remove</button>
                             </div>
                             <div id="event-media-result" class="mt-2"></div>
                         </div>
@@ -1105,8 +1105,8 @@
                             </div>
                         </div>
                         <div class="mb-3">
-                            <button type="button" class="btn btn-outline-info btn-sm" onclick="fetchEventWeather()"><i class="fa-solid fa-cloud-sun me-1"></i> Fetch Weather</button>
-                            <button type="button" class="btn btn-outline-warning btn-sm ms-1" onclick="autoTagEvent(this)"><i class="fa-solid fa-wand-magic-sparkles me-1"></i> Auto-Tag</button>
+                            <button type="button" class="btn btn-outline-info btn-sm" onclick="fetchEventWeather()"><i class="fa-solid fa-cloud-sun me-1" aria-hidden="true"></i> Fetch Weather</button>
+                            <button type="button" class="btn btn-outline-warning btn-sm ms-1" onclick="autoTagEvent(this)"><i class="fa-solid fa-wand-magic-sparkles me-1" aria-hidden="true"></i> Auto-Tag</button>
                             <span id="weather-display" class="ms-2 small text-muted"></span>
                         </div>
                         <div class="mb-3">
@@ -1117,7 +1117,7 @@
                                 </select>
                                 <div class="d-flex gap-2 mt-1">
                                     <input type="text" class="form-control" id="person-search-input" placeholder="Search person..." oninput="filterPersonSelect()">
-                                    <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0" onclick="showInlinePersonForm()" title="Add new person"><i class="fa-solid fa-plus"></i></button>
+                                    <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0" onclick="showInlinePersonForm()" title="Add new person"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                                 </div>
                                 <div id="inline-person-form" class="mt-2 p-3 border rounded bg-light" style="display:none">
                                     <div class="mb-2">
@@ -1127,7 +1127,7 @@
                                         <input type="color" class="form-control form-control-color" id="inline-person-color" value="#7c3aed" style="width:60px;height:32px">
                                     </div>
                                     <div class="d-flex gap-2">
-                                        <button type="button" class="btn btn-sm btn-success" onclick="saveInlinePerson()"><i class="fa-solid fa-check me-1"></i> Add</button>
+                                        <button type="button" class="btn btn-sm btn-success" onclick="saveInlinePerson()"><i class="fa-solid fa-check me-1" aria-hidden="true"></i> Add</button>
                                         <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideInlinePersonForm()">Cancel</button>
                                     </div>
                                     <div id="inline-person-result" class="mt-1 small"></div>
@@ -1149,7 +1149,7 @@
                                     <div id="selected-tags" class="d-flex flex-wrap gap-1 mb-1"></div>
                                     <div class="d-flex gap-1">
                                         <input type="text" class="form-control" id="event-tags" placeholder="Type tag and press Enter..." autocomplete="off">
-                                        <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0" id="add-tag-btn" title="Add tag"><i class="fa-solid fa-plus"></i></button>
+                                        <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0" id="add-tag-btn" title="Add tag"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
                                     </div>
                                     <div class="autocomplete-dropdown" id="tags-autocomplete"></div>
                                     <input type="hidden" name="tags" id="event-tags-hidden">
@@ -1167,7 +1167,7 @@
                             </div>
                             <div class="col-12">
                                 <button type="button" class="btn btn-outline-info w-100" onclick="useMyLocation()">
-                                    <i class="fa-solid fa-location-crosshairs me-1"></i> Use My Location
+                                    <i class="fa-solid fa-location-crosshairs me-1" aria-hidden="true"></i> Use My Location
                                 </button>
                             </div>
                         </div>
@@ -1195,16 +1195,16 @@
                             <input type="text" class="form-control" name="name" id="person-name" required>
                         </div>
                         <div class="mb-3 p-3 border rounded" style="border-color: var(--border) !important">
-                            <label class="form-label fw-bold"><i class="fa-solid fa-camera me-1"></i>Avatar</label>
+                            <label class="form-label fw-bold"><i class="fa-solid fa-camera me-1" aria-hidden="true"></i>Avatar</label>
                             <div class="upload-zone" id="person-upload-zone" style="border:2px dashed var(--border);border-radius:8px;padding:1.5rem;text-align:center;cursor:pointer;transition:border-color 0.2s;background:var(--bg)">
-                                <i class="fa-solid fa-cloud-arrow-up" style="font-size:2rem;color:var(--text-muted)"></i>
+                                <i class="fa-solid fa-cloud-arrow-up" aria-hidden="true" style="font-size:2rem;color:var(--text-muted)"></i>
                                 <p class="mt-2 mb-1 text-muted">Tap to pick a photo or drop one here</p>
                                 <input type="file" id="person-avatar-input" accept="image/*" style="display:none">
-                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('person-avatar-input').click()"><i class="fa-solid fa-image me-1"></i> Choose Photo</button>
+                                <button type="button" class="btn btn-sm btn-outline-primary mt-1" onclick="document.getElementById('person-avatar-input').click()"><i class="fa-solid fa-image me-1" aria-hidden="true"></i> Choose Photo</button>
                             </div>
                             <div id="person-avatar-preview" class="mt-2 text-center" style="display:none">
                                 <img id="person-avatar-img" class="img-fluid rounded shadow-sm" style="max-height:150px;max-width:150px;object-fit:cover;border-radius:50%" alt="Avatar preview">
-                                <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearPersonAvatar()"><i class="fa-solid fa-xmark me-1"></i> Remove</button>
+                                <button type="button" class="btn btn-sm btn-outline-danger mt-1" onclick="clearPersonAvatar()"><i class="fa-solid fa-xmark me-1" aria-hidden="true"></i> Remove</button>
                             </div>
                             <div id="person-avatar-result" class="mt-2"></div>
                             <input type="hidden" name="avatar_url" id="person-avatar">
