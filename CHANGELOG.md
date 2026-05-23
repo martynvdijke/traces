@@ -1,3 +1,11 @@
+## [1.18.4](https://github.com/martynvdijke/traces/compare/v1.18.3...v1.18.4) (2026-05-23)
+
+
+### Bug Fixes
+
+* **tests:** update auth test to check DOM error div instead of alert ([4fbf712](https://github.com/martynvdijke/traces/commit/4fbf7128fd25ff0c9e5ed2db908ca488680be052)), closes [#login-error](https://github.com/martynvdijke/traces/issues/login-error)
+* **ui:** add aria-hidden to icons, fix FA version, add autocomplete, replace alerts ([55e3eb0](https://github.com/martynvdijke/traces/commit/55e3eb0c895bc284d16d634e9faef8cd4db3a733))
+
 ## [1.18.3](https://github.com/martynvdijke/traces/compare/v1.18.2...v1.18.3) (2026-05-22)
 
 
