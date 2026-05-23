@@ -181,24 +181,18 @@ test.describe('TRACES Authentication API', () => {
 test.describe('TRACES Browser Auth Flow', () => {
   test.describe.configure({ mode: 'serial' });
 
-  test('login form submit with wrong password shows alert', async ({ page }) => {
+  test('login form submit with wrong password shows error', async ({ page }) => {
     await page.goto('/login.html');
     await page.waitForLoadState('networkidle');
-
-    // Handle the expected alert dialog
-    let alertMessage = '';
-    page.on('dialog', async (dialog) => {
-      alertMessage = dialog.message();
-      await dialog.dismiss();
-    });
 
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'wrong_password_xyz');
     await page.click('button[type="submit"]');
 
-    // Wait for the alert
-    await page.waitForTimeout(1000);
-    expect(alertMessage).toBe('Invalid credentials');
+    // Wait for the error message in DOM
+    const errorEl = page.locator('#login-error');
+    await expect(errorEl).toBeVisible();
+    await expect(errorEl).toHaveText('Invalid credentials');
     // Should still be on login page
     expect(page.url()).toContain('login.html');
   });
