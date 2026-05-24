@@ -256,6 +256,7 @@ type CalendarDay struct {
 	Count  int             `json:"count"`
 }
 
+const defaultColor = "#7c3aed"
 const currentSchemaVersion = 17
 const currentVersion = "1.18.4"
 
@@ -750,7 +751,7 @@ func handleLogin(c *gin.Context) {
 			return
 		}
 
-		db.Exec("INSERT OR IGNORE INTO users (id, username, display_name, color) VALUES (1, ?, ?, ?)", input.Username, input.Username, "#7c3aed")
+		db.Exec("INSERT OR IGNORE INTO users (id, username, display_name, color) VALUES (1, ?, ?, ?)", input.Username, input.Username, defaultColor)
 
 		sessionID, err := generateSessionID()
 		if err != nil {
@@ -2352,7 +2353,7 @@ func saveCollection(c *gin.Context) {
 		return
 	}
 	if col.Color == "" {
-		col.Color = "#7c3aed"
+		col.Color = defaultColor
 	}
 
 	if col.ID == 0 {
@@ -4837,7 +4838,7 @@ func serveManifest(c *gin.Context) {
 		"start_url": "/",
 		"display": "standalone",
 		"background_color": "#0f172a",
-		"theme_color": "#7c3aed",
+		"theme_color": "`+defaultColor+`",
 		"icons": [
 			{"src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml"},
 			{"src": "/static/logo.svg", "sizes": "any", "type": "image/svg+xml"}

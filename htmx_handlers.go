@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"time"
@@ -245,7 +246,7 @@ func htmxSaveEvent(c *gin.Context) {
 	if personName != "" {
 		db.QueryRow("SELECT id FROM persons WHERE name = ?", personName).Scan(&personID)
 		if personID == 0 {
-			result, err := db.Exec("INSERT INTO persons (name, color) VALUES (?, ?)", personName, "#7c3aed")
+			result, err := db.Exec("INSERT INTO persons (name, color) VALUES (?, ?)", personName, defaultColor)
 			if err == nil {
 				lid, _ := result.LastInsertId()
 				personID = int(lid)
@@ -404,7 +405,7 @@ func htmxSavePerson(c *gin.Context) {
 	birthDate := data["birth_date"]
 	color := data["color"]
 	if color == "" {
-		color = "#7c3aed"
+		color = defaultColor
 	}
 
 	if id == 0 {
@@ -515,7 +516,7 @@ func htmxSaveCollection(c *gin.Context) {
 	description := data["description"]
 	color := data["color"]
 	if color == "" {
-		color = "#7c3aed"
+		color = defaultColor
 	}
 
 	if id == 0 {
@@ -550,7 +551,7 @@ func htmxEditCollectionForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		renderTemplate(c.Writer, "collection-form", CollectionRow{Color: "#7c3aed"})
+		renderTemplate(c.Writer, "collection-form", CollectionRow{Color: defaultColor})
 		return
 	}
 
@@ -669,7 +670,7 @@ func htmxSaveUser(c *gin.Context) {
 	displayName := data["display_name"]
 	color := data["color"]
 	if color == "" {
-		color = "#7c3aed"
+		color = defaultColor
 	}
 
 	if id == 0 {
@@ -704,7 +705,7 @@ func htmxEditUserForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		renderTemplate(c.Writer, "user-form", UserRow{Color: "#7c3aed"})
+		renderTemplate(c.Writer, "user-form", UserRow{Color: defaultColor})
 		return
 	}
 
@@ -764,13 +765,10 @@ func htmxPermanentDelete(c *gin.Context) {
 	db.Exec("DELETE FROM timeline_events WHERE id=?", id)
 
 	if mediaURL != "" {
-		mediaPath := "./media/" + mediaURL
+		fullPath := filepath.Join(basePath, "media", mediaURL)
 		go func() {
-			names := []string{mediaPath}
-			for _, name := range names {
-				os.Remove(name)
-				os.Remove(name + ".thumb.jpg")
-			}
+			os.Remove(fullPath)
+			os.Remove(fullPath + ".thumb.jpg")
 		}()
 	}
 

@@ -14,6 +14,43 @@ let searchTimeout: any = null;
 let viewingPersonId: number | null = null;
 let eventPhotoUrl = '';
 
+function setupDropZone(
+  zone: HTMLElement | null,
+  onDrop: (file: File) => void,
+  inputId: string
+): void {
+  if (!zone) return;
+  zone.addEventListener('dragenter', function (e) { e.preventDefault(); e.stopPropagation(); });
+  zone.addEventListener('dragover', function (e) { e.preventDefault(); e.stopPropagation(); });
+  zone.addEventListener('dragleave', function (e) { e.preventDefault(); e.stopPropagation(); });
+  zone.addEventListener('drop', function (e) { e.preventDefault(); e.stopPropagation(); });
+
+  zone.addEventListener('dragenter', function () {
+    zone!.style.borderColor = 'var(--primary)';
+    zone!.style.background = 'var(--primary-glow)';
+  });
+  zone.addEventListener('dragover', function () {
+    zone!.style.borderColor = 'var(--primary)';
+    zone!.style.background = 'var(--primary-glow)';
+  });
+  zone.addEventListener('dragleave', function () {
+    zone!.style.borderColor = 'var(--border)';
+    zone!.style.background = 'var(--bg)';
+  });
+  zone.addEventListener('drop', function (e) {
+    zone!.style.borderColor = 'var(--border)';
+    zone!.style.background = 'var(--bg)';
+    const file = (e as DragEvent).dataTransfer!.files[0];
+    if (!file) return;
+    onDrop(file);
+  });
+  zone.addEventListener('click', function (e) {
+    if (!(e.target as HTMLElement).closest('button')) {
+      document.getElementById(inputId)!.click();
+    }
+  });
+}
+
 async function init(): Promise<void> {
   await ensureCSRF();
   populateYearFilter();
@@ -504,34 +541,7 @@ function openPersonModal(person?: any): void {
   personModal.show();
 }
 
-const personUploadZone = document.getElementById('person-upload-zone');
-if (personUploadZone) {
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
-    personUploadZone.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); });
-  });
-  ['dragenter', 'dragover'].forEach(evt => {
-    personUploadZone.addEventListener(evt, function () {
-      (personUploadZone as HTMLElement).style.borderColor = 'var(--primary)';
-      (personUploadZone as HTMLElement).style.background = 'var(--primary-glow)';
-    });
-  });
-  ['dragleave', 'drop'].forEach(evt => {
-    personUploadZone.addEventListener(evt, function () {
-      (personUploadZone as HTMLElement).style.borderColor = 'var(--border)';
-      (personUploadZone as HTMLElement).style.background = 'var(--bg)';
-    });
-  });
-  personUploadZone.addEventListener('drop', async function (e) {
-    const file = (e as DragEvent).dataTransfer!.files[0];
-    if (!file) return;
-    await uploadPersonAvatar(file);
-  });
-  personUploadZone.addEventListener('click', function (e) {
-    if (!(e.target as HTMLElement).closest('button')) {
-      document.getElementById('person-avatar-input')!.click();
-    }
-  });
-}
+setupDropZone(document.getElementById('person-upload-zone'), (file) => { uploadPersonAvatar(file); }, 'person-avatar-input');
 
 document.getElementById('person-avatar-input')!.addEventListener('change', async function () {
   if ((this as HTMLInputElement).files![0]) await uploadPersonAvatar((this as HTMLInputElement).files![0]);
@@ -761,35 +771,12 @@ function openCamera(): void {
   if (input) input.click();
 }
 
-const dropZone = document.getElementById('upload-drop-zone');
-if (dropZone) {
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
-    dropZone.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); });
-  });
-  ['dragenter', 'dragover'].forEach(evt => {
-    dropZone.addEventListener(evt, function () {
-      (dropZone as HTMLElement).style.borderColor = 'var(--primary)';
-      (dropZone as HTMLElement).style.background = 'var(--primary-glow)';
-    });
-  });
-  ['dragleave', 'drop'].forEach(evt => {
-    dropZone.addEventListener(evt, function () {
-      (dropZone as HTMLElement).style.borderColor = 'var(--border)';
-      (dropZone as HTMLElement).style.background = 'var(--bg)';
-    });
-  });
-  dropZone.addEventListener('drop', function (e) {
-    const file = (e as DragEvent).dataTransfer!.files[0];
-    if (!file) return;
-    (document.getElementById('media-file') as HTMLInputElement).files = (e as DragEvent).dataTransfer!.files;
-    showUploadPreview(file);
-  });
-  dropZone.addEventListener('click', function (e) {
-    if (!(e.target as HTMLElement).closest('button')) {
-      document.getElementById('media-file')!.click();
-    }
-  });
-}
+setupDropZone(document.getElementById('upload-drop-zone'), (file) => {
+  const dt = new DataTransfer();
+  dt.items.add(file);
+  (document.getElementById('media-file') as HTMLInputElement).files = dt.files;
+  showUploadPreview(file);
+}, 'media-file');
 
 document.getElementById('media-file')!.addEventListener('change', function () {
   if ((this as HTMLInputElement).files![0]) showUploadPreview((this as HTMLInputElement).files![0]);
@@ -826,34 +813,7 @@ document.getElementById('upload-form')!.addEventListener('submit', async (e) => 
   } else el.innerHTML = '<div class="alert alert-danger">Upload failed: ' + (data.error || '') + '</div>';
 });
 
-const eventUploadZone = document.getElementById('event-upload-zone');
-if (eventUploadZone) {
-  ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(evt => {
-    eventUploadZone.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); });
-  });
-  ['dragenter', 'dragover'].forEach(evt => {
-    eventUploadZone.addEventListener(evt, function () {
-      (eventUploadZone as HTMLElement).style.borderColor = 'var(--primary)';
-      (eventUploadZone as HTMLElement).style.background = 'var(--primary-glow)';
-    });
-  });
-  ['dragleave', 'drop'].forEach(evt => {
-    eventUploadZone.addEventListener(evt, function () {
-      (eventUploadZone as HTMLElement).style.borderColor = 'var(--border)';
-      (eventUploadZone as HTMLElement).style.background = 'var(--bg)';
-    });
-  });
-  eventUploadZone.addEventListener('drop', async function (e) {
-    const file = (e as DragEvent).dataTransfer!.files[0];
-    if (!file) return;
-    await uploadEventMedia(file);
-  });
-  eventUploadZone.addEventListener('click', function (e) {
-    if (!(e.target as HTMLElement).closest('button')) {
-      document.getElementById('event-media-input')!.click();
-    }
-  });
-}
+setupDropZone(document.getElementById('event-upload-zone'), (file) => { uploadEventMedia(file); }, 'event-media-input');
 
 document.getElementById('event-media-input')!.addEventListener('change', async function () {
   if ((this as HTMLInputElement).files![0]) await uploadEventMedia((this as HTMLInputElement).files![0]);
