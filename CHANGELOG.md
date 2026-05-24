@@ -1,3 +1,10 @@
+## [1.18.5](https://github.com/martynvdijke/traces/compare/v1.18.4...v1.18.5) (2026-05-24)
+
+
+### Bug Fixes
+
+* resolve hardcoded paths, dark mode FOUC, accessibility, and code quality issues ([db3709b](https://github.com/martynvdijke/traces/commit/db3709b2b51fdb26f31e996a3aec3893ab004269)), closes [#7c3aed](https://github.com/martynvdijke/traces/issues/7c3aed)
+
 ## [1.18.4](https://github.com/martynvdijke/traces/compare/v1.18.3...v1.18.4) (2026-05-23)
 
 
