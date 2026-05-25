@@ -1,3 +1,10 @@
+## [1.18.6](https://github.com/martynvdijke/traces/compare/v1.18.5...v1.18.6) (2026-05-25)
+
+
+### Bug Fixes
+
+* fall back to /api/public when /api/events returns 401 on public site ([96ac103](https://github.com/martynvdijke/traces/commit/96ac1035a53b7c993f12ae279f8441c959140c9b))
+
 ## [1.18.5](https://github.com/martynvdijke/traces/compare/v1.18.4...v1.18.5) (2026-05-24)
 
 
