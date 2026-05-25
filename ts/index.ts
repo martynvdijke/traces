@@ -535,12 +535,24 @@ async function loadEvents(): Promise<void> {
       url += '&month=' + String(currentMonth).padStart(2, '0');
     }
     const res = await fetch(url);
-    if (!res.ok) {
-      events = [];
-    } else {
+    if (res.status === 401) {
+      // Not authenticated — fall back to public endpoint
+      let pubUrl = '/api/public?year=' + currentYear;
+      if (currentMonth > 0) {
+        pubUrl += '&month=' + String(currentMonth).padStart(2, '0');
+      }
+      const pubRes = await fetch(pubUrl);
+      if (pubRes.ok) {
+        events = await pubRes.json() as TimelineEvent[];
+      } else {
+        events = [];
+      }
+    } else if (res.ok) {
       events = await res.json() as TimelineEvent[];
-      if (!Array.isArray(events)) events = [];
+    } else {
+      events = [];
     }
+    if (!Array.isArray(events)) events = [];
     renderTimeline();
     renderGallery();
     renderMapInstance();

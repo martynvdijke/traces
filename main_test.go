@@ -2559,6 +2559,137 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 	})
 }
 
+func TestGetPublicEvents(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+
+	origDB := db
+	origPublicMode := publicMode
+	defer func() {
+		db = origDB
+		publicMode = origPublicMode
+	}()
+
+	var err error
+	db, err = sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		description TEXT,
+		event_date TEXT,
+		location TEXT,
+		media_type TEXT,
+		media_url TEXT,
+		thumbnail TEXT,
+		media_caption TEXT,
+		tags TEXT,
+		sort_order INTEGER DEFAULT 0,
+		is_public INTEGER DEFAULT 0,
+		is_favorite INTEGER DEFAULT 0,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		person_id INTEGER,
+		latitude REAL,
+		longitude REAL,
+		recurring TEXT DEFAULT '',
+		weather_data TEXT DEFAULT '',
+		event_start_time TEXT DEFAULT '',
+		event_end_time TEXT DEFAULT '',
+		user_id INTEGER DEFAULT 0,
+		deleted_at TEXT DEFAULT ''
+	)`)
+
+	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		name TEXT,
+		avatar_url TEXT,
+		bio TEXT,
+		birth_date TEXT,
+		color TEXT,
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+	)`)
+
+	db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, is_public) VALUES ('Public Jan Event', 'Jan description', '2026-01-15', 'Amsterdam', 'image', 1)`)
+	db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, is_public) VALUES ('Public Jun Event', 'Jun description', '2026-06-10', 'London', 'video', 1)`)
+	db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, is_public) VALUES ('Private Event', 'Private desc', '2026-03-20', 'Paris', 'image', 0)`)
+
+	t.Run("default_year_filter", func(t *testing.T) {
+		router := gin.New()
+		router.GET("/api/public", getPublicEvents)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/public?year=2026", nil)
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+		}
+
+		var events []TimelineEvent
+		if err := json.Unmarshal(w.Body.Bytes(), &events); err != nil {
+			t.Fatalf("json unmarshal: %v, body=%s", err, w.Body.String())
+		}
+
+		// Should only return is_public = 1 events when publicMode is false
+		if len(events) != 2 {
+			t.Fatalf("expected 2 public events (non-publicMode), got %d: %+v", len(events), events)
+		}
+	})
+
+	t.Run("month_filter", func(t *testing.T) {
+		router := gin.New()
+		router.GET("/api/public", getPublicEvents)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/public?year=2026&month=01", nil)
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+		}
+
+		var events []TimelineEvent
+		if err := json.Unmarshal(w.Body.Bytes(), &events); err != nil {
+			t.Fatalf("json unmarshal: %v, body=%s", err, w.Body.String())
+		}
+
+		if len(events) != 1 {
+			t.Fatalf("expected 1 event in January, got %d", len(events))
+		}
+		if events[0].Title != "Public Jan Event" {
+			t.Errorf("title = %q, want 'Public Jan Event'", events[0].Title)
+		}
+	})
+
+	t.Run("public_mode_returns_all", func(t *testing.T) {
+		publicMode = true
+		defer func() { publicMode = false }()
+
+		router := gin.New()
+		router.GET("/api/public", getPublicEvents)
+
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest("GET", "/api/public?year=2026", nil)
+		router.ServeHTTP(w, req)
+
+		if w.Code != http.StatusOK {
+			t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
+		}
+
+		var events []TimelineEvent
+		if err := json.Unmarshal(w.Body.Bytes(), &events); err != nil {
+			t.Fatalf("json unmarshal: %v, body=%s", err, w.Body.String())
+		}
+
+		if len(events) != 3 {
+			t.Fatalf("expected 3 events in publicMode, got %d", len(events))
+		}
+	})
+}
+
 func TestFTSSearch(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 

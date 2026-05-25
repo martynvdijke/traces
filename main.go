@@ -925,11 +925,13 @@ func getEventsFull(c *gin.Context) {
 // @Produce json
 // @Param share query string false "Share token"
 // @Param year query string false "Filter by year"
+// @Param month query string false "Filter by month (01-12)"
 // @Success 200 {array} object "timeline events"
 // @Router /public [get]
 func getPublicEvents(c *gin.Context) {
 	shareToken := c.Query("share")
 	year := c.Query("year")
+	month := c.Query("month")
 
 	var eventIDs string
 	var shareYear string
@@ -971,6 +973,10 @@ func getPublicEvents(c *gin.Context) {
 			query += " AND strftime('%Y', e.event_date) = ?"
 			args = append(args, year)
 		}
+		if month != "" {
+			query += " AND strftime('%m', e.event_date) = ?"
+			args = append(args, month)
+		}
 		query += " ORDER BY e.event_date ASC"
 	} else {
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
@@ -979,6 +985,10 @@ func getPublicEvents(c *gin.Context) {
 		if year != "" {
 			query += " AND strftime('%Y', e.event_date) = ?"
 			args = append(args, year)
+		}
+		if month != "" {
+			query += " AND strftime('%m', e.event_date) = ?"
+			args = append(args, month)
 		}
 		query += " ORDER BY e.event_date ASC"
 	}
