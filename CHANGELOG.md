@@ -1,3 +1,10 @@
+## [1.18.9](https://github.com/martynvdijke/traces/compare/v1.18.8...v1.18.9) (2026-05-25)
+
+
+### Bug Fixes
+
+* remove stalePr from renovate.json (no longer valid in Renovate v37) ([8fbe497](https://github.com/martynvdijke/traces/commit/8fbe4977640ee904165af4d1cb480a4e2453471b))
+
 ## [1.18.8](https://github.com/martynvdijke/traces/compare/v1.18.7...v1.18.8) (2026-05-25)
 
 
