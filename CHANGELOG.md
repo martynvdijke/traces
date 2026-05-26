@@ -1,3 +1,10 @@
+## [1.18.10](https://github.com/martynvdijke/traces/compare/v1.18.9...v1.18.10) (2026-05-26)
+
+
+### Bug Fixes
+
+* invalid timezone UTC+1, use Europe/Amsterdam instead ([23e17a7](https://github.com/martynvdijke/traces/commit/23e17a7a25dd9fb0c8a70e7e27588a7476854e91))
+
 ## [1.18.9](https://github.com/martynvdijke/traces/compare/v1.18.8...v1.18.9) (2026-05-25)
 
 
