@@ -1,3 +1,11 @@
+## [1.18.10](https://github.com/martynvdijke/traces/compare/v1.18.9...v1.18.10) (2026-05-28)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies to v1.44.0 ([#23](https://github.com/martynvdijke/traces/issues/23)) ([842bd05](https://github.com/martynvdijke/traces/commit/842bd0562e8a3ac7f1cf3142aefc93b2516f7cb8))
+* invalid timezone UTC+1, use Europe/Amsterdam instead ([23e17a7](https://github.com/martynvdijke/traces/commit/23e17a7a25dd9fb0c8a70e7e27588a7476854e91))
+
 ## [1.18.10](https://github.com/martynvdijke/traces/compare/v1.18.9...v1.18.10) (2026-05-26)
 
 
