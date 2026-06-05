@@ -1,3 +1,10 @@
+## [1.18.12](https://github.com/martynvdijke/traces/compare/v1.18.11...v1.18.12) (2026-06-05)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies to v1.14.45 ([#26](https://github.com/martynvdijke/traces/issues/26)) ([066d6a5](https://github.com/martynvdijke/traces/commit/066d6a554fda74984a053220da60f10558155a64))
+
 ## [1.18.11](https://github.com/martynvdijke/traces/compare/v1.18.10...v1.18.11) (2026-06-03)
 
 ## [1.18.10](https://github.com/martynvdijke/traces/compare/v1.18.9...v1.18.10) (2026-05-28)
