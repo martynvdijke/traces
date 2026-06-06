@@ -203,6 +203,12 @@ type ImmichConfig struct {
 	Enabled bool   `json:"enabled"`
 }
 
+type UmamiConfig struct {
+	URL     string `json:"url"`
+	SiteID  string `json:"site_id"`
+	Enabled bool   `json:"enabled"`
+}
+
 type BackupConfig struct {
 	RetentionDays int  `json:"retention_days"`
 	AutoPrune     bool `json:"auto_prune"`
@@ -257,7 +263,7 @@ type CalendarDay struct {
 }
 
 const defaultColor = "#7c3aed"
-const currentSchemaVersion = 17
+const currentSchemaVersion = 18
 const currentVersion = "1.19.0"
 
 var (
@@ -341,6 +347,15 @@ func main() {
 			immichURL = cfg.URL
 			immichAPIKey = cfg.APIKey
 			immichEnabled = enabledInt == 1
+		}
+	}
+
+	if umamiURL == "" {
+		var cfg UmamiConfig
+		var enabledInt int
+		if err := db.QueryRow("SELECT url, site_id, enabled FROM umami_settings WHERE id = 1").Scan(&cfg.URL, &cfg.SiteID, &enabledInt); err == nil {
+			umamiURL = cfg.URL
+			umamiSiteID = cfg.SiteID
 		}
 	}
 
@@ -450,6 +465,8 @@ func main() {
 			auth.POST("/immich/test", testImmich)
 			auth.GET("/immich/memories", fetchImmichMemories)
 			auth.POST("/immich/import", importImmichMemories)
+			auth.GET("/umami/config", getUmamiConfig)
+			auth.POST("/umami/config", saveUmamiConfig)
 			auth.POST("/backup", handleBackup)
 			auth.GET("/backups", handleListBackups)
 			auth.GET("/backup/config", getBackupConfig)
@@ -3478,6 +3495,44 @@ func saveImmichConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func getUmamiConfig(c *gin.Context) {
+	var cfg UmamiConfig
+	var enabledInt int
+	err := db.QueryRow("SELECT url, site_id, enabled FROM umami_settings WHERE id = 1").Scan(&cfg.URL, &cfg.SiteID, &enabledInt)
+	if err == nil {
+		cfg.Enabled = enabledInt == 1
+	}
+	c.JSON(http.StatusOK, cfg)
+}
+
+func saveUmamiConfig(c *gin.Context) {
+	var cfg UmamiConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	enabledInt := 0
+	if cfg.Enabled {
+		enabledInt = 1
+	}
+
+	_, err := db.Exec(`UPDATE umami_settings SET url=?, site_id=?, enabled=? WHERE id=1`, cfg.URL, cfg.SiteID, enabledInt)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+
+	umamiURL = cfg.URL
+	umamiSiteID = cfg.SiteID
+
+	if logService != nil {
+		logService.Log("info", "umami", "Umami settings saved", nil)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func testImmich(c *gin.Context) {
 	if immichURL == "" || immichAPIKey == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich URL and API key not configured"})
@@ -5031,6 +5086,12 @@ func createTables() {
 			api_key TEXT DEFAULT '',
 			enabled INTEGER DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS umami_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			url TEXT DEFAULT '',
+			site_id TEXT DEFAULT '',
+			enabled INTEGER DEFAULT 0
+		)`,
 		`CREATE TABLE IF NOT EXISTS backup_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			retention_days INTEGER DEFAULT 7,
@@ -5117,6 +5178,12 @@ func createTables() {
 	db.QueryRow("SELECT COUNT(*) FROM immich_settings").Scan(&immichCount)
 	if immichCount == 0 {
 		db.Exec("INSERT INTO immich_settings (id, url, api_key, enabled) VALUES (1, '', '', 0)")
+	}
+
+	var umamiCount int
+	db.QueryRow("SELECT COUNT(*) FROM umami_settings").Scan(&umamiCount)
+	if umamiCount == 0 {
+		db.Exec("INSERT INTO umami_settings (id, url, site_id, enabled) VALUES (1, '', '', 0)")
 	}
 
 	var backupCount int
@@ -5292,6 +5359,14 @@ func runMigration(fromVersion int) {
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN event_end_time TEXT DEFAULT ''`)
 	case 16:
 		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN deleted_at TEXT DEFAULT ''`)
+	case 17:
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS umami_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			url TEXT DEFAULT '',
+			site_id TEXT DEFAULT '',
+			enabled INTEGER DEFAULT 0
+		)`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO umami_settings (id, url, site_id, enabled) VALUES (1, '', '', 0)`)
 	}
 }
 

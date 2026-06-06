@@ -66,6 +66,8 @@ async function init(): Promise<void> {
   loadUsers();
   loadOllamaConfig();
   loadImmichConfig();
+  loadUmamiConfig();
+  loadAdminAnalytics();
   loadBackups();
   loadBackupConfig();
   loadTemplates();
@@ -1025,6 +1027,34 @@ document.getElementById('immich-form')!.addEventListener('submit', async (e) => 
   const result = await res.json();
   document.getElementById('immich-result')!.innerHTML = res.ok
     ? '<div class="alert alert-success">Immich settings saved.</div>'
+    : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
+});
+
+async function loadUmamiConfig(): Promise<void> {
+  try {
+    const res = await fetch('/api/umami/config');
+    const cfg = await res.json();
+    (document.getElementById('umami-url') as HTMLInputElement).value = cfg.url || '';
+    (document.getElementById('umami-site-id') as HTMLInputElement).value = cfg.site_id || '';
+    (document.getElementById('umami-enabled') as HTMLInputElement).checked = cfg.enabled || false;
+  } catch (e) { }
+}
+
+document.getElementById('umami-form')!.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = {
+    url: (document.getElementById('umami-url') as HTMLInputElement).value,
+    site_id: (document.getElementById('umami-site-id') as HTMLInputElement).value,
+    enabled: (document.getElementById('umami-enabled') as HTMLInputElement).checked
+  };
+  const res = await fetch('/api/umami/config', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify(data)
+  });
+  const result = await res.json();
+  document.getElementById('umami-result')!.innerHTML = res.ok
+    ? '<div class="alert alert-success">Umami settings saved.</div>'
     : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
 });
 
