@@ -11,6 +11,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/log/global"
@@ -34,11 +35,6 @@ var (
 )
 
 func initTelemetry() (*sdktrace.TracerProvider, error) {
-	traceExporter, err := stdouttrace.New(stdouttrace.WithPrettyPrint())
-	if err != nil {
-		return nil, fmt.Errorf("creating stdout trace exporter: %w", err)
-	}
-
 	serviceName := os.Getenv("OTEL_SERVICE_NAME")
 	if serviceName == "" {
 		serviceName = "traces"
@@ -51,6 +47,25 @@ func initTelemetry() (*sdktrace.TracerProvider, error) {
 	)
 	if err != nil {
 		return nil, fmt.Errorf("creating resource: %w", err)
+	}
+
+	var traceExporter sdktrace.SpanExporter
+	if otelEndpoint != "" && otelTracesEnabled {
+		traceExporter, err = newOTLPTraceExporter(otelEndpoint)
+		if err != nil {
+			stdlog.Printf("[OTel] Failed to create OTLP trace exporter: %v, falling back to stdout", err)
+			traceExporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint())
+			if err != nil {
+				return nil, fmt.Errorf("creating stdout trace exporter: %w", err)
+			}
+		} else {
+			stdlog.Printf("[OTel] Trace exporter: OTLP (%s)", otelEndpoint)
+		}
+	} else {
+		traceExporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint())
+		if err != nil {
+			return nil, fmt.Errorf("creating stdout trace exporter: %w", err)
+		}
 	}
 
 	tp := sdktrace.NewTracerProvider(
@@ -70,18 +85,16 @@ func initTelemetry() (*sdktrace.TracerProvider, error) {
 // initLogExporter creates an OTel log exporter and sets the global logger provider.
 // It uses OTLP exporter when OTEL_EXPORTER_OTLP_ENDPOINT is set, otherwise falls back to stdout.
 func initLogExporter(res *resource.Resource) error {
-	endpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT")
-
 	var logExporter sdklog.Exporter
 	var err error
 
-	if endpoint != "" {
-		// Use OTLP exporter when endpoint is configured
-		logExporter, err = newOTLPLogExporter(endpoint)
+	if otelEndpoint != "" && otelLogsEnabled {
+		// Use OTLP exporter when endpoint is configured and logs enabled
+		logExporter, err = newOTLPLogExporter(otelEndpoint)
 		if err != nil {
 			return fmt.Errorf("creating OTLP log exporter: %w", err)
 		}
-		stdlog.Printf("[OTel] Log exporter: OTLP (%s)", endpoint)
+		stdlog.Printf("[OTel] Log exporter: OTLP (%s)", otelEndpoint)
 	} else {
 		// Default to stdout
 		logExporter, err = stdoutlog.New()
@@ -107,6 +120,13 @@ func newOTLPLogExporter(endpoint string) (sdklog.Exporter, error) {
 	// When the otlploggrpc dependency is added, this function should use it.
 	stdlog.Printf("[OTel] OTLP endpoint configured at %s, using stdout log exporter (OTLP log gRPC not yet wired)", endpoint)
 	return stdoutlog.New()
+}
+
+// newOTLPTraceExporter creates an OTLP trace exporter using gRPC.
+func newOTLPTraceExporter(endpoint string) (sdktrace.SpanExporter, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return otlptracegrpc.New(ctx, otlptracegrpc.WithEndpointURL(endpoint))
 }
 
 func metricsMiddleware() gin.HandlerFunc {

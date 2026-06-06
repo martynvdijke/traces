@@ -214,6 +214,13 @@ type BackupConfig struct {
 	AutoPrune     bool `json:"auto_prune"`
 }
 
+type OtelConfig struct {
+	Endpoint       string `json:"endpoint"`
+	TracesEnabled  bool   `json:"traces_enabled"`
+	MetricsEnabled bool   `json:"metrics_enabled"`
+	LogsEnabled    bool   `json:"logs_enabled"`
+}
+
 type EventTemplate struct {
 	ID          int    `json:"id"`
 	Title       string `json:"title"`
@@ -287,6 +294,10 @@ var (
 	umamiSiteID   = ""
 	immichURL     = ""
 	immichAPIKey  = ""
+	otelEndpoint    = ""
+	otelTracesEnabled bool
+	otelMetricsEnabled bool
+	otelLogsEnabled   bool
 	currentUserID int
 	logService    *LogService
 )
@@ -358,6 +369,16 @@ func main() {
 			umamiSiteID = cfg.SiteID
 		}
 	}
+
+	// Load OTel settings from DB (fallback if env not set)
+	var otelCfg OtelConfig
+	var tEnabled, mEnabled, lEnabled int
+	if err := db.QueryRow("SELECT endpoint, traces_enabled, metrics_enabled, logs_enabled FROM otel_settings WHERE id = 1").Scan(&otelEndpoint, &tEnabled, &mEnabled, &lEnabled); err == nil {
+		otelTracesEnabled = tEnabled == 1
+		otelMetricsEnabled = mEnabled == 1
+		otelLogsEnabled = lEnabled == 1
+	}
+	_ = otelCfg
 
 	if os.Getenv("BACKUP_RETENTION_DAYS") != "" {
 		if days, err := strconv.Atoi(os.Getenv("BACKUP_RETENTION_DAYS")); err == nil && days > 0 {
@@ -467,6 +488,8 @@ func main() {
 			auth.POST("/immich/import", importImmichMemories)
 			auth.GET("/umami/config", getUmamiConfig)
 			auth.POST("/umami/config", saveUmamiConfig)
+			auth.GET("/otel/config", getOtelConfig)
+			auth.POST("/otel/config", saveOtelConfig)
 			auth.POST("/backup", handleBackup)
 			auth.GET("/backups", handleListBackups)
 			auth.GET("/backup/config", getBackupConfig)
@@ -3533,6 +3556,57 @@ func saveUmamiConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func getOtelConfig(c *gin.Context) {
+	var cfg OtelConfig
+	var tEnabled, mEnabled, lEnabled int
+	err := db.QueryRow("SELECT endpoint, traces_enabled, metrics_enabled, logs_enabled FROM otel_settings WHERE id = 1").Scan(&cfg.Endpoint, &tEnabled, &mEnabled, &lEnabled)
+	if err == nil {
+		cfg.TracesEnabled = tEnabled == 1
+		cfg.MetricsEnabled = mEnabled == 1
+		cfg.LogsEnabled = lEnabled == 1
+	}
+	c.JSON(http.StatusOK, cfg)
+}
+
+func saveOtelConfig(c *gin.Context) {
+	var cfg OtelConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	tEnabled := 0
+	if cfg.TracesEnabled {
+		tEnabled = 1
+	}
+	mEnabled := 0
+	if cfg.MetricsEnabled {
+		mEnabled = 1
+	}
+	lEnabled := 0
+	if cfg.LogsEnabled {
+		lEnabled = 1
+	}
+
+	_, err := db.Exec(`UPDATE otel_settings SET endpoint=?, traces_enabled=?, metrics_enabled=?, logs_enabled=? WHERE id=1`,
+		cfg.Endpoint, tEnabled, mEnabled, lEnabled)
+	if err != nil {
+		serverError(c, err)
+		return
+	}
+
+	otelEndpoint = cfg.Endpoint
+	otelTracesEnabled = cfg.TracesEnabled
+	otelMetricsEnabled = cfg.MetricsEnabled
+	otelLogsEnabled = cfg.LogsEnabled
+
+	if logService != nil {
+		logService.Log("info", "otel", "OTel settings saved", nil)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func testImmich(c *gin.Context) {
 	if immichURL == "" || immichAPIKey == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich URL and API key not configured"})
@@ -5097,6 +5171,13 @@ func createTables() {
 			retention_days INTEGER DEFAULT 7,
 			auto_prune INTEGER DEFAULT 1
 		)`,
+		`CREATE TABLE IF NOT EXISTS otel_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			endpoint TEXT DEFAULT '',
+			traces_enabled INTEGER DEFAULT 0,
+			metrics_enabled INTEGER DEFAULT 0,
+			logs_enabled INTEGER DEFAULT 0
+		)`,
 		`CREATE TABLE IF NOT EXISTS event_templates (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT NOT NULL,
@@ -5190,6 +5271,12 @@ func createTables() {
 	db.QueryRow("SELECT COUNT(*) FROM backup_settings").Scan(&backupCount)
 	if backupCount == 0 {
 		db.Exec("INSERT INTO backup_settings (id, retention_days, auto_prune) VALUES (1, 7, 1)")
+	}
+
+	var otelCount int
+	db.QueryRow("SELECT COUNT(*) FROM otel_settings").Scan(&otelCount)
+	if otelCount == 0 {
+		db.Exec("INSERT INTO otel_settings (id, endpoint, traces_enabled, metrics_enabled, logs_enabled) VALUES (1, '', 0, 0, 0)")
 	}
 }
 
