@@ -1,3 +1,10 @@
+# [1.19.0](https://github.com/martynvdijke/traces/compare/v1.18.12...v1.19.0) (2026-06-06)
+
+
+### Features
+
+* add central admin logging tab with OTel export ([45d7bcf](https://github.com/martynvdijke/traces/commit/45d7bcfcf9d9524e243a40a06a1d49d1d90b43eb))
+
 ## [1.18.12](https://github.com/martynvdijke/traces/compare/v1.18.11...v1.18.12) (2026-06-05)
 
 
