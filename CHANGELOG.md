@@ -1,3 +1,10 @@
+# [1.21.0](https://github.com/martynvdijke/traces/compare/v1.20.0...v1.21.0) (2026-06-06)
+
+
+### Features
+
+* add OTel endpoint admin configuration with DB-backed settings ([7407b1b](https://github.com/martynvdijke/traces/commit/7407b1b00a18da9d4550a775c69751f25bc74dd2))
+
 # [1.20.0](https://github.com/martynvdijke/traces/compare/v1.19.0...v1.20.0) (2026-06-06)
 
 
