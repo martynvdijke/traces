@@ -1,3 +1,10 @@
+## [1.21.1](https://github.com/martynvdijke/traces/compare/v1.21.0...v1.21.1) (2026-06-06)
+
+
+### Bug Fixes
+
+* wire OTel metrics exporter to respect admin panel toggle ([1298266](https://github.com/martynvdijke/traces/commit/12982661f6e8feff1fee6b020040914675e2a98a))
+
 # [1.21.0](https://github.com/martynvdijke/traces/compare/v1.20.0...v1.21.0) (2026-06-06)
 
 
