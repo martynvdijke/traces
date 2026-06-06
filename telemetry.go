@@ -11,11 +11,14 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promauto"
 	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
 	"go.opentelemetry.io/otel/exporters/otlp/otlptrace/otlptracegrpc"
 	"go.opentelemetry.io/otel/exporters/stdout/stdoutlog"
+	"go.opentelemetry.io/otel/exporters/stdout/stdoutmetric"
 	"go.opentelemetry.io/otel/exporters/stdout/stdouttrace"
 	"go.opentelemetry.io/otel/log/global"
 	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 	semconv "go.opentelemetry.io/otel/semconv/v1.21.0"
@@ -79,6 +82,11 @@ func initTelemetry() (*sdktrace.TracerProvider, error) {
 		stdlog.Printf("[OTel] Warning: failed to initialize log exporter: %v", err)
 	}
 
+	// Initialize metrics exporter
+	if err := initMetricExporter(res); err != nil {
+		stdlog.Printf("[OTel] Warning: failed to initialize metric exporter: %v", err)
+	}
+
 	return tp, nil
 }
 
@@ -120,6 +128,42 @@ func newOTLPLogExporter(endpoint string) (sdklog.Exporter, error) {
 	// When the otlploggrpc dependency is added, this function should use it.
 	stdlog.Printf("[OTel] OTLP endpoint configured at %s, using stdout log exporter (OTLP log gRPC not yet wired)", endpoint)
 	return stdoutlog.New()
+}
+
+// initMetricExporter creates an OTel metric exporter and sets the global meter provider.
+// It uses OTLP gRPC when endpoint is configured and metrics enabled, otherwise stdout.
+func initMetricExporter(res *resource.Resource) error {
+	var metricExporter sdkmetric.Exporter
+	var err error
+
+	if otelEndpoint != "" && otelMetricsEnabled {
+		metricExporter, err = newOTLPMetricExporter(otelEndpoint)
+		if err != nil {
+			return fmt.Errorf("creating OTLP metric exporter: %w", err)
+		}
+		stdlog.Printf("[OTel] Metric exporter: OTLP (%s)", otelEndpoint)
+	} else {
+		metricExporter, err = stdoutmetric.New()
+		if err != nil {
+			return fmt.Errorf("creating stdout metric exporter: %w", err)
+		}
+		stdlog.Println("[OTel] Metric exporter: stdout")
+	}
+
+	mp := sdkmetric.NewMeterProvider(
+		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter,
+			sdkmetric.WithInterval(10*time.Second))),
+		sdkmetric.WithResource(res),
+	)
+	otel.SetMeterProvider(mp)
+	return nil
+}
+
+// newOTLPMetricExporter creates an OTLP metric exporter using gRPC.
+func newOTLPMetricExporter(endpoint string) (sdkmetric.Exporter, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	return otlpmetricgrpc.New(ctx, otlpmetricgrpc.WithEndpointURL(endpoint))
 }
 
 // newOTLPTraceExporter creates an OTLP trace exporter using gRPC.

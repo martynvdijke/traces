@@ -280,26 +280,26 @@ var (
 )
 
 var (
-	db            *sql.DB
-	sessionStore  = make(map[string]int64)
-	csrfTokens    = make(map[string]string)
-	sessionMu     sync.RWMutex
-	basePath      = "/app"
-	dbPath        = "/db/traces.db"
-	mediaPath     = "/app/media"
-	backupPath    = "/db/backups"
-	gotifyURL     = ""
-	gotifyToken   = ""
-	umamiURL      = ""
-	umamiSiteID   = ""
-	immichURL     = ""
-	immichAPIKey  = ""
-	otelEndpoint    = ""
-	otelTracesEnabled bool
+	db                 *sql.DB
+	sessionStore       = make(map[string]int64)
+	csrfTokens         = make(map[string]string)
+	sessionMu          sync.RWMutex
+	basePath           = "/app"
+	dbPath             = "/db/traces.db"
+	mediaPath          = "/app/media"
+	backupPath         = "/db/backups"
+	gotifyURL          = ""
+	gotifyToken        = ""
+	umamiURL           = ""
+	umamiSiteID        = ""
+	immichURL          = ""
+	immichAPIKey       = ""
+	otelEndpoint       = ""
+	otelTracesEnabled  bool
 	otelMetricsEnabled bool
-	otelLogsEnabled   bool
-	currentUserID int
-	logService    *LogService
+	otelLogsEnabled    bool
+	currentUserID      int
+	logService         *LogService
 )
 
 func main() {
