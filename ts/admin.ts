@@ -80,6 +80,8 @@ async function init(): Promise<void> {
   document.getElementById('trash-tab')?.addEventListener('shown.bs.tab', () => {
     loadTrash();
   });
+
+  initLogViewer();
 }
 
 function loadAdminAnalytics(): void {
@@ -1834,6 +1836,177 @@ function escapeHtml(text: string): string {
   return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
+// ---- LOG VIEWER ----
+let logCurrentPage = 0;
+const logPageSize = 50;
+let logRefreshInterval: any = null;
+
+function severityBadgeHtml(severity: string): string {
+  const cls = 'severity-badge severity-' + severity;
+  return '<span class="' + cls + '">' + escapeHtml(severity) + '</span>';
+}
+
+function formatLogTimestamp(ts: string): string {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString();
+  } catch (e) {
+    return ts;
+  }
+}
+
+async function loadLogs(): Promise<void> {
+  const sev = (document.getElementById('log-filter-severity') as HTMLSelectElement).value;
+  const src = (document.getElementById('log-filter-source') as HTMLSelectElement).value;
+  const q = (document.getElementById('log-filter-search') as HTMLInputElement).value;
+  const offset = logCurrentPage * logPageSize;
+
+  let url = '/api/logs?limit=' + logPageSize + '&offset=' + offset;
+  if (sev) url += '&severity=' + encodeURIComponent(sev);
+  if (src) url += '&source=' + encodeURIComponent(src);
+  if (q) url += '&q=' + encodeURIComponent(q);
+
+  try {
+    const res = await fetch(url);
+    const logs = await res.json();
+    const tbody = document.getElementById('log-list');
+    if (!tbody) return;
+
+    if (!logs.length) {
+      tbody.innerHTML = '<tr><td colspan="5" class="text-center text-muted py-4"><i class="fa-solid fa-inbox me-2" aria-hidden="true"></i>No log entries found</td></tr>';
+    } else {
+      tbody.innerHTML = logs.map((entry: any) => {
+        const metaStr = entry.metadata && Object.keys(entry.metadata).length
+          ? '<pre>' + escapeHtml(JSON.stringify(entry.metadata, null, 2)) + '</pre>'
+          : '';
+        const detailsId = 'log-detail-' + entry.id;
+        return '<tr>'
+          + '<td class="small text-muted font-monospace" style="font-size:0.75rem">' + formatLogTimestamp(entry.timestamp) + '</td>'
+          + '<td>' + severityBadgeHtml(entry.severity) + '</td>'
+          + '<td class="small">' + escapeHtml(entry.source) + '</td>'
+          + '<td class="small">' + escapeHtml(entry.message) + '</td>'
+          + '<td>' + (metaStr
+            ? '<span class="log-detail-toggle" onclick="toggleLogDetail(\'' + detailsId + '\')"><i class="fa-solid fa-caret-right me-1" aria-hidden="true"></i>Details</span>'
+            : '<span class="text-muted small">—</span>') + '</td>'
+          + '</tr>'
+          + (metaStr ? '<tr id="' + detailsId + '" class="log-metadata"><td colspan="5" class="p-0"><div class="p-2">' + metaStr + '</div></td></tr>' : '');
+      }).join('');
+    }
+
+    // Update pagination
+    updateLogPagination();
+    updateLogSourceFilter();
+  } catch (e) {
+    const tbody = document.getElementById('log-list');
+    if (tbody) tbody.innerHTML = '<tr><td colspan="5" class="text-center text-danger py-4">Failed to load logs</td></tr>';
+  }
+}
+
+function toggleLogDetail(id: string): void {
+  const row = document.getElementById(id);
+  if (!row) return;
+  row.classList.toggle('show');
+}
+
+async function loadLogSettings(): Promise<void> {
+  try {
+    const res = await fetch('/api/logs/settings');
+    const settings = await res.json();
+    const sel = document.getElementById('log-min-severity') as HTMLSelectElement;
+    if (sel && settings.min_severity) sel.value = settings.min_severity;
+  } catch (e) { /* ignore */ }
+}
+
+async function saveLogSeverity(severity: string): Promise<void> {
+  await ensureCSRF();
+  try {
+    await fetch('/api/logs/settings', {
+      method: 'POST',
+      headers: csrfHeaders('application/json'),
+      body: JSON.stringify({ min_severity: severity })
+    });
+  } catch (e) { /* ignore */ }
+}
+
+async function clearAllLogs(): Promise<void> {
+  if (!confirm('Clear all log entries? This cannot be undone.')) return;
+  await ensureCSRF();
+  try {
+    await fetch('/api/logs', { method: 'DELETE', headers: csrfHeaders() });
+    logCurrentPage = 0;
+    await loadLogs();
+  } catch (e) { /* ignore */ }
+}
+
+async function updateLogSourceFilter(): Promise<void> {
+  const sel = document.getElementById('log-filter-source') as HTMLSelectElement;
+  if (!sel) return;
+  const currentVal = sel.value;
+  try {
+    const res = await fetch('/api/logs/sources');
+    const sources = await res.json();
+    sel.innerHTML = '<option value="">All Sources</option>'
+      + sources.map((s: string) => '<option value="' + escapeHtml(s) + '">' + escapeHtml(s) + '</option>').join('');
+    sel.value = currentVal;
+  } catch (e) { /* ignore */ }
+}
+
+function updateLogPagination(): void {
+  const pagination = document.getElementById('log-pagination');
+  if (!pagination) return;
+  pagination.style.display = '';
+  const prevBtn = document.getElementById('log-prev-btn') as HTMLButtonElement;
+  const nextBtn = document.getElementById('log-next-btn') as HTMLButtonElement;
+  if (prevBtn) prevBtn.disabled = logCurrentPage === 0;
+  if (nextBtn) nextBtn.disabled = false; // We'll disable when count < pageSize on next load
+  const pageInfo = document.getElementById('log-page-info');
+  if (pageInfo) pageInfo.textContent = 'Page ' + (logCurrentPage + 1);
+}
+
+function loadLogsPrev(): void {
+  if (logCurrentPage > 0) {
+    logCurrentPage--;
+    loadLogs();
+  }
+}
+
+function loadLogsNext(): void {
+  logCurrentPage++;
+  loadLogs();
+}
+
+let logSearchTimeout: any = null;
+function debouncedLogSearch(): void {
+  clearTimeout(logSearchTimeout);
+  logSearchTimeout = setTimeout(() => {
+    logCurrentPage = 0;
+    loadLogs();
+  }, 300);
+}
+
+function initLogViewer(): void {
+  // Load settings and initial logs
+  loadLogSettings();
+  loadLogs();
+  updateLogSourceFilter();
+
+  // Auto-refresh every 10 seconds when Logs tab is visible
+  document.getElementById('logs-tab')?.addEventListener('shown.bs.tab', () => {
+    logRefreshInterval = setInterval(() => {
+      loadLogs();
+    }, 10000);
+    (document.getElementById('log-auto-refresh-status') as HTMLElement).textContent = 'Auto-refresh: on';
+  });
+
+  document.getElementById('logs-tab')?.addEventListener('hidden.bs.tab', () => {
+    if (logRefreshInterval) {
+      clearInterval(logRefreshInterval);
+      logRefreshInterval = null;
+    }
+    (document.getElementById('log-auto-refresh-status') as HTMLElement).textContent = 'Auto-refresh: off';
+  });
+}
+
 init();
 
 (window as any).logout = logout;
@@ -1947,3 +2120,10 @@ function emptyTrash(): void {
 (window as any).batchAddTags = batchAddTags;
 (window as any).batchSetPerson = batchSetPerson;
 (window as any).filterByCollection = filterByCollection;
+(window as any).loadLogs = loadLogs;
+(window as any).saveLogSeverity = saveLogSeverity;
+(window as any).clearAllLogs = clearAllLogs;
+(window as any).loadLogsPrev = loadLogsPrev;
+(window as any).loadLogsNext = loadLogsNext;
+(window as any).debouncedLogSearch = debouncedLogSearch;
+(window as any).toggleLogDetail = toggleLogDetail;

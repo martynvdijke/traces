@@ -282,6 +282,7 @@ var (
 	immichURL     = ""
 	immichAPIKey  = ""
 	currentUserID int
+	logService    *LogService
 )
 
 func main() {
@@ -326,6 +327,12 @@ func main() {
 
 	initDB()
 	initTemplates()
+
+	// Initialize the logging service
+	logService = &LogService{db: db}
+	if err := logService.Init(); err != nil {
+		log.Printf("[LogService] Failed to initialize: %v", err)
+	}
 
 	if immichURL == "" {
 		var cfg ImmichConfig
@@ -464,6 +471,13 @@ func main() {
 			auth.POST("/templates/apply", applyTemplate)
 			auth.GET("/wrapped", getWrapped)
 			auth.GET("/csrf-token", getCSRFToken)
+			// Log endpoints
+			auth.GET("/logs", handleGetLogs)
+			auth.GET("/logs/count", handleGetLogCount)
+			auth.DELETE("/logs", handleClearLogs)
+			auth.GET("/logs/settings", handleGetLogSettings)
+			auth.POST("/logs/settings", handleUpdateLogSettings)
+			auth.GET("/logs/sources", handleGetLogSources)
 		}
 	}
 
@@ -3381,6 +3395,10 @@ func saveGotifyConfig(c *gin.Context) {
 	gotifyToken = cfg.Token
 	gotifyEnabled = cfg.Enabled
 
+	if logService != nil {
+		logService.Log("info", "gotify", "Gotify settings saved", nil)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -3453,6 +3471,10 @@ func saveImmichConfig(c *gin.Context) {
 	immichAPIKey = cfg.APIKey
 	immichEnabled = cfg.Enabled
 
+	if logService != nil {
+		logService.Log("info", "immich", "Immich settings saved", nil)
+	}
+
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -3479,9 +3501,15 @@ func testImmich(c *gin.Context) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
+		if logService != nil {
+			logService.Log("info", "immich", "Immich connection test successful", nil)
+		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Connected to Immich successfully"})
 	} else {
 		body, _ := io.ReadAll(resp.Body)
+		if logService != nil {
+			logService.Log("error", "immich", "Immich connection test failed: "+string(body), nil)
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Immich returned %d: %s", resp.StatusCode, string(body))})
 	}
 }
@@ -3807,6 +3835,9 @@ func saveMemoriesConfig(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if logService != nil {
+		logService.Log("info", "memories", "Memories settings saved", nil)
+	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -3852,6 +3883,9 @@ func saveEmailConfig(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if logService != nil {
+		logService.Log("info", "email", "Email settings saved", nil)
+	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -3874,8 +3908,14 @@ func testEmail(c *gin.Context) {
 	subject := "TRACES Test Email"
 	body := "This is a test email from TRACES. If you receive this, your email settings are working correctly."
 	if err := sendEmail(cfg, subject, body); err != nil {
+		if logService != nil {
+			logService.Log("error", "email", "Email test failed: "+err.Error(), nil)
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email"})
 		return
+	}
+	if logService != nil {
+		logService.Log("info", "email", "Email test sent successfully", nil)
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Test email sent successfully"})
 }
@@ -4670,6 +4710,9 @@ func saveOllamaConfig(c *gin.Context) {
 		serverError(c, err)
 		return
 	}
+	if logService != nil {
+		logService.Log("info", "ollama", "Ollama settings saved", nil)
+	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -4706,6 +4749,9 @@ func backupDatabase() {
 func handleBackup(c *gin.Context) {
 	backupDatabase()
 	pruneBackups()
+	if logService != nil {
+		logService.Log("info", "backup", "Backup created", nil)
+	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -4835,6 +4881,9 @@ func saveBackupConfig(c *gin.Context) {
 	if err != nil {
 		serverError(c, err)
 		return
+	}
+	if logService != nil {
+		logService.Log("info", "backup", "Backup settings saved", nil)
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
@@ -5010,6 +5059,18 @@ func createTables() {
 			event_id INTEGER NOT NULL,
 			added_at TEXT DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (collection_id, event_id)
+		)`,
+		`CREATE TABLE IF NOT EXISTS app_logs (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			timestamp TEXT NOT NULL,
+			severity TEXT NOT NULL DEFAULT 'info',
+			source TEXT NOT NULL DEFAULT '',
+			message TEXT NOT NULL DEFAULT '',
+			metadata TEXT DEFAULT ''
+		)`,
+		`CREATE TABLE IF NOT EXISTS log_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			min_severity TEXT NOT NULL DEFAULT 'warn'
 		)`,
 	}
 
