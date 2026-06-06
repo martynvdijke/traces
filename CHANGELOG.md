@@ -1,3 +1,10 @@
+# [1.20.0](https://github.com/martynvdijke/traces/compare/v1.19.0...v1.20.0) (2026-06-06)
+
+
+### Features
+
+* add Umami analytics admin panel integration ([7ac6ecd](https://github.com/martynvdijke/traces/commit/7ac6ecd52c2abd1fc1c05b86add6cd7739c21594))
+
 # [1.19.0](https://github.com/martynvdijke/traces/compare/v1.18.12...v1.19.0) (2026-06-06)
 
 
