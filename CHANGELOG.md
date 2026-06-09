@@ -1,3 +1,20 @@
+# [1.22.0](https://github.com/martynvdijke/traces/compare/v1.21.1...v1.22.0) (2026-06-09)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#27](https://github.com/martynvdijke/traces/issues/27)) ([2393ffd](https://github.com/martynvdijke/traces/commit/2393ffd6640852815c1e641624a638dfa4e55b47))
+* remove duplicate otel job from release workflow ([d586da9](https://github.com/martynvdijke/traces/commit/d586da955111d8e4803b9d5a8849c90212543702))
+* remove otel job from reusable ci.yaml ([66a39f1](https://github.com/martynvdijke/traces/commit/66a39f184841fe1bff38849cd077858b416f7b60))
+* rename githubToken to otelToken for otel-cicd-action@v4 ([ae79bc8](https://github.com/martynvdijke/traces/commit/ae79bc870b9364a8530efb63ca24abc8e85f20cb))
+* use githubToken instead of otelToken for otel-cicd-action@v4 ([cf56999](https://github.com/martynvdijke/traces/commit/cf5699984bc47a29f85f5028517d35c9b34f5f5d))
+* use githubToken instead of otelToken for otel-cicd-action@v4 ([e535e33](https://github.com/martynvdijke/traces/commit/e535e333202b9b91553e55b4a07303ac90760da0))
+
+
+### Features
+
+* add otlpAuthorization input for Bearer auth ([dee5de8](https://github.com/martynvdijke/traces/commit/dee5de86da4135ce50907cb30d847c7b5be09105))
+
 ## [1.21.1](https://github.com/martynvdijke/traces/compare/v1.21.0...v1.21.1) (2026-06-06)
 
 
