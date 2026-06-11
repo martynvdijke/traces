@@ -1,3 +1,10 @@
+# [1.23.0](https://github.com/martynvdijke/traces/compare/v1.22.0...v1.23.0) (2026-06-11)
+
+
+### Features
+
+* add OTel tracing middleware, app metrics, and telemetry tests ([1da8ca6](https://github.com/martynvdijke/traces/commit/1da8ca60d83d3efe983c7e2a77b4c71421e2bc09))
+
 # [1.22.0](https://github.com/martynvdijke/traces/compare/v1.21.1...v1.22.0) (2026-06-09)
 
 
