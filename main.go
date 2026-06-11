@@ -56,6 +56,9 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/yuin/goldmark"
+	"go.opentelemetry.io/otel/attribute"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
 	"golang.org/x/image/draw"
 	"golang.org/x/net/webdav"
@@ -716,8 +719,18 @@ func getCSRFToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
+// startSpan creates a child span from the request context and returns the context + span.
+// Use it in handlers to add trace instrumentation.
+func startSpan(c *gin.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	return tracer.Start(c.Request.Context(), name, opts...)
+}
+
 func serverError(c *gin.Context, err error) {
 	log.Printf("[ERROR] %v", err)
+	if span := trace.SpanFromContext(c.Request.Context()); span.IsRecording() {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
+	}
 	c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 }
 
@@ -897,12 +910,22 @@ func handleLogout(c *gin.Context) {
 // @Success 200 {array} object "timeline events"
 // @Router /events [get]
 func getEvents(c *gin.Context) {
+	ctx, span := startSpan(c, "getEvents")
+	defer span.End()
+
 	year := c.Query("year")
 	month := c.Query("month")
 	tag := c.Query("tag")
 	limit := c.Query("limit")
 	sort := c.Query("sort")
 	userID := c.Query("user_id")
+
+	span.SetAttributes(
+		attribute.String("year", year),
+		attribute.String("month", month),
+		attribute.String("tag", tag),
+		attribute.String("user_id", userID),
+	)
 
 	query := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
@@ -940,7 +963,9 @@ func getEvents(c *gin.Context) {
 		args = append(args, l)
 	}
 
+	_qStart := time.Now()
 	rows, err := db.Query(query, args...)
+	RecordDBQuery("getEvents", time.Since(_qStart))
 	if err != nil {
 		serverError(c, err)
 		return
@@ -948,7 +973,9 @@ func getEvents(c *gin.Context) {
 	defer rows.Close()
 
 	events := scanEventsWithPerson(rows)
+	span.SetAttributes(attribute.Int("event_count", len(events)))
 	c.JSON(http.StatusOK, events)
+	_ = ctx
 }
 
 // @Summary Get all events with full fields
@@ -1099,6 +1126,9 @@ func getContributions(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /events [post]
 func saveEvent(c *gin.Context) {
+	_, span := startSpan(c, "saveEvent")
+	defer span.End()
+
 	var e TimelineEvent
 	if err := c.ShouldBindJSON(&e); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -1114,14 +1144,22 @@ func saveEvent(c *gin.Context) {
 		e.Date = time.Now().Format("2006-01-02")
 	}
 
+	span.SetAttributes(
+		attribute.Int("event.id", e.ID),
+		attribute.String("event.title", e.Title),
+		attribute.String("event.date", e.Date),
+	)
+
 	log.Printf("[EVENT] Saving event: ID=%d, Title=%s, Date=%s", e.ID, e.Title, e.Date)
 
 	action := "created"
+	_qStart := time.Now()
 	if e.ID == 0 {
 		result, err := db.Exec(`INSERT INTO timeline_events 
 			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, is_favorite, person_id, latitude, longitude, recurring, weather_data, event_start_time, event_end_time, user_id) 
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
+		RecordDBQuery("saveEvent-insert", time.Since(_qStart))
 		if err != nil {
 			serverError(c, err)
 			return
@@ -1133,12 +1171,16 @@ func saveEvent(c *gin.Context) {
 			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, is_favorite=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, event_start_time=?, event_end_time=?, user_id=?
 			WHERE id=?`,
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID, e.ID)
+		RecordDBQuery("saveEvent-update", time.Since(_qStart))
 		if err != nil {
 			serverError(c, err)
 			return
 		}
 		action = "updated"
 	}
+
+	RecordEventOperation(action)
+	span.SetAttributes(attribute.String("action", action))
 
 	sendGotifyNotification(fmt.Sprintf("Event %s: %s (%s)", action, e.Title, e.Date), e.Description)
 	c.JSON(http.StatusOK, e)
@@ -1153,6 +1195,9 @@ func saveEvent(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /events [delete]
 func deleteEvent(c *gin.Context) {
+	_, span := startSpan(c, "deleteEvent")
+	defer span.End()
+
 	idStr := c.Query("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -1160,15 +1205,20 @@ func deleteEvent(c *gin.Context) {
 		return
 	}
 
+	span.SetAttributes(attribute.Int("event.id", id))
+
 	var title string
 	db.QueryRow("SELECT title FROM timeline_events WHERE id=?", id).Scan(&title)
 
+	_qStart := time.Now()
 	_, err = db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=?", id)
+	RecordDBQuery("deleteEvent", time.Since(_qStart))
 	if err != nil {
 		serverError(c, err)
 		return
 	}
 
+	RecordEventOperation("delete")
 	sendGotifyNotification(fmt.Sprintf("Event deleted: %s", title), "")
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
@@ -1324,10 +1374,15 @@ func emptyTrash(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /upload [post]
 func handleUpload(c *gin.Context) {
+	_, span := startSpan(c, "handleUpload")
+	defer span.End()
+
 	mediaType := c.PostForm("media_type")
 	if mediaType == "" {
 		mediaType = "image"
 	}
+
+	span.SetAttributes(attribute.String("media_type", mediaType))
 
 	var formKey string
 	switch mediaType {
@@ -1344,6 +1399,8 @@ func handleUpload(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 		return
 	}
+
+	span.SetAttributes(attribute.String("filename", file.Filename))
 
 	ext := strings.ToLower(filepath.Ext(file.Filename))
 	allowedExts := map[string][]string{
@@ -2830,10 +2887,14 @@ func getWrapped(c *gin.Context) {
 // @Success 200 {object} object "event statistics"
 // @Router /stats [get]
 func getEventStats(c *gin.Context) {
+	_, span := startSpan(c, "getEventStats")
+	defer span.End()
+
 	year := c.Query("year")
 	if year == "" {
 		year = fmt.Sprintf("%d", time.Now().Year())
 	}
+	span.SetAttributes(attribute.String("year", year))
 
 	var stats EventStats
 	stats.ByMonth = make(map[string]int)
@@ -3821,6 +3882,9 @@ func importImmichMemories(c *gin.Context) {
 // @Success 200 {array} object "memory events"
 // @Router /memories [get]
 func getMemories(c *gin.Context) {
+	_, span := startSpan(c, "getMemories")
+	defer span.End()
+
 	var cfg MemoriesConfig
 	var enabledInt int
 	err := db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &cfg.DaysWindow, &cfg.EmailEnabled)
