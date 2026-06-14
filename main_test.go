@@ -21,6 +21,8 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
+
+	"traces/internal/models"
 )
 
 func setupTestRouter() *gin.Engine {
@@ -28,7 +30,7 @@ func setupTestRouter() *gin.Engine {
 	r := gin.New()
 
 	r.GET("/api/version", func(c *gin.Context) {
-		c.JSON(http.StatusOK, gin.H{"version": currentVersion})
+		c.JSON(http.StatusOK, gin.H{"version": models.CurrentVersion})
 	})
 	r.POST("/api/login", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -264,8 +266,8 @@ func TestEscapeHtml(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			if got := EscapeHtml(tt.input); got != tt.expected {
-				t.Errorf("EscapeHtml(%q) = %q, want %q", tt.input, got, tt.expected)
+			if got := models.EscapeHtml(tt.input); got != tt.expected {
+				t.Errorf("models.EscapeHtml(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}
@@ -281,8 +283,8 @@ func TestGetMediaIcon(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.mediaType, func(t *testing.T) {
-			if got := GetMediaIcon(tt.mediaType); got != tt.expected {
-				t.Errorf("GetMediaIcon(%q) = %q, want %q", tt.mediaType, got, tt.expected)
+			if got := models.GetMediaIcon(tt.mediaType); got != tt.expected {
+				t.Errorf("models.GetMediaIcon(%q) = %q, want %q", tt.mediaType, got, tt.expected)
 			}
 		})
 	}
@@ -297,13 +299,13 @@ func TestFormatDate(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run(tt.input, func(t *testing.T) {
-			if got := FormatDate(tt.input); got != tt.expected {
-				t.Errorf("FormatDate(%q) = %q, want %q", tt.input, got, tt.expected)
+			if got := models.FormatDate(tt.input); got != tt.expected {
+				t.Errorf("models.FormatDate(%q) = %q, want %q", tt.input, got, tt.expected)
 			}
 		})
 	}
 	t.Run("leap_year", func(t *testing.T) {
-		if got := FormatDate("2024-02-29"); got == "invalid" {
+		if got := models.FormatDate("2024-02-29"); got == "invalid" {
 			t.Error("should handle leap year")
 		}
 	})
@@ -322,8 +324,8 @@ func TestAPIEndpoints(t *testing.T) {
 		}
 		var resp map[string]string
 		json.Unmarshal(w.Body.Bytes(), &resp)
-		if resp["version"] != currentVersion {
-			t.Errorf("version = %q, want %q", resp["version"], currentVersion)
+		if resp["version"] != models.CurrentVersion {
+			t.Errorf("version = %q, want %q", resp["version"], models.CurrentVersion)
 		}
 	})
 
@@ -340,8 +342,8 @@ func TestAPIEndpoints(t *testing.T) {
 		if resp["status"] != "ok" {
 			t.Errorf("status = %q, want 'ok'", resp["status"])
 		}
-		if resp["version"] != currentVersion {
-			t.Errorf("version = %q, want %q", resp["version"], currentVersion)
+		if resp["version"] != models.CurrentVersion {
+			t.Errorf("version = %q, want %q", resp["version"], models.CurrentVersion)
 		}
 	})
 
@@ -612,7 +614,7 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 			t.Fatalf("upload status = %d, body=%s", w.Code, w.Body.String())
 		}
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		json.Unmarshal(w.Body.Bytes(), &resp)
 
 		if resp["url"] == nil || resp["url"] == "" {
@@ -644,7 +646,7 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 			t.Fatalf("upload status = %d, body=%s", w.Code, w.Body.String())
 		}
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		json.Unmarshal(w.Body.Bytes(), &resp)
 		if resp["url"] == nil || resp["url"] == "" {
 			t.Error("upload response missing url")
@@ -679,7 +681,7 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 			t.Fatalf("upload status = %d, body=%s", w.Code, w.Body.String())
 		}
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		json.Unmarshal(w.Body.Bytes(), &resp)
 		if resp["url"] == nil || resp["url"] == "" {
 			t.Error("upload response missing url")
@@ -852,14 +854,14 @@ func BenchmarkHashPassword(b *testing.B) {
 func BenchmarkEscapeHtml(b *testing.B) {
 	text := "<script>alert('xss')</script>"
 	for i := 0; i < b.N; i++ {
-		EscapeHtml(text)
+		models.EscapeHtml(text)
 	}
 }
 
 func BenchmarkGetMediaIcon(b *testing.B) {
 	types := []string{"image", "video", "audio"}
 	for i := 0; i < b.N; i++ {
-		GetMediaIcon(types[i%len(types)])
+		models.GetMediaIcon(types[i%len(types)])
 	}
 }
 
@@ -1262,7 +1264,7 @@ func TestTagAutocomplete(t *testing.T) {
 		// Flatten comma-separated tags
 		tagSet := make(map[string]bool)
 		for _, rt := range rawTags {
-			for _, tag := range strings.Split(rt, ",") {
+			for tag := range strings.SplitSeq(rt, ",") {
 				tag = strings.TrimSpace(tag)
 				if tag != "" {
 					tagSet[tag] = true
@@ -1914,7 +1916,7 @@ func TestManifestAndServiceWorker(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Errorf("status = %d", w.Code)
 		}
-		var manifest map[string]interface{}
+		var manifest map[string]any
 		if err := json.Unmarshal(w.Body.Bytes(), &manifest); err != nil {
 			t.Fatal(err)
 		}
@@ -1975,10 +1977,10 @@ func TestMarkdownInDescription(t *testing.T) {
 
 		for _, tt := range tests {
 			t.Run(tt.name, func(t *testing.T) {
-				got := RenderMarkdown(tt.input)
+				got := models.RenderMarkdown(tt.input)
 				for _, want := range tt.wantHTML {
 					if !strings.Contains(got, want) {
-						t.Errorf("RenderMarkdown(%q) = %q, want contains %q", tt.input, got, want)
+						t.Errorf("models.RenderMarkdown(%q) = %q, want contains %q", tt.input, got, want)
 					}
 				}
 			})
@@ -2461,7 +2463,7 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 			t.Fatalf("POST status = %d, body=%s", w.Code, w.Body.String())
 		}
 
-		var created TimelineEvent
+		var created models.TimelineEvent
 		json.Unmarshal(w.Body.Bytes(), &created)
 		if created.ID <= 0 {
 			t.Fatalf("expected positive ID, got %d", created.ID)
@@ -2479,7 +2481,7 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 			t.Fatalf("GET status = %d, body=%s", w2.Code, w2.Body.String())
 		}
 
-		var events []TimelineEvent
+		var events []models.TimelineEvent
 		json.Unmarshal(w2.Body.Bytes(), &events)
 
 		found := false
@@ -2515,7 +2517,7 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 			t.Fatalf("UPDATE status = %d, body=%s", w.Code, w.Body.String())
 		}
 
-		var updated TimelineEvent
+		var updated models.TimelineEvent
 		json.Unmarshal(w.Body.Bytes(), &updated)
 		if updated.Title != "Updated Roundtrip" {
 			t.Errorf("title = %q", updated.Title)
@@ -2526,7 +2528,7 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 		req2.AddCookie(&http.Cookie{Name: "session", Value: sessionID})
 		router.ServeHTTP(w2, req2)
 
-		var events []TimelineEvent
+		var events []models.TimelineEvent
 		json.Unmarshal(w2.Body.Bytes(), &events)
 
 		found := false
@@ -2628,7 +2630,7 @@ func TestGetPublicEvents(t *testing.T) {
 			t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
 		}
 
-		var events []TimelineEvent
+		var events []models.TimelineEvent
 		if err := json.Unmarshal(w.Body.Bytes(), &events); err != nil {
 			t.Fatalf("json unmarshal: %v, body=%s", err, w.Body.String())
 		}
@@ -2651,7 +2653,7 @@ func TestGetPublicEvents(t *testing.T) {
 			t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
 		}
 
-		var events []TimelineEvent
+		var events []models.TimelineEvent
 		if err := json.Unmarshal(w.Body.Bytes(), &events); err != nil {
 			t.Fatalf("json unmarshal: %v, body=%s", err, w.Body.String())
 		}
@@ -2679,7 +2681,7 @@ func TestGetPublicEvents(t *testing.T) {
 			t.Fatalf("status = %d, body=%s", w.Code, w.Body.String())
 		}
 
-		var events []TimelineEvent
+		var events []models.TimelineEvent
 		if err := json.Unmarshal(w.Body.Bytes(), &events); err != nil {
 			t.Fatalf("json unmarshal: %v, body=%s", err, w.Body.String())
 		}
@@ -2725,7 +2727,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("Beach"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("Beach"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -2745,7 +2747,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("Malibu"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("Malibu"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -2763,7 +2765,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("hiking"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("hiking"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -2781,7 +2783,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("summer"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("summer"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -2800,7 +2802,7 @@ func TestFTSSearch(t *testing.T) {
 			t.Skip("FTS5 not available")
 		}
 		db.Exec("INSERT INTO timeline_events (title, description, event_date, location, tags) VALUES ('Ski Trip', 'Skiing in the Alps', '2026-01-15', 'Alps', 'skiing, winter')")
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("Skiing"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("Skiing"))
 		if err != nil {
 			t.Fatalf("FTS trigger query failed: %v", err)
 		}
@@ -2819,7 +2821,7 @@ func TestFTSSearch(t *testing.T) {
 			t.Skip("FTS5 not available")
 		}
 		db.Exec("DELETE FROM timeline_events WHERE title = 'Ski Trip'")
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("Skiing"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("Skiing"))
 		if err != nil {
 			t.Fatalf("FTS delete query failed: %v", err)
 		}
@@ -2838,7 +2840,7 @@ func TestFTSSearch(t *testing.T) {
 			t.Skip("FTS5 not available")
 		}
 		db.Exec("UPDATE timeline_events SET description = 'Live jazz concert in the park' WHERE title = 'Concert Night'")
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("jazz"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("jazz"))
 		if err != nil {
 			t.Fatalf("FTS update query failed: %v", err)
 		}
@@ -2856,7 +2858,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", sanitizeFTSQuery("zzzznotfound"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("zzzznotfound"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -2879,9 +2881,9 @@ func TestFTSSearch(t *testing.T) {
 			{"it's", `"it''s"`},
 		}
 		for _, tc := range cases {
-			result := sanitizeFTSQuery(tc.input)
+			result := SanitizeFTSQuery(tc.input)
 			if result != tc.expected {
-				t.Errorf("sanitizeFTSQuery(%q) = %q, want %q", tc.input, result, tc.expected)
+				t.Errorf("SanitizeFTSQuery(%q) = %q, want %q", tc.input, result, tc.expected)
 			}
 		}
 	})
@@ -2928,7 +2930,7 @@ func TestGlobalSearch(t *testing.T) {
 		}
 		rows, err := db.Query(`SELECT e.title, e.event_date FROM timeline_events e
 			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-			ORDER BY e.event_date DESC LIMIT 10`, sanitizeFTSQuery("Party"))
+			ORDER BY e.event_date DESC LIMIT 10`, SanitizeFTSQuery("Party"))
 		if err != nil {
 			t.Fatalf("Global search query failed: %v", err)
 		}
@@ -2976,7 +2978,7 @@ func TestGlobalSearch(t *testing.T) {
 
 		rows, err := db.Query(`SELECT e.title FROM timeline_events e
 			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-			ORDER BY e.event_date DESC LIMIT 3`, sanitizeFTSQuery("Party"))
+			ORDER BY e.event_date DESC LIMIT 3`, SanitizeFTSQuery("Party"))
 		if err != nil {
 			t.Fatalf("Limit query failed: %v", err)
 		}
@@ -2993,7 +2995,7 @@ func TestGlobalSearch(t *testing.T) {
 	t.Run("global_search_empty_query", func(t *testing.T) {
 		rows, err := db.Query(`SELECT e.title FROM timeline_events e
 			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)`,
-			sanitizeFTSQuery(""))
+			SanitizeFTSQuery(""))
 		if err == nil {
 			rows.Close()
 		}
@@ -3078,7 +3080,7 @@ func TestStatsDistribution(t *testing.T) {
 		for rows.Next() {
 			var t string
 			rows.Scan(&t)
-			for _, tag := range strings.Split(t, ",") {
+			for tag := range strings.SplitSeq(t, ",") {
 				tag = strings.TrimSpace(tag)
 				if tag != "" {
 					tagMap[tag]++
@@ -3387,12 +3389,12 @@ func TestImmichConfigRoundTrip(t *testing.T) {
 func TestImmichMemoryAssetSerialization(t *testing.T) {
 	tests := []struct {
 		name   string
-		asset  ImmichMemoryAsset
+		asset  models.ImmichMemoryAsset
 		expect string
 	}{
 		{
 			name: "basic_asset",
-			asset: ImmichMemoryAsset{
+			asset: models.ImmichMemoryAsset{
 				ID:               "abc-123",
 				OriginalFileName: "IMG_2023.jpg",
 				Type:             "IMAGE",
@@ -3525,7 +3527,7 @@ func TestImmichConfigHandlers(t *testing.T) {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
 
-		var cfg ImmichConfig
+		var cfg models.ImmichConfig
 		if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
 			t.Fatal(err)
 		}
@@ -3535,7 +3537,7 @@ func TestImmichConfigHandlers(t *testing.T) {
 	})
 
 	t.Run("save_and_read_config", func(t *testing.T) {
-		cfg := ImmichConfig{
+		cfg := models.ImmichConfig{
 			URL:     "https://immich.vandijke.xyz",
 			APIKey:  "test-api-key-456",
 			Enabled: true,
@@ -3575,7 +3577,7 @@ func TestImmichConfigHandlers(t *testing.T) {
 			t.Fatalf("read status = %d, want 200", w2.Code)
 		}
 
-		var readCfg ImmichConfig
+		var readCfg models.ImmichConfig
 		json.Unmarshal(w2.Body.Bytes(), &readCfg)
 		if readCfg.URL != cfg.URL {
 			t.Errorf("URL = %q, want %q", readCfg.URL, cfg.URL)
@@ -3589,7 +3591,7 @@ func TestImmichConfigHandlers(t *testing.T) {
 	})
 
 	t.Run("save_config_disabled", func(t *testing.T) {
-		cfg := ImmichConfig{
+		cfg := models.ImmichConfig{
 			URL:     "https://immich.vandijke.xyz",
 			APIKey:  "key-disabled",
 			Enabled: false,
@@ -3642,7 +3644,7 @@ func TestPruneBackups(t *testing.T) {
 	backupPath = tmpDir
 
 	oldTime := time.Now().AddDate(0, 0, -15)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		name := fmt.Sprintf("traces-backup-%s-%d.db", oldTime.Format("2006-01-02-150405"), i)
 		path := filepath.Join(tmpDir, name)
 		os.WriteFile(path, []byte("test"), 0644)
@@ -3650,7 +3652,7 @@ func TestPruneBackups(t *testing.T) {
 	}
 
 	recentTime := time.Now().AddDate(0, 0, -1)
-	for i := 0; i < 2; i++ {
+	for i := range 2 {
 		name := fmt.Sprintf("traces-backup-%s-%d.db", recentTime.Format("2006-01-02-150405"), i)
 		path := filepath.Join(tmpDir, name)
 		os.WriteFile(path, []byte("test"), 0644)
@@ -3697,7 +3699,7 @@ func TestPruneBackupsDisabled(t *testing.T) {
 	backupPath = tmpDir
 
 	oldTime := time.Now().AddDate(0, 0, -15)
-	for i := 0; i < 3; i++ {
+	for i := range 3 {
 		name := fmt.Sprintf("traces-backup-%s-%d.db", oldTime.Format("2006-01-02-150405"), i)
 		path := filepath.Join(tmpDir, name)
 		os.WriteFile(path, []byte("test"), 0644)
@@ -3790,7 +3792,7 @@ func TestBackupConfigAPI(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
-		var cfg BackupConfig
+		var cfg models.BackupConfig
 		json.Unmarshal(w.Body.Bytes(), &cfg)
 		if cfg.RetentionDays != 7 {
 			t.Errorf("retention_days = %d, want 7", cfg.RetentionDays)
@@ -3801,7 +3803,7 @@ func TestBackupConfigAPI(t *testing.T) {
 	})
 
 	t.Run("save_config", func(t *testing.T) {
-		body, _ := json.Marshal(BackupConfig{RetentionDays: 30, AutoPrune: false})
+		body, _ := json.Marshal(models.BackupConfig{RetentionDays: 30, AutoPrune: false})
 		req := httptest.NewRequest("POST", "/api/backup/config", bytes.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
 		w := httptest.NewRecorder()
@@ -3815,7 +3817,7 @@ func TestBackupConfigAPI(t *testing.T) {
 		w = httptest.NewRecorder()
 		r.ServeHTTP(w, req)
 
-		var cfg BackupConfig
+		var cfg models.BackupConfig
 		json.Unmarshal(w.Body.Bytes(), &cfg)
 		if cfg.RetentionDays != 30 {
 			t.Errorf("retention_days = %d, want 30", cfg.RetentionDays)
@@ -4102,13 +4104,13 @@ func TestICalendarExport(t *testing.T) {
 	}
 	defer rows.Close()
 
-	var ics string
-	ics += "BEGIN:VCALENDAR\r\n"
-	ics += "VERSION:2.0\r\n"
-	ics += "PRODID:-//TRACES//Events 2026//EN\r\n"
-	ics += "CALSCALE:GREGORIAN\r\n"
-	ics += "METHOD:PUBLISH\r\n"
-	ics += "X-WR-CALNAME:TRACES 2026\r\n"
+	var ics strings.Builder
+	ics.WriteString("BEGIN:VCALENDAR\r\n")
+	ics.WriteString("VERSION:2.0\r\n")
+	ics.WriteString("PRODID:-//TRACES//Events 2026//EN\r\n")
+	ics.WriteString("CALSCALE:GREGORIAN\r\n")
+	ics.WriteString("METHOD:PUBLISH\r\n")
+	ics.WriteString("X-WR-CALNAME:TRACES 2026\r\n")
 
 	for rows.Next() {
 		var id int
@@ -4119,86 +4121,86 @@ func TestICalendarExport(t *testing.T) {
 			t.Fatal(err)
 		}
 		uid := fmt.Sprintf("%d-%s@traces", id, date)
-		ics += "BEGIN:VEVENT\r\n"
-		ics += "UID:" + uid + "\r\n"
-		ics += "DTSTAMP:20260511T000000Z\r\n"
+		ics.WriteString("BEGIN:VEVENT\r\n")
+		ics.WriteString("UID:" + uid + "\r\n")
+		ics.WriteString("DTSTAMP:20260511T000000Z\r\n")
 		if startTime.Valid && startTime.String != "" {
-			ics += "DTSTART:" + strings.ReplaceAll(date, "-", "") + "T" + strings.ReplaceAll(startTime.String, ":", "") + "00\r\n"
+			ics.WriteString("DTSTART:" + strings.ReplaceAll(date, "-", "") + "T" + strings.ReplaceAll(startTime.String, ":", "") + "00\r\n")
 			if endTime.Valid && endTime.String != "" {
-				ics += "DTEND:" + strings.ReplaceAll(date, "-", "") + "T" + strings.ReplaceAll(endTime.String, ":", "") + "00\r\n"
+				ics.WriteString("DTEND:" + strings.ReplaceAll(date, "-", "") + "T" + strings.ReplaceAll(endTime.String, ":", "") + "00\r\n")
 			}
 		} else {
-			ics += "DTSTART;VALUE=DATE:" + strings.ReplaceAll(date, "-", "") + "\r\n"
+			ics.WriteString("DTSTART;VALUE=DATE:" + strings.ReplaceAll(date, "-", "") + "\r\n")
 		}
-		ics += "SUMMARY:" + strings.ReplaceAll(title, "\\", "\\\\") + "\r\n"
+		ics.WriteString("SUMMARY:" + strings.ReplaceAll(title, "\\", "\\\\") + "\r\n")
 		if desc.Valid && desc.String != "" {
-			ics += "DESCRIPTION:" + strings.ReplaceAll(strings.ReplaceAll(desc.String, "\n", "\\n"), "\\", "\\\\") + "\r\n"
+			ics.WriteString("DESCRIPTION:" + strings.ReplaceAll(strings.ReplaceAll(desc.String, "\n", "\\n"), "\\", "\\\\") + "\r\n")
 		}
 		if location.Valid && location.String != "" {
-			ics += "LOCATION:" + strings.ReplaceAll(location.String, "\\", "\\\\") + "\r\n"
+			ics.WriteString("LOCATION:" + strings.ReplaceAll(location.String, "\\", "\\\\") + "\r\n")
 		}
 		if lat.Valid && lng.Valid {
-			ics += "GEO:" + fmt.Sprintf("%.6f;%.6f", lat.Float64, lng.Float64) + "\r\n"
+			ics.WriteString("GEO:" + fmt.Sprintf("%.6f;%.6f", lat.Float64, lng.Float64) + "\r\n")
 		}
 		if recurring.Valid {
 			switch recurring.String {
 			case "yearly":
-				ics += "RRULE:FREQ=YEARLY\r\n"
+				ics.WriteString("RRULE:FREQ=YEARLY\r\n")
 			}
 		}
-		ics += "END:VEVENT\r\n"
+		ics.WriteString("END:VEVENT\r\n")
 	}
-	ics += "END:VCALENDAR\r\n"
+	ics.WriteString("END:VCALENDAR\r\n")
 
 	t.Run("has_vcalendar_wrapper", func(t *testing.T) {
-		if !strings.Contains(ics, "BEGIN:VCALENDAR") {
+		if !strings.Contains(ics.String(), "BEGIN:VCALENDAR") {
 			t.Error("missing BEGIN:VCALENDAR")
 		}
-		if !strings.Contains(ics, "END:VCALENDAR") {
+		if !strings.Contains(ics.String(), "END:VCALENDAR") {
 			t.Error("missing END:VCALENDAR")
 		}
-		if !strings.Contains(ics, "VERSION:2.0") {
+		if !strings.Contains(ics.String(), "VERSION:2.0") {
 			t.Error("missing VERSION:2.0")
 		}
 	})
 
 	t.Run("contains_all_events", func(t *testing.T) {
-		count := strings.Count(ics, "BEGIN:VEVENT")
+		count := strings.Count(ics.String(), "BEGIN:VEVENT")
 		if count != 3 {
 			t.Errorf("expected 3 VEVENT, got %d", count)
 		}
 	})
 
 	t.Run("recurring_event_has_rrule", func(t *testing.T) {
-		if !strings.Contains(ics, "RRULE:FREQ=YEARLY") {
+		if !strings.Contains(ics.String(), "RRULE:FREQ=YEARLY") {
 			t.Error("missing RRULE for yearly event")
 		}
 	})
 
 	t.Run("timed_event_has_dtstart_dtend", func(t *testing.T) {
-		if !strings.Contains(ics, "DTSTART:20260615T093000") {
+		if !strings.Contains(ics.String(), "DTSTART:20260615T093000") {
 			t.Error("missing DTSTART with time for timed event")
 		}
-		if !strings.Contains(ics, "DTEND:20260615T170000") {
+		if !strings.Contains(ics.String(), "DTEND:20260615T170000") {
 			t.Error("missing DTEND with time for timed event")
 		}
 	})
 
 	t.Run("all_day_event_has_date_dtstart", func(t *testing.T) {
-		if !strings.Contains(ics, "DTSTART;VALUE=DATE:20260115") {
+		if !strings.Contains(ics.String(), "DTSTART;VALUE=DATE:20260115") {
 			t.Error("missing DATE value DTSTART for all-day event")
 		}
 	})
 
 	t.Run("event_has_geo", func(t *testing.T) {
-		if !strings.Contains(ics, "GEO:40.712800;-74.006000") {
+		if !strings.Contains(ics.String(), "GEO:40.712800;-74.006000") {
 			t.Error("missing GEO for event with coordinates")
 		}
 	})
 
 	t.Run("each_vevent_has_uid", func(t *testing.T) {
-		uidCount := strings.Count(ics, "@traces")
-		veventCount := strings.Count(ics, "BEGIN:VEVENT")
+		uidCount := strings.Count(ics.String(), "@traces")
+		veventCount := strings.Count(ics.String(), "BEGIN:VEVENT")
 		if uidCount != veventCount {
 			t.Errorf("expected %d UIDs for %d events, got %d", veventCount, veventCount, uidCount)
 		}
@@ -4241,7 +4243,7 @@ func TestEmailConfigAPI(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
-		var cfg EmailConfig
+		var cfg models.EmailConfig
 		if err := json.Unmarshal(w.Body.Bytes(), &cfg); err != nil {
 			t.Fatal(err)
 		}
@@ -4257,7 +4259,7 @@ func TestEmailConfigAPI(t *testing.T) {
 		db.Exec("DELETE FROM email_settings")
 		db.Exec("INSERT INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)")
 
-		body, _ := json.Marshal(EmailConfig{
+		body, _ := json.Marshal(models.EmailConfig{
 			SMTPHost: "smtp.gmail.com",
 			SMTPPort: 465,
 			SMTPUser: "user@gmail.com",
@@ -4313,7 +4315,7 @@ func TestEmailConfigAPI(t *testing.T) {
 		if w.Code != http.StatusOK {
 			t.Fatalf("status = %d, want 200", w.Code)
 		}
-		var cfg EmailConfig
+		var cfg models.EmailConfig
 		json.Unmarshal(w.Body.Bytes(), &cfg)
 		if cfg.SMTPHost != "smtp.gmail.com" {
 			t.Errorf("host = %q", cfg.SMTPHost)
@@ -4333,7 +4335,7 @@ func TestEmailConfigAPI(t *testing.T) {
 		db.Exec("DELETE FROM email_settings")
 		db.Exec("INSERT INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)")
 
-		body, _ := json.Marshal(EmailConfig{
+		body, _ := json.Marshal(models.EmailConfig{
 			SMTPHost: "smtp.example.com",
 			SMTPPort: 0,
 		})
@@ -4592,7 +4594,7 @@ func TestMigrationFromV8ToCurrent(t *testing.T) {
 		t.Fatalf("expected email host 'smtp.test.com' before migration, got %q", emailHost)
 	}
 
-	for version < currentSchemaVersion {
+	for version < models.CurrentSchemaVersion {
 		runMigration(version)
 		version++
 		db.Exec("DELETE FROM schema_version")
@@ -4601,8 +4603,8 @@ func TestMigrationFromV8ToCurrent(t *testing.T) {
 
 	var migratedVersion int
 	db.QueryRow("SELECT version FROM schema_version").Scan(&migratedVersion)
-	if migratedVersion != currentSchemaVersion {
-		t.Errorf("schema version after migration = %d, want %d", migratedVersion, currentSchemaVersion)
+	if migratedVersion != models.CurrentSchemaVersion {
+		t.Errorf("schema version after migration = %d, want %d", migratedVersion, models.CurrentSchemaVersion)
 	}
 
 	createTables()
@@ -4774,7 +4776,7 @@ func TestRecycleBin(t *testing.T) {
 			t.Fatalf("GET /api/events/trash status = %d", w.Code)
 		}
 
-		var events []TimelineEvent
+		var events []models.TimelineEvent
 		json.Unmarshal(w.Body.Bytes(), &events)
 		if len(events) != 1 {
 			t.Fatalf("expected 1 trashed event, got %d", len(events))
@@ -4799,7 +4801,7 @@ func TestRecycleBin(t *testing.T) {
 			t.Fatalf("POST /api/events/restore status = %d", w.Code)
 		}
 
-		var resp map[string]interface{}
+		var resp map[string]any
 		json.Unmarshal(w.Body.Bytes(), &resp)
 		if resp["status"] != "ok" {
 			t.Errorf("status = %q", resp["status"])

@@ -8,6 +8,8 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	"traces/internal/models"
 )
 
 var htmxTemplates *template.Template
@@ -38,7 +40,7 @@ func split(s, sep string) []string {
 	return strings.Split(s, sep)
 }
 
-func renderTemplate(w http.ResponseWriter, name string, data interface{}) {
+func renderTemplate(w http.ResponseWriter, name string, data any) {
 	var buf bytes.Buffer
 	if err := htmxTemplates.ExecuteTemplate(&buf, name, data); err != nil {
 		log.Printf("[HTMX] Template error %s: %v", name, err)
@@ -117,9 +119,9 @@ type TrashRow struct {
 
 func initTemplates() {
 	funcMap := template.FuncMap{
-		"escapeHtml":     EscapeHtml,
-		"renderMarkdown": RenderMarkdown,
-		"getMediaIcon":   GetMediaIcon,
+		"escapeHtml":     models.EscapeHtml,
+		"renderMarkdown": models.RenderMarkdown,
+		"getMediaIcon":   models.GetMediaIcon,
 		"formatDate":     FormatDateTpl,
 		"formatDateTime": formatDateTime,
 		"truncate":       truncate,

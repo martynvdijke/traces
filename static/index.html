@@ -354,19 +354,22 @@
         </div>
     </main>
 
-    <div class="modal fade" id="mediaModal" tabindex="-1">
-        <div class="modal-dialog modal-xl modal-dialog-centered">
-            <div class="modal-content bg-dark">
-                <div class="modal-header border-0">
-                    <h5 class="modal-title text-white" id="mediaModalTitle">Event</h5>
-                    <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
-                </div>
-                <div class="modal-body text-center" id="mediaModalBody">
-                </div>
-                <div class="modal-footer border-0">
-                    <p class="text-white-50 mb-0" id="mediaModalDesc"></p>
-                </div>
+    <!-- ── Lightbox ── -->
+    <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Media viewer">
+        <div class="lightbox-backdrop" onclick="closeLightbox()"></div>
+        <button class="lightbox-close" onclick="closeLightbox()" aria-label="Close lightbox"><i class="fa-solid fa-xmark"></i></button>
+        <button class="lightbox-nav lightbox-prev" id="lightbox-prev" onclick="navigateLightbox(-1)" aria-label="Previous media"><i class="fa-solid fa-chevron-left"></i></button>
+        <button class="lightbox-nav lightbox-next" id="lightbox-next" onclick="navigateLightbox(1)" aria-label="Next media"><i class="fa-solid fa-chevron-right"></i></button>
+        <div class="lightbox-content">
+            <div class="lightbox-loader" id="lightbox-loader">
+                <div class="spinner-border text-light" role="status"><span class="visually-hidden">Loading...</span></div>
             </div>
+            <div class="lightbox-media-container" id="lightbox-media-container"></div>
+        </div>
+        <div class="lightbox-info">
+            <div class="lightbox-counter" id="lightbox-counter"></div>
+            <div class="lightbox-title" id="lightbox-title"></div>
+            <div id="lightbox-desc"></div>
         </div>
     </div>
 

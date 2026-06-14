@@ -6,6 +6,7 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -14,12 +15,12 @@ import (
 
 // LogEntry represents a single structured log entry stored in the database.
 type LogEntry struct {
-	ID        int                    `json:"id"`
-	Timestamp string                 `json:"timestamp"`
-	Severity  string                 `json:"severity"`
-	Source    string                 `json:"source"`
-	Message   string                 `json:"message"`
-	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	ID        int            `json:"id"`
+	Timestamp string         `json:"timestamp"`
+	Severity  string         `json:"severity"`
+	Source    string         `json:"source"`
+	Message   string         `json:"message"`
+	Metadata  map[string]any `json:"metadata,omitempty"`
 }
 
 var severityOrder = map[string]int{
@@ -59,7 +60,7 @@ func (ls *LogService) Init() error {
 
 // Log inserts a new log entry if its severity meets the configured threshold,
 // then prunes the table to at most 10,000 rows.
-func (ls *LogService) Log(severity, source, message string, metadata map[string]interface{}) {
+func (ls *LogService) Log(severity, source, message string, metadata map[string]any) {
 	ls.mu.RLock()
 	minSev := ls.minSeverity
 	ls.mu.RUnlock()
@@ -114,7 +115,7 @@ func (ls *LogService) GetMinSeverity() string {
 //   - since: ISO 8601 timestamp, only entries after this time
 func (ls *LogService) Query(severity, source, q string, limit, offset int, since string) ([]LogEntry, error) {
 	query := "SELECT id, timestamp, severity, source, message, COALESCE(metadata,'') FROM app_logs WHERE 1=1"
-	args := []interface{}{}
+	args := []any{}
 
 	if severity != "" {
 		// Filter by minimum severity level
@@ -227,14 +228,14 @@ func GetLogSeverityOrder() map[string]int {
 }
 
 func joinStrings(strs []string, sep string) string {
-	result := ""
+	var result strings.Builder
 	for i, s := range strs {
 		if i > 0 {
-			result += sep
+			result.WriteString(sep)
 		}
-		result += s
+		result.WriteString(s)
 	}
-	return result
+	return result.String()
 }
 
 // --- API Handlers ---

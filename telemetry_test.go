@@ -44,9 +44,9 @@ func setupTestDB(t *testing.T) *sql.DB {
 func TestPrometheusMetricsRegistration(t *testing.T) {
 	// Verify Prometheus metrics are registered and usable
 	metrics := map[string]func(){
-		"event_operations_total":  func() { RecordEventOperation("test") },
+		"event_operations_total":    func() { RecordEventOperation("test") },
 		"db_query_duration_seconds": func() { RecordDBQuery("test", time.Millisecond) },
-		"log_entries_total":       func() { RecordLogEntry() },
+		"log_entries_total":         func() { RecordLogEntry() },
 	}
 
 	for name, fn := range metrics {
@@ -256,7 +256,7 @@ func TestLogServiceLogging(t *testing.T) {
 
 	t.Run("pagination", func(t *testing.T) {
 		ls.SetMinSeverity("info")
-		for i := 0; i < 5; i++ {
+		for i := range 5 {
 			ls.Log("info", "pagination", fmt.Sprintf("message %d", i), nil)
 		}
 
@@ -304,7 +304,7 @@ func TestLogServiceMetadata(t *testing.T) {
 	ls.Init()
 	ls.SetMinSeverity("info")
 
-	metadata := map[string]interface{}{
+	metadata := map[string]any{
 		"user_id": float64(42),
 		"action":  "login",
 	}
@@ -408,7 +408,7 @@ func TestLogServicePruneLimit(t *testing.T) {
 	ls.Init()
 	ls.SetMinSeverity("info")
 
-	for i := 0; i < 100; i++ {
+	for i := range 100 {
 		ls.Log("info", "prunetest", fmt.Sprintf("message %d", i), nil)
 	}
 
@@ -684,7 +684,7 @@ func TestHandleGetLogSources(t *testing.T) {
 
 func TestMetricsConcurrentSafety(t *testing.T) {
 	done := make(chan bool, 10)
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		go func() {
 			RecordEventOperation("concurrent-test")
 			RecordDBQuery("concurrent-test", time.Millisecond)
@@ -692,7 +692,7 @@ func TestMetricsConcurrentSafety(t *testing.T) {
 			done <- true
 		}()
 	}
-	for i := 0; i < 10; i++ {
+	for range 10 {
 		<-done
 	}
 }

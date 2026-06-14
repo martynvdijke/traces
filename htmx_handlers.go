@@ -5,6 +5,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"io"
+	"maps"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -60,7 +61,7 @@ func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string
 	query := `SELECT e.id, e.title, e.event_date, e.location, e.media_type, COALESCE(e.media_url,''), e.is_favorite, e.person_id, COALESCE(e.tags,''), e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
 		p.name, p.color
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
-	args := []interface{}{}
+	args := []any{}
 
 	if year != "" {
 		query += " AND strftime('%Y', e.event_date) = ?"
@@ -203,9 +204,7 @@ func htmxReadForm(c *gin.Context) map[string]string {
 	if useJSON {
 		var jsonData map[string]string
 		if err := json.Unmarshal(body, &jsonData); err == nil {
-			for k, v := range jsonData {
-				data[k] = v
-			}
+			maps.Copy(data, jsonData)
 		}
 	}
 	return data
@@ -372,7 +371,7 @@ func htmxListPersons(c *gin.Context) {
 	query := `SELECT p.id, p.name, COALESCE(p.avatar_url,''), COALESCE(p.bio,''), COALESCE(p.birth_date,''), COALESCE(p.color,'#7c3aed'),
 		(SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count
 		FROM persons p`
-	args := []interface{}{}
+	args := []any{}
 	if q != "" {
 		query += " WHERE p.name LIKE ?"
 		args = append(args, "%"+q+"%")
