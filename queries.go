@@ -313,7 +313,7 @@ func QueryTagFrequency(d *sql.DB, year string) []TagCount {
 
 // QueryPersonEventCounts returns person event counts for a year.
 func QueryPersonEventCounts(d *sql.DB, year string) []PersonCount {
-	var result []PersonCount
+	result := make([]PersonCount, 0)
 	rows, err := d.Query(`SELECT p.id, p.name, COUNT(e.id) as cnt FROM persons p
 		LEFT JOIN timeline_events e ON e.person_id = p.id AND strftime('%Y', e.event_date) = ?
 		GROUP BY p.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
@@ -331,7 +331,7 @@ func QueryPersonEventCounts(d *sql.DB, year string) []PersonCount {
 
 // QueryUserEventCounts returns user event counts for a year.
 func QueryUserEventCounts(d *sql.DB, year string) []UserCount {
-	var result []UserCount
+	result := make([]UserCount, 0)
 	rows, err := d.Query(`SELECT u.id, u.display_name, COUNT(e.id) as cnt FROM users u
 		LEFT JOIN timeline_events e ON e.user_id = u.id AND strftime('%Y', e.event_date) = ?
 		GROUP BY u.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
@@ -349,7 +349,7 @@ func QueryUserEventCounts(d *sql.DB, year string) []UserCount {
 
 // QueryLocationCounts returns top locations with coordinates for a year.
 func QueryLocationCounts(d *sql.DB, year string, limit int) []LocationCount {
-	var result []LocationCount
+	result := make([]LocationCount, 0)
 	rows, err := d.Query(`SELECT location, latitude, longitude, COUNT(*) as cnt FROM timeline_events
 		WHERE strftime('%Y', event_date) = ? AND location != '' AND latitude != 0 AND longitude != 0
 		GROUP BY location ORDER BY cnt DESC LIMIT ?`, year, limit)
