@@ -1,3 +1,12 @@
+## [1.23.2](https://github.com/martynvdijke/traces/compare/v1.23.1...v1.23.2) (2026-06-14)
+
+
+### Bug Fixes
+
+* add untracked internal packages and queries.go ([3bb65e9](https://github.com/martynvdijke/traces/commit/3bb65e9d6a99ca2c54c29273e766761a7b2e1e2d))
+* ensure stats distribution returns empty arrays not null ([68b07d8](https://github.com/martynvdijke/traces/commit/68b07d81fbbc835c1607692a388a7174cf6b7421))
+* remove duplicate ci.yml workflow ([a3c4b81](https://github.com/martynvdijke/traces/commit/a3c4b81fb74f337f27759e1f3b67fe7ebbab80f8))
+
 ## [1.23.1](https://github.com/martynvdijke/traces/compare/v1.23.0...v1.23.1) (2026-06-11)
 
 
