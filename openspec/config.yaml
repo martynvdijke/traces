@@ -1,0 +1,6 @@
+schema: spec-driven
+context: |
+  Tech stack: Go (Gin), TypeScript, static HTML templates
+  Architecture: Monolithic Go server with static HTML served from /static/
+  Frontend: Plain TypeScript/JS, no framework
+  Domain: Personal timeline/year-in-review app — events, photos, map, calendar views

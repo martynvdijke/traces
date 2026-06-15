@@ -1,0 +1,334 @@
+/* ============================================================
+   E-INK MODE — High contrast, no motion, large touch targets
+   Activated by: .eink-mode on <html> element
+   ============================================================ */
+
+/* --- Palette --- */
+.eink-mode,
+.eink-mode :root {
+  --primary: #000000 !important;
+  --primary-dark: #000000 !important;
+  --primary-light: #555555 !important;
+  --primary-glow: transparent !important;
+  --bg: #ffffff !important;
+  --bg-card: #ffffff !important;
+  --bg-subtle: #f5f5f5 !important;
+  --text: #000000 !important;
+  --text-muted: #333333 !important;
+  --border: #cccccc !important;
+  --gradient: none !important;
+  --gradient-hero: none !important;
+  --bs-body-bg: #ffffff !important;
+  --bs-body-color: #000000 !important;
+}
+
+/* --- Reset backgrounds, gradients, shadows --- */
+.eink-mode body,
+.eink-mode .admin-header,
+.eink-mode .card,
+.eink-mode .modal-content,
+.eink-mode .navbar,
+.eink-mode .btn-primary,
+.eink-mode .btn-secondary,
+.eink-mode .btn-success,
+.eink-mode .btn-danger,
+.eink-mode .btn-warning,
+.eink-mode .btn-info {
+  background: #ffffff !important;
+  background-image: none !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+  backdrop-filter: none !important;
+  filter: none !important;
+}
+
+/* --- Buttons --- */
+.eink-mode .btn {
+  border: 2px solid #000000 !important;
+  color: #000000 !important;
+  background: #ffffff !important;
+  min-width: 48px;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+.eink-mode .btn-primary,
+.eink-mode .btn-secondary,
+.eink-mode .btn-success,
+.eink-mode .btn-danger,
+.eink-mode .btn-warning,
+.eink-mode .btn-info {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 2px solid #000000 !important;
+}
+.eink-mode .btn:hover,
+.eink-mode .btn:focus {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+
+/* --- Links --- */
+.eink-mode a {
+  color: #000000 !important;
+  text-decoration: underline !important;
+}
+.eink-mode a:hover {
+  color: #333333 !important;
+}
+
+/* --- Cards --- */
+.eink-mode .card {
+  border: 1px solid #000000 !important;
+  border-radius: 0 !important;
+}
+.eink-mode .card-header {
+  background: #ffffff !important;
+  border-bottom: 1px solid #000000 !important;
+  font-weight: 700;
+}
+
+/* --- Nav tabs --- */
+.eink-mode .nav-tabs {
+  border-bottom: 2px solid #000000 !important;
+}
+.eink-mode .nav-tabs .nav-link {
+  color: #333333 !important;
+  border: 1px solid transparent !important;
+  border-radius: 0 !important;
+  min-height: 48px;
+  display: inline-flex;
+  align-items: center;
+}
+.eink-mode .nav-tabs .nav-link.active {
+  color: #000000 !important;
+  border: 2px solid #000000 !important;
+  border-bottom-color: #ffffff !important;
+  background: #ffffff !important;
+  font-weight: 700;
+}
+.eink-mode .nav-tabs .nav-link::after {
+  display: none !important;
+}
+
+/* --- Forms --- */
+.eink-mode input,
+.eink-mode select,
+.eink-mode textarea {
+  border: 1px solid #000000 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  min-height: 44px;
+}
+.eink-mode .form-check-input {
+  border: 2px solid #000000 !important;
+  background: #ffffff !important;
+  width: 20px;
+  height: 20px;
+}
+.eink-mode .form-check-input:checked {
+  background: #000000 !important;
+}
+.eink-mode .form-switch .form-check-input {
+  width: 44px !important;
+  height: 24px !important;
+}
+.eink-mode .form-label {
+  color: #000000 !important;
+  font-weight: 700;
+}
+
+/* --- Badges --- */
+.eink-mode .badge {
+  border: 1px solid #000000 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-radius: 0 !important;
+  font-weight: 700;
+}
+.eink-mode .badge i {
+  margin-right: 4px;
+}
+
+/* --- Tables --- */
+.eink-mode .table {
+  color: #000000 !important;
+  border-color: #000000 !important;
+}
+.eink-mode .table th {
+  border-bottom: 2px solid #000000 !important;
+  font-weight: 700;
+}
+.eink-mode .table td,
+.eink-mode .table th {
+  border-color: #cccccc !important;
+}
+.eink-mode .table-hover tbody tr:hover {
+  background: #f5f5f5 !important;
+}
+
+/* --- Alerts --- */
+.eink-mode .alert {
+  border: 1px solid #000000 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-radius: 0 !important;
+}
+
+/* --- Modals --- */
+.eink-mode .modal-content {
+  border: 2px solid #000000 !important;
+  border-radius: 0 !important;
+}
+.eink-mode .modal-header {
+  border-bottom: 1px solid #000000 !important;
+}
+
+/* --- Admin header --- */
+.eink-mode .admin-header {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-bottom: 2px solid #000000 !important;
+  padding: 1rem 0 !important;
+}
+.eink-mode .admin-header h1,
+.eink-mode .admin-header a {
+  color: #000000 !important;
+}
+
+/* --- Timeline events --- */
+.eink-mode .event-card {
+  border: 1px solid #000000 !important;
+  border-radius: 0 !important;
+  box-shadow: none !important;
+}
+.eink-mode .event-card:hover {
+  border-color: #000000 !important;
+  box-shadow: none !important;
+}
+
+/* --- Calendar --- */
+.eink-mode .calendar-day {
+  border: 1px solid #000000 !important;
+  border-radius: 0 !important;
+  background: #ffffff !important;
+  min-height: 48px;
+}
+.eink-mode .calendar-day:hover {
+  border-color: #000000 !important;
+  box-shadow: none !important;
+}
+.eink-mode .calendar-day.today {
+  border: 2px solid #000000 !important;
+  background: #ffffff !important;
+}
+.eink-mode .calendar-day .event-dot {
+  width: 8px !important;
+  height: 8px !important;
+  border-radius: 0 !important;
+  background: #000000 !important;
+  border: 1px solid #000000 !important;
+}
+
+/* --- Map --- */
+.eink-mode #map-container {
+  border: 1px solid #000000 !important;
+  border-radius: 0 !important;
+}
+
+/* --- Media badges --- */
+.eink-mode .media-type-badge {
+  border: 1px solid #000000 !important;
+  background: #ffffff !important;
+  color: #000000 !important;
+  border-radius: 0 !important;
+}
+
+/* --- Typography --- */
+.eink-mode {
+  font-family: 'Georgia', 'Times New Roman', serif !important;
+}
+.eink-mode h1,
+.eink-mode h2,
+.eink-mode h3,
+.eink-mode h4,
+.eink-mode h5,
+.eink-mode h6 {
+  font-weight: 700 !important;
+  color: #000000 !important;
+}
+.eink-mode p,
+.eink-mode li {
+  font-size: 18px !important;
+  line-height: 1.6 !important;
+}
+.eink-mode .text-muted {
+  color: #333333 !important;
+}
+
+/* --- Remove ALL animations, transitions, effects --- */
+.eink-mode *,
+.eink-mode *::before,
+.eink-mode *::after {
+  animation: none !important;
+  animation-duration: 0s !important;
+  animation-delay: 0s !important;
+  transition: none !important;
+  transition-duration: 0s !important;
+  transition-delay: 0s !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  filter: none !important;
+  -webkit-filter: none !important;
+}
+
+/* --- Touch targets --- */
+.eink-mode button,
+.eink-mode .btn,
+.eink-mode .nav-link,
+.eink-mode a,
+.eink-mode input[type="submit"],
+.eink-mode input[type="button"] {
+  min-width: 48px !important;
+  min-height: 48px !important;
+}
+.eink-mode input,
+.eink-mode select,
+.eink-mode textarea {
+  min-height: 44px !important;
+}
+
+/* --- Hide hover-only tooltips (show inline) --- */
+.eink-mode [data-bs-toggle="tooltip"]::after {
+  content: attr(data-bs-original-title);
+  display: inline;
+  margin-left: 4px;
+  font-size: 0.85rem;
+  color: #333333;
+}
+
+/* --- Spacing --- */
+.eink-mode .container {
+  max-width: 100% !important;
+  padding-left: 8px !important;
+  padding-right: 8px !important;
+}
+.eink-mode .mb-3,
+.eink-mode .mb-4 {
+  margin-bottom: 0.5rem !important;
+}
+
+/* --- Scrollbar (visible) --- */
+.eink-mode ::-webkit-scrollbar {
+  width: 12px !important;
+}
+.eink-mode ::-webkit-scrollbar-track {
+  background: #ffffff !important;
+  border: 1px solid #cccccc !important;
+}
+.eink-mode ::-webkit-scrollbar-thumb {
+  background: #000000 !important;
+  border-radius: 0 !important;
+}

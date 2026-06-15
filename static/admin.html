@@ -12,6 +12,7 @@
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <script>
       (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
+      (function(){function a(){document.documentElement.classList.add('eink-mode');var l=document.createElement('link');l.rel='stylesheet';l.href='/static/eink.css';document.head.appendChild(l)}var e=new URLSearchParams(window.location.search).get('eink');if(e==='1'){document.cookie='eink=1;path=/;max-age='+31536000;a()}else if(e==='0'){document.cookie='eink=;path=/;max-age=0'}else{var c=document.cookie.split(';');for(var i=0;i<c.length;i++){if(c[i].trim().indexOf('eink=1')===0){a();break}}}fetch('/api/config').then(function(r){return r.json()}).then(function(c){if(c.eink_enabled&&!document.documentElement.classList.contains('eink-mode')){a()}}).catch(function(){})})();
     </script>
     <style>
         :root {
@@ -808,6 +809,23 @@
                             </div>
                         </form>
                         <div id="umami-result" class="mt-3"></div>
+                    </div>
+                </div>
+
+                <div class="card mb-3">
+                    <div class="card-header"><i class="fa-solid fa-file-lines me-2" aria-hidden="true"></i>E-Ink Mode</div>
+                    <div class="card-body">
+                        <form id="eink-form">
+                            <div class="form-check form-switch mb-3">
+                                <input class="form-check-input" type="checkbox" id="eink-enabled">
+                                <label class="form-check-label fw-bold">Enable E-Ink Mode</label>
+                                <div class="text-muted" style="font-size:0.85rem">High-contrast, no-animation layout for e-ink displays (Boox, Kindle, reMarkable). Also toggle via <code>?eink=1</code> URL parameter.</div>
+                            </div>
+                            <div class="d-flex gap-2">
+                                <button type="submit" class="btn btn-primary" aria-label="Save e-ink settings"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
+                            </div>
+                        </form>
+                        <div id="eink-result" class="mt-3"></div>
                     </div>
                 </div>
 

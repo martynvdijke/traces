@@ -9,6 +9,7 @@
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <script>
       (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
+      (function(){function a(){document.documentElement.classList.add('eink-mode');var l=document.createElement('link');l.rel='stylesheet';l.href='/static/eink.css';document.head.appendChild(l)}var e=new URLSearchParams(window.location.search).get('eink');if(e==='1'){document.cookie='eink=1;path=/;max-age='+31536000;a()}else if(e==='0'){document.cookie='eink=;path=/;max-age=0'}else{var c=document.cookie.split(';');for(var i=0;i<c.length;i++){if(c[i].trim().indexOf('eink=1')===0){a();break}}}fetch('/api/config').then(function(r){return r.json()}).then(function(c){if(c.eink_enabled&&!document.documentElement.classList.contains('eink-mode')){a()}}).catch(function(){})})();
     </script>
     <style>
         :root {

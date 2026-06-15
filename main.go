@@ -113,6 +113,7 @@ var (
 	publicMode    bool = false
 	gotifyEnabled bool
 	immichEnabled bool
+	einkEnabled   bool
 )
 
 var (
@@ -160,6 +161,8 @@ func main() {
 	if os.Getenv("IMMICH_ENABLED") == "true" {
 		immichEnabled = true
 	}
+
+	einkEnabled = os.Getenv("EINK_ENABLED") == "true"
 
 	if err := os.MkdirAll(mediaPath, 0755); err != nil {
 		log.Printf("Warning: could not create media directory: %v", err)
@@ -215,6 +218,14 @@ func main() {
 		otelLogsEnabled = lEnabled == 1
 	}
 	_ = otelCfg
+
+	// Load e-ink mode from DB (fallback if env not set)
+	if !einkEnabled {
+		var einkInt int
+		if err := db.QueryRow("SELECT eink_enabled FROM site_settings WHERE id = 1").Scan(&einkInt); err == nil {
+			einkEnabled = einkInt == 1
+		}
+	}
 
 	if os.Getenv("BACKUP_RETENTION_DAYS") != "" {
 		if days, err := strconv.Atoi(os.Getenv("BACKUP_RETENTION_DAYS")); err == nil && days > 0 {
@@ -326,6 +337,8 @@ func main() {
 			auth.POST("/umami/config", saveUmamiConfig)
 			auth.GET("/otel/config", getOtelConfig)
 			auth.POST("/otel/config", saveOtelConfig)
+			auth.GET("/eink/config", getEinkConfig)
+			auth.POST("/eink/config", saveEinkConfig)
 			auth.POST("/backup", handleBackup)
 			auth.GET("/backups", handleListBackups)
 			auth.GET("/backup/config", getBackupConfig)
@@ -575,8 +588,9 @@ func serverError(c *gin.Context, err error) {
 // @Router /config [get]
 func getPublicConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"umami_url":  umamiURL,
-		"umami_site": umamiSiteID,
+		"umami_url":    umamiURL,
+		"umami_site":   umamiSiteID,
+		"eink_enabled": einkEnabled,
 	})
 }
 
@@ -3293,6 +3307,37 @@ func saveOtelConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
+func getEinkConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, models.SiteConfig{
+		EinkEnabled: einkEnabled,
+	})
+}
+
+func saveEinkConfig(c *gin.Context) {
+	var cfg models.SiteConfig
+	if err := c.ShouldBindJSON(&cfg); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	einkEnabled = cfg.EinkEnabled
+	enabledInt := 0
+	if cfg.EinkEnabled {
+		enabledInt = 1
+	}
+	_, err := db.Exec(`UPDATE site_settings SET eink_enabled=? WHERE id=1`, enabledInt)
+	if err != nil {
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save e-ink config"})
+		return
+	}
+
+	if logService != nil {
+		logService.Log("info", "eink", "E-ink mode settings saved", nil)
+	}
+
+	c.JSON(http.StatusOK, gin.H{"status": "ok"})
+}
+
 func testImmich(c *gin.Context) {
 	if immichURL == "" || immichAPIKey == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich URL and API key not configured"})
@@ -4849,6 +4894,10 @@ func createTables() {
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			min_severity TEXT NOT NULL DEFAULT 'warn'
 		)`,
+		`CREATE TABLE IF NOT EXISTS site_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			eink_enabled INTEGER DEFAULT 0
+		)`,
 	}
 
 	for _, q := range queries {
@@ -4912,6 +4961,12 @@ func createTables() {
 	db.QueryRow("SELECT COUNT(*) FROM otel_settings").Scan(&otelCount)
 	if otelCount == 0 {
 		db.Exec("INSERT INTO otel_settings (id, endpoint, traces_enabled, metrics_enabled, logs_enabled) VALUES (1, '', 0, 0, 0)")
+	}
+
+	var siteCount int
+	db.QueryRow("SELECT COUNT(*) FROM site_settings").Scan(&siteCount)
+	if siteCount == 0 {
+		db.Exec("INSERT INTO site_settings (id, eink_enabled) VALUES (1, 0)")
 	}
 }
 

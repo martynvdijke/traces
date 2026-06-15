@@ -67,6 +67,7 @@ async function init(): Promise<void> {
   loadOllamaConfig();
   loadImmichConfig();
   loadUmamiConfig();
+  loadEinkConfig();
   loadAdminAnalytics();
   loadBackups();
   loadBackupConfig();
@@ -1055,6 +1056,30 @@ document.getElementById('umami-form')!.addEventListener('submit', async (e) => {
   const result = await res.json();
   document.getElementById('umami-result')!.innerHTML = res.ok
     ? '<div class="alert alert-success">Umami settings saved.</div>'
+    : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
+});
+
+async function loadEinkConfig(): Promise<void> {
+  try {
+    const res = await fetch('/api/eink/config');
+    const cfg = await res.json();
+    (document.getElementById('eink-enabled') as HTMLInputElement).checked = cfg.eink_enabled || false;
+  } catch (e) { }
+}
+
+document.getElementById('eink-form')!.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  const data = {
+    eink_enabled: (document.getElementById('eink-enabled') as HTMLInputElement).checked
+  };
+  const res = await fetch('/api/eink/config', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify(data)
+  });
+  const result = await res.json();
+  document.getElementById('eink-result')!.innerHTML = res.ok
+    ? '<div class="alert alert-success">E-ink mode settings saved.</div>'
     : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
 });
 

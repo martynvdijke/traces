@@ -135,6 +135,10 @@ type OtelConfig struct {
 	LogsEnabled    bool   `json:"logs_enabled"`
 }
 
+type SiteConfig struct {
+	EinkEnabled bool `json:"eink_enabled"`
+}
+
 type EventTemplate struct {
 	ID          int    `json:"id"`
 	Title       string `json:"title"`
