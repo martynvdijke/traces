@@ -1,3 +1,10 @@
+# [1.24.0](https://github.com/martynvdijke/traces/compare/v1.23.2...v1.24.0) (2026-06-15)
+
+
+### Features
+
+* add e-ink display mode with high-contrast stylesheet ([bf31f6d](https://github.com/martynvdijke/traces/commit/bf31f6d410d936b98e1469301e1d6ed91d040129)), closes [hi#contrast](https://github.com/hi/issues/contrast) [hi#contrast](https://github.com/hi/issues/contrast)
+
 ## [1.23.2](https://github.com/martynvdijke/traces/compare/v1.23.1...v1.23.2) (2026-06-14)
 
 
