@@ -1,3 +1,5 @@
+## [1.24.1](https://github.com/martynvdijke/traces/compare/v1.24.0...v1.24.1) (2026-06-15)
+
 # [1.24.0](https://github.com/martynvdijke/traces/compare/v1.23.2...v1.24.0) (2026-06-15)
 
 
