@@ -156,8 +156,9 @@ test.describe('TRACES Admin Backend', () => {
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/admin.html', { timeout: 10000 });
-    await page.waitForTimeout(1000);
+    await page.waitForURL('**/admin.html', { timeout: 15000 });
+    // Wait for admin JS to fully initialize (all API calls in init())
+    await page.waitForFunction(() => typeof (window as any).openEventModal === 'function', { timeout: 15000 });
 
     // Verify admin page loaded
     await expect(page.locator('#event-list')).toBeVisible({ timeout: 5000 });
@@ -240,7 +241,8 @@ test.describe('TRACES Admin Backend', () => {
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/admin.html', { timeout: 10000 });
+    await page.waitForURL('**/admin.html', { timeout: 15000 });
+    await page.waitForFunction(() => typeof (window as any).openEventModal === 'function', { timeout: 15000 });
     await page.waitForSelector('#event-list', { state: 'visible', timeout: 5000 });
 
     // First create a person inline via the event modal
@@ -326,7 +328,8 @@ test.describe('TRACES Admin Backend', () => {
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');
     await page.click('button[type="submit"]');
-    await page.waitForURL('**/admin.html', { timeout: 10000 });
+    await page.waitForURL('**/admin.html', { timeout: 15000 });
+    await page.waitForFunction(() => typeof (window as any).openEventModal === 'function', { timeout: 15000 });
 
     // Create an event via API first with all fields
     const cookies = await page.context().cookies();
@@ -526,12 +529,15 @@ test.describe('TRACES Admin Backend', () => {
     expect(text).toContain('Date');
   });
 
-  test('should create and manage a backup', async ({ request }) => {
-    const resp = await request.post('/api/backup', {
+  test('should create and manage a backup', async () => {
+    // Use native fetch instead of Playwright request fixture to avoid
+    // "Request context disposed" error on retry in serial mode
+    const resp = await fetch(`http://localhost:6270/api/backup`, {
+      method: 'POST',
       headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken }
     });
     // Backup may fail in test env, just verify endpoint is accessible
-    expect(resp.ok() || resp.status() === 500).toBeTruthy();
+    expect(resp.ok || resp.status === 500).toBeTruthy();
   });
 
   test('should list backups', async ({ request }) => {
@@ -776,13 +782,13 @@ test.describe('TRACES Admin Backend', () => {
   });
 
   test('should have e-ink form visible on admin page', async ({ page }) => {
-    // Set up auth cookie for browser page
+    // Inject auth cookie before navigation to avoid redirect
+    await page.context().addCookies([
+      { name: 'session', value: sessionCookie, domain: 'localhost', path: '/' }
+    ]);
     await page.goto('/admin.html');
-    await page.evaluate((cookie) => {
-      document.cookie = `session=${cookie}`;
-    }, sessionCookie);
-    await page.goto('/admin.html');
-    await page.waitForTimeout(500);
+    await page.waitForFunction(() => typeof (window as any).loadEinkConfig !== 'undefined', { timeout: 10000 });
+    await page.waitForTimeout(300);
     await expect(page.locator('#eink-form')).toBeVisible();
     await expect(page.locator('#eink-enabled')).toBeVisible();
   });

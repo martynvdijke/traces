@@ -5204,10 +5204,7 @@ func generateSessionID() (string, error) {
 }
 
 func sendGotifyNotification(title, message string) {
-	if !gotifyEnabled && (gotifyURL == "" || gotifyToken == "") {
-		return
-	}
-	if gotifyURL == "" || gotifyToken == "" {
+	if !gotifyEnabled || gotifyURL == "" || gotifyToken == "" {
 		return
 	}
 

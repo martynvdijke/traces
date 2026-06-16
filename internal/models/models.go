@@ -13,31 +13,31 @@ import (
 // Domain types
 
 type TimelineEvent struct {
-	ID           int        `json:"id"`
-	Title        string     `json:"title"`
-	Description  string     `json:"description"`
-	Date         string     `json:"date"`
-	Location     string     `json:"location"`
-	MediaType    string     `json:"media_type"`
-	MediaURL     string     `json:"media_url"`
-	Thumbnail    string     `json:"thumbnail"`
-	MediaCaption string     `json:"media_caption"`
-	Tags         string     `json:"tags"`
-	SortOrder    int        `json:"sort_order"`
-	IsPublic     bool       `json:"is_public"`
-	IsFavorite   bool       `json:"is_favorite"`
-	CreatedAt    string     `json:"created_at"`
-	PersonID     *int       `json:"person_id"`
-	Latitude     *float64   `json:"latitude"`
-	Longitude    *float64   `json:"longitude"`
-	Person       *Person    `json:"person,omitempty"`
-	Recurring    string     `json:"recurring"`
-	WeatherData  string     `json:"weather_data"`
-	StartTime    string     `json:"start_time"`
-	EndTime      string     `json:"end_time"`
-	UserID       int        `json:"user_id"`
-	User         *User      `json:"user,omitempty"`
-	DeletedAt    string     `json:"deleted_at"`
+	ID           int      `json:"id"`
+	Title        string   `json:"title"`
+	Description  string   `json:"description"`
+	Date         string   `json:"date"`
+	Location     string   `json:"location"`
+	MediaType    string   `json:"media_type"`
+	MediaURL     string   `json:"media_url"`
+	Thumbnail    string   `json:"thumbnail"`
+	MediaCaption string   `json:"media_caption"`
+	Tags         string   `json:"tags"`
+	SortOrder    int      `json:"sort_order"`
+	IsPublic     bool     `json:"is_public"`
+	IsFavorite   bool     `json:"is_favorite"`
+	CreatedAt    string   `json:"created_at"`
+	PersonID     *int     `json:"person_id"`
+	Latitude     *float64 `json:"latitude"`
+	Longitude    *float64 `json:"longitude"`
+	Person       *Person  `json:"person,omitempty"`
+	Recurring    string   `json:"recurring"`
+	WeatherData  string   `json:"weather_data"`
+	StartTime    string   `json:"start_time"`
+	EndTime      string   `json:"end_time"`
+	UserID       int      `json:"user_id"`
+	User         *User    `json:"user,omitempty"`
+	DeletedAt    string   `json:"deleted_at"`
 }
 
 type EventStats struct {
