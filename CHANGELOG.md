@@ -1,3 +1,16 @@
+# [1.25.0](https://github.com/martynvdijke/traces/compare/v1.24.1...v1.25.0) (2026-06-16)
+
+
+### Bug Fixes
+
+* resolve CI test flakiness and Gotify notification logic bug ([d79cb18](https://github.com/martynvdijke/traces/commit/d79cb1888131c4aaea00a3c8f02b5ecc76afd822))
+* resolve Playwright e-ink form test failure and fix CI build tags ([b7aa8d5](https://github.com/martynvdijke/traces/commit/b7aa8d5b94573c96a682f51cde87be068b5702c7))
+
+
+### Features
+
+* add e-ink mode toggle, keyboard shortcut, and map B&W filter ([8d0dc6a](https://github.com/martynvdijke/traces/commit/8d0dc6a9429fbce9175352037695d9d49c2db462)), closes [hi#contrast](https://github.com/hi/issues/contrast)
+
 ## [1.24.1](https://github.com/martynvdijke/traces/compare/v1.24.0...v1.24.1) (2026-06-15)
 
 # [1.24.0](https://github.com/martynvdijke/traces/compare/v1.23.2...v1.24.0) (2026-06-15)
