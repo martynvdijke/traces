@@ -8,8 +8,9 @@
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.0.1/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script src="/static/eink.js"></script>
     <script>
-      (function(){function a(){document.documentElement.classList.add('eink-mode');var l=document.createElement('link');l.rel='stylesheet';l.href='/static/eink.css';document.head.appendChild(l)}var e=new URLSearchParams(window.location.search).get('eink');if(e==='1'){document.cookie='eink=1;path=/;max-age='+31536000;a()}else if(e==='0'){document.cookie='eink=;path=/;max-age=0'}else{var c=document.cookie.split(';');for(var i=0;i<c.length;i++){if(c[i].trim().indexOf('eink=1')===0){a();break}}}fetch('/api/config').then(function(r){return r.json()}).then(function(c){if(c.eink_enabled&&!document.documentElement.classList.contains('eink-mode')){a()}}).catch(function(){})})();
+      (function(){var q=new URLSearchParams(window.location.search);if(q.get('eink')==='1'){window.einkMode.enable()}else if(q.get('eink')==='0'){window.einkMode.disable()}else{var f=document.cookie.split(';').some(function(c){return c.trim().indexOf('eink=1')===0});if(f){window.einkMode.enable()}else{fetch('/api/config').then(function(r){return r.json()}).then(function(c){if(c.eink_enabled&&!window.einkMode.enabled()){window.einkMode.enable()}}).catch(function(){})}}})();
     </script>
     <style>
         :root { --traces-primary: #7c3aed; --traces-dark: #111; }
@@ -40,7 +41,8 @@
             <h1><i class="fa-solid fa-map me-2" aria-hidden="true"></i>TRACES MAP</h1>
             <div>
                 <a href="/" class="btn btn-outline-light btn-sm me-2"><i class="fa-solid fa-clock me-1" aria-hidden="true"></i> Timeline</a>
-                <a href="/admin.html" class="btn btn-outline-light btn-sm"><i class="fa-solid fa-gear me-1" aria-hidden="true"></i> Admin</a>
+                <a href="/admin.html" class="btn btn-outline-light btn-sm me-2"><i class="fa-solid fa-gear me-1" aria-hidden="true"></i> Admin</a>
+                <button class="btn btn-outline-light btn-sm eink-toggle-btn" onclick="einkMode.toggle()" title="E-Ink Mode (E)"><i class="fa-solid fa-file-lines me-1"></i> E-Ink</button>
             </div>
         </div>
     </header>

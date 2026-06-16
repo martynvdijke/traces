@@ -332,3 +332,55 @@
   background: #000000 !important;
   border-radius: 0 !important;
 }
+
+/* --- B&W map tiles (CSS filter, no tile swap needed) --- */
+.eink-mode .leaflet-tile-pane {
+  filter: grayscale(100%) contrast(1.15) brightness(1.05) !important;
+  -webkit-filter: grayscale(100%) contrast(1.15) brightness(1.05) !important;
+}
+
+.eink-mode .leaflet-tile {
+  filter: grayscale(100%) contrast(1.15) brightness(1.05) !important;
+  -webkit-filter: grayscale(100%) contrast(1.15) brightness(1.05) !important;
+}
+
+/* --- B&W map markers (timeline page) --- */
+.eink-mode .custom-marker i {
+  color: #000000 !important;
+}
+
+/* --- B&W map markers (full map page) --- */
+.eink-mode .map-marker-icon div {
+  background: #000000 !important;
+  box-shadow: none !important;
+  border: 1px solid #000000 !important;
+  color: #ffffff !important;
+}
+
+/* --- High-contrast map zoom controls --- */
+.eink-mode .leaflet-control-zoom a {
+  background: #ffffff !important;
+  color: #000000 !important;
+  border: 1px solid #000000 !important;
+}
+.eink-mode .leaflet-control-zoom a:hover {
+  background: #000000 !important;
+  color: #ffffff !important;
+}
+.eink-mode .leaflet-control-zoom {
+  border: 1px solid #000000 !important;
+}
+
+/* --- Hide spinner in lightbox (no spinning on e-ink) --- */
+.eink-mode .spinner-border,
+.eink-mode .spinner-grow {
+  display: none !important;
+}
+
+/* --- E-Ink toggle button active state --- */
+.eink-mode .eink-toggle-btn,
+.eink-toggle-btn.eink-active {
+  background: #000000 !important;
+  color: #ffffff !important;
+  border-color: #000000 !important;
+}
