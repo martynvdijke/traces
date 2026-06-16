@@ -48,13 +48,13 @@ jobs:
         run: npx tsc
 
       - name: Run Tests
-        run: go test -v ./...
+        run: CGO_ENABLED=1 go test -tags "sqlite_fts5" -v ./...
 
       - name: Install Playwright Browsers
         run: npx playwright install --with-deps chromium firefox
 
       - name: Build server binary
-        run: CGO_ENABLED=1 go build -o traces-server .
+        run: CGO_ENABLED=1 go build -tags "sqlite_fts5" -o traces-server .
 
       - name: Run Playwright tests
         run: npm run test:e2e

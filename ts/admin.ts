@@ -1066,6 +1066,7 @@ async function loadEinkConfig(): Promise<void> {
     (document.getElementById('eink-enabled') as HTMLInputElement).checked = cfg.eink_enabled || false;
   } catch (e) { }
 }
+(window as any).loadEinkConfig = loadEinkConfig;
 
 document.getElementById('eink-form')!.addEventListener('submit', async (e) => {
   e.preventDefault();

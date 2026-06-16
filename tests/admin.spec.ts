@@ -788,6 +788,8 @@ test.describe('TRACES Admin Backend', () => {
     ]);
     await page.goto('/admin.html');
     await page.waitForFunction(() => typeof (window as any).loadEinkConfig !== 'undefined', { timeout: 10000 });
+    // The eink form is inside the Integrations tab pane which is hidden by default
+    await page.locator('#integrations-tab').click();
     await page.waitForTimeout(300);
     await expect(page.locator('#eink-form')).toBeVisible();
     await expect(page.locator('#eink-enabled')).toBeVisible();
