@@ -2,7 +2,7 @@ module traces
 
 go 1.26.2
 
-require github.com/mattn/go-sqlite3 v1.14.45
+require github.com/mattn/go-sqlite3 v1.14.46
 
 require (
 	github.com/gin-gonic/gin v1.12.0
@@ -25,7 +25,7 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.44.0
 	go.opentelemetry.io/otel/trace v1.44.0
 	golang.org/x/crypto v0.53.0
-	golang.org/x/image v0.42.0
+	golang.org/x/image v0.43.0
 	golang.org/x/net v0.56.0
 )
 
