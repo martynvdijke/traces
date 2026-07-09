@@ -1,3 +1,10 @@
+## [1.25.9](https://github.com/martynvdijke/traces/compare/v1.25.8...v1.25.9) (2026-07-09)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#39](https://github.com/martynvdijke/traces/issues/39)) ([d73a879](https://github.com/martynvdijke/traces/commit/d73a879b23d3af77ed3d0004fb1705673cbada4d))
+
 ## [1.25.8](https://github.com/martynvdijke/traces/compare/v1.25.7...v1.25.8) (2026-07-09)
 
 ## [1.25.7](https://github.com/martynvdijke/traces/compare/v1.25.6...v1.25.7) (2026-07-08)
