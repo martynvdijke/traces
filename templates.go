@@ -98,6 +98,7 @@ type UserRow struct {
 	ID          int
 	Username    string
 	DisplayName string
+	Email       string
 	Color       string
 	EventCount  int
 }
@@ -370,7 +371,7 @@ const htmxTemplateSource = `
     <div class="person-avatar-placeholder" style="background:{{.Color}}"><i class="fa-solid fa-user" style="color:white;font-size:1.2rem"></i></div>
     <div class="person-info">
       <div class="name">{{escapeHtml .DisplayName}}</div>
-      <div class="meta">@{{escapeHtml .Username}}{{if .EventCount}} &middot; {{.EventCount}} events{{end}}</div>
+        <div class="meta">@{{escapeHtml .Username}}{{if .Email}} &middot; {{escapeHtml .Email}}{{end}}{{if .EventCount}} &middot; {{.EventCount}} events{{end}}</div>
     </div>
     <div class="person-stats">
       <button class="btn btn-sm btn-outline-primary" hx-get="/api/admin/users/{{.ID}}/edit" hx-target="#userFormContainer" title="Edit"><i class="fa-solid fa-pen"></i></button>
@@ -449,18 +450,23 @@ const htmxTemplateSource = `
 
 {{define "user-form"}}
 <form hx-post="/api/admin/users" hx-target="#user-list" hx-swap="innerHTML">
-  <input type="hidden" name="id" value="{{.ID}}">
+  <input type="hidden" name="id" id="user-id" value="{{.ID}}">
   <div class="mb-3">
     <label class="form-label">Username</label>
-    <input type="text" class="form-control" name="username" value="{{escapeHtml .Username}}" required>
+    <input type="text" class="form-control" name="username" id="user-username" value="{{escapeHtml .Username}}" required>
   </div>
   <div class="mb-3">
     <label class="form-label">Display Name</label>
-    <input type="text" class="form-control" name="display_name" value="{{escapeHtml .DisplayName}}">
+    <input type="text" class="form-control" name="display_name" id="user-display-name" value="{{escapeHtml .DisplayName}}">
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Email</label>
+    <input type="email" class="form-control" name="email" id="user-email" value="{{escapeHtml .Email}}" placeholder="user@example.com">
+    <div class="text-muted" style="font-size:0.85rem">Used for memories email notifications</div>
   </div>
   <div class="mb-3">
     <label class="form-label">Color</label>
-    <input type="color" class="form-control form-control-color" name="color" value="{{.Color}}" style="width:60px;height:40px">
+    <input type="color" class="form-control form-control-color" name="color" id="user-color" value="{{.Color}}" style="width:60px;height:40px">
   </div>
   <button type="submit" class="btn btn-primary w-100">Save User</button>
 </form>

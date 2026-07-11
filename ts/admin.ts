@@ -67,7 +67,6 @@ async function init(): Promise<void> {
   loadOllamaConfig();
   loadImmichConfig();
   loadUmamiConfig();
-  loadEinkConfig();
   loadAdminAnalytics();
   loadBackups();
   loadBackupConfig();
@@ -1059,31 +1058,6 @@ document.getElementById('umami-form')!.addEventListener('submit', async (e) => {
     : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
 });
 
-async function loadEinkConfig(): Promise<void> {
-  try {
-    const res = await fetch('/api/eink/config');
-    const cfg = await res.json();
-    (document.getElementById('eink-enabled') as HTMLInputElement).checked = cfg.eink_enabled || false;
-  } catch (e) { }
-}
-(window as any).loadEinkConfig = loadEinkConfig;
-
-document.getElementById('eink-form')!.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  const data = {
-    eink_enabled: (document.getElementById('eink-enabled') as HTMLInputElement).checked
-  };
-  const res = await fetch('/api/eink/config', {
-    method: 'POST',
-    headers: csrfHeaders('application/json'),
-    body: JSON.stringify(data)
-  });
-  const result = await res.json();
-  document.getElementById('eink-result')!.innerHTML = res.ok
-    ? '<div class="alert alert-success">E-ink mode settings saved.</div>'
-    : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
-});
-
 async function testImmich(): Promise<void> {
   const el = document.getElementById('immich-result')!;
   el.innerHTML = '<div class="alert alert-info">Testing connection...</div>';
@@ -1251,6 +1225,7 @@ function openUserModal(userId?: number): void {
   (document.getElementById('user-form') as HTMLFormElement).reset();
   (document.getElementById('user-id') as HTMLInputElement).value = '0';
   (document.getElementById('user-color') as HTMLInputElement).value = '#7c3aed';
+  (document.getElementById('user-email') as HTMLInputElement).value = '';
   document.getElementById('userModalLabel')!.textContent = 'Add User';
   if (userId) {
     const u = adminUsers.find((u: any) => u.id === userId);
@@ -1259,6 +1234,7 @@ function openUserModal(userId?: number): void {
       (document.getElementById('user-id') as HTMLInputElement).value = u.id;
       (document.getElementById('user-username') as HTMLInputElement).value = u.username;
       (document.getElementById('user-display-name') as HTMLInputElement).value = u.display_name || '';
+      (document.getElementById('user-email') as HTMLInputElement).value = u.email || '';
       (document.getElementById('user-color') as HTMLInputElement).value = u.color || '#7c3aed';
     }
   }
@@ -1271,6 +1247,7 @@ document.getElementById('user-form')?.addEventListener('submit', async (e) => {
     id: parseInt((document.getElementById('user-id') as HTMLInputElement).value) || 0,
     username: (document.getElementById('user-username') as HTMLInputElement).value,
     display_name: (document.getElementById('user-display-name') as HTMLInputElement).value,
+    email: (document.getElementById('user-email') as HTMLInputElement).value,
     color: (document.getElementById('user-color') as HTMLInputElement).value
   };
   const res = await fetch('/api/users', {

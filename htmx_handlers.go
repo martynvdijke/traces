@@ -639,7 +639,7 @@ func htmxEditTemplateForm(c *gin.Context) {
 }
 
 func htmxListUsers(c *gin.Context) {
-	rows, err := db.Query(`SELECT u.id, u.username, COALESCE(u.display_name,''), COALESCE(u.color,'#7c3aed'),
+	rows, err := db.Query(`SELECT u.id, u.username, COALESCE(u.display_name,''), COALESCE(u.email,''), COALESCE(u.color,'#7c3aed'),
 		(SELECT COUNT(*) FROM timeline_events WHERE user_id = u.id) as event_count
 		FROM users u ORDER BY u.display_name ASC`)
 	if err != nil {
@@ -651,7 +651,7 @@ func htmxListUsers(c *gin.Context) {
 	var users []UserRow
 	for rows.Next() {
 		var u UserRow
-		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Color, &u.EventCount); err == nil {
+		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Color, &u.EventCount); err == nil {
 			if u.DisplayName == "" {
 				u.DisplayName = u.Username
 			}
@@ -667,15 +667,16 @@ func htmxSaveUser(c *gin.Context) {
 	id := parseIntOrZero(data["id"])
 	username := data["username"]
 	displayName := data["display_name"]
+	email := data["email"]
 	color := data["color"]
 	if color == "" {
 		color = defaultColor
 	}
 
 	if id == 0 {
-		db.Exec("INSERT INTO users (username, display_name, color) VALUES (?, ?, ?)", username, displayName, color)
+		db.Exec("INSERT INTO users (username, display_name, email, color) VALUES (?, ?, ?, ?)", username, displayName, email, color)
 	} else {
-		db.Exec("UPDATE users SET username=?, display_name=?, color=? WHERE id=?", username, displayName, color, id)
+		db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=? WHERE id=?", username, displayName, email, color, id)
 	}
 
 	htmxListUsers(c)
@@ -709,8 +710,8 @@ func htmxEditUserForm(c *gin.Context) {
 	}
 
 	var u UserRow
-	err = db.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(color,'#7c3aed'), 0 FROM users WHERE id=?", id).Scan(
-		&u.ID, &u.Username, &u.DisplayName, &u.Color, &u.EventCount)
+	err = db.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(email,''), COALESCE(color,'#7c3aed'), 0 FROM users WHERE id=?", id).Scan(
+		&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Color, &u.EventCount)
 	if err != nil {
 		c.String(http.StatusNotFound, "User not found")
 		return

@@ -78,6 +78,7 @@ type User struct {
 	ID          int    `json:"id"`
 	Username    string `json:"username"`
 	DisplayName string `json:"display_name"`
+	Email       string `json:"email"`
 	Color       string `json:"color"`
 	AvatarURL   string `json:"avatar_url"`
 	EventCount  int    `json:"event_count,omitempty"`
@@ -135,10 +136,6 @@ type OtelConfig struct {
 	LogsEnabled    bool   `json:"logs_enabled"`
 }
 
-type SiteConfig struct {
-	EinkEnabled bool `json:"eink_enabled"`
-}
-
 type EventTemplate struct {
 	ID          int    `json:"id"`
 	Title       string `json:"title"`
@@ -190,7 +187,7 @@ type CalendarDay struct {
 // Constants
 const (
 	DefaultColor         = "#7c3aed"
-	CurrentSchemaVersion = 18
+	CurrentSchemaVersion = 19
 	CurrentVersion       = "1.22.0"
 )
 

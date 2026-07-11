@@ -113,7 +113,6 @@ var (
 	publicMode    bool = false
 	gotifyEnabled bool
 	immichEnabled bool
-	einkEnabled   bool
 )
 
 var (
@@ -161,8 +160,6 @@ func main() {
 	if os.Getenv("IMMICH_ENABLED") == "true" {
 		immichEnabled = true
 	}
-
-	einkEnabled = os.Getenv("EINK_ENABLED") == "true"
 
 	if err := os.MkdirAll(mediaPath, 0755); err != nil {
 		log.Printf("Warning: could not create media directory: %v", err)
@@ -218,14 +215,6 @@ func main() {
 		otelLogsEnabled = lEnabled == 1
 	}
 	_ = otelCfg
-
-	// Load e-ink mode from DB (fallback if env not set)
-	if !einkEnabled {
-		var einkInt int
-		if err := db.QueryRow("SELECT eink_enabled FROM site_settings WHERE id = 1").Scan(&einkInt); err == nil {
-			einkEnabled = einkInt == 1
-		}
-	}
 
 	if os.Getenv("BACKUP_RETENTION_DAYS") != "" {
 		if days, err := strconv.Atoi(os.Getenv("BACKUP_RETENTION_DAYS")); err == nil && days > 0 {
@@ -337,8 +326,6 @@ func main() {
 			auth.POST("/umami/config", saveUmamiConfig)
 			auth.GET("/otel/config", getOtelConfig)
 			auth.POST("/otel/config", saveOtelConfig)
-			auth.GET("/eink/config", getEinkConfig)
-			auth.POST("/eink/config", saveEinkConfig)
 			auth.POST("/backup", handleBackup)
 			auth.GET("/backups", handleListBackups)
 			auth.GET("/backup/config", getBackupConfig)
@@ -588,9 +575,8 @@ func serverError(c *gin.Context, err error) {
 // @Router /config [get]
 func getPublicConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"umami_url":    umamiURL,
-		"umami_site":   umamiSiteID,
-		"eink_enabled": einkEnabled,
+		"umami_url":  umamiURL,
+		"umami_site": umamiSiteID,
 	})
 }
 
@@ -665,7 +651,7 @@ func handleLogin(c *gin.Context) {
 			return
 		}
 
-		db.Exec("INSERT OR IGNORE INTO users (id, username, display_name, color) VALUES (1, ?, ?, ?)", input.Username, input.Username, defaultColor)
+		db.Exec("INSERT OR IGNORE INTO users (id, username, display_name, email, color) VALUES (1, ?, ?, '', ?)", input.Username, input.Username, defaultColor)
 
 		sessionID, err := generateSessionID()
 		if err != nil {
@@ -3307,37 +3293,6 @@ func saveOtelConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-func getEinkConfig(c *gin.Context) {
-	c.JSON(http.StatusOK, models.SiteConfig{
-		EinkEnabled: einkEnabled,
-	})
-}
-
-func saveEinkConfig(c *gin.Context) {
-	var cfg models.SiteConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	einkEnabled = cfg.EinkEnabled
-	enabledInt := 0
-	if cfg.EinkEnabled {
-		enabledInt = 1
-	}
-	_, err := db.Exec(`UPDATE site_settings SET eink_enabled=? WHERE id=1`, enabledInt)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save e-ink config"})
-		return
-	}
-
-	if logService != nil {
-		logService.Log("info", "eink", "E-ink mode settings saved", nil)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
 func testImmich(c *gin.Context) {
 	if immichURL == "" || immichAPIKey == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich URL and API key not configured"})
@@ -3770,7 +3725,7 @@ func testEmail(c *gin.Context) {
 
 	subject := "TRACES Test Email"
 	body := "This is a test email from TRACES. If you receive this, your email settings are working correctly."
-	if err := sendEmail(cfg, subject, body); err != nil {
+	if err := sendEmail(cfg, cfg.ToAddr, subject, body); err != nil {
 		if logService != nil {
 			logService.Log("error", "email", "Email test failed: "+err.Error(), nil)
 		}
@@ -3783,9 +3738,9 @@ func testEmail(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Test email sent successfully"})
 }
 
-func sendEmail(cfg models.EmailConfig, subject, body string) error {
+func sendEmail(cfg models.EmailConfig, toAddr, subject, body string) error {
 	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort)
-	msg := fmt.Appendf(nil, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", cfg.FromAddr, cfg.ToAddr, subject, body)
+	msg := fmt.Appendf(nil, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", cfg.FromAddr, toAddr, subject, body)
 
 	var auth smtp.Auth
 	if cfg.SMTPUser != "" {
@@ -3811,7 +3766,7 @@ func sendEmail(cfg models.EmailConfig, subject, body string) error {
 		if err = client.Mail(cfg.FromAddr); err != nil {
 			return err
 		}
-		if err = client.Rcpt(cfg.ToAddr); err != nil {
+		if err = client.Rcpt(toAddr); err != nil {
 			return err
 		}
 		w, err := client.Data()
@@ -3825,7 +3780,7 @@ func sendEmail(cfg models.EmailConfig, subject, body string) error {
 		return w.Close()
 	}
 
-	return smtp.SendMail(addr, auth, cfg.FromAddr, []string{cfg.ToAddr}, msg)
+	return smtp.SendMail(addr, auth, cfg.FromAddr, []string{toAddr}, msg)
 }
 
 // @Summary Send memories email
@@ -3848,11 +3803,32 @@ func sendMemoriesEmailHandler(c *gin.Context) {
 	var emailCfg models.EmailConfig
 	var port int
 	err := db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&emailCfg.SMTPHost, &port, &emailCfg.SMTPUser, &emailCfg.SMTPPass, &emailCfg.FromAddr, &emailCfg.ToAddr)
-	if err != nil || emailCfg.SMTPHost == "" || emailCfg.ToAddr == "" {
+	if err != nil || emailCfg.SMTPHost == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Email not configured"})
 		return
 	}
 	emailCfg.SMTPPort = port
+
+	// Collect recipient emails: per-user emails first, fall back to global to_addr
+	var recipients []string
+	userRows, err := db.Query("SELECT email FROM users WHERE email != '' AND email IS NOT NULL")
+	if err == nil {
+		for userRows.Next() {
+			var email string
+			if err := userRows.Scan(&email); err == nil && email != "" {
+				recipients = append(recipients, email)
+			}
+		}
+		userRows.Close()
+	}
+	if len(recipients) == 0 && emailCfg.ToAddr != "" {
+		recipients = append(recipients, emailCfg.ToAddr)
+	}
+
+	if len(recipients) == 0 {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "No recipient emails configured"})
+		return
+	}
 
 	now := time.Now()
 	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
@@ -3903,12 +3879,29 @@ func sendMemoriesEmailHandler(c *gin.Context) {
 	subject := "TRACES Memories - " + today.Format("January 2, 2006")
 	body := "You have " + strconv.Itoa(len(memories)) + " memory/memories from this date in past years:\n\n" + strings.Join(memories, "\n")
 
-	if err := sendEmail(emailCfg, subject, body); err != nil {
+	sent := 0
+	var lastErr error
+	for _, to := range recipients {
+		if err := sendEmail(emailCfg, to, subject, body); err != nil {
+			lastErr = err
+			log.Printf("[MEMORIES] Failed to send email to %s: %v", to, err)
+			continue
+		}
+		sent++
+	}
+
+	if sent == 0 {
+		if logService != nil {
+			logService.Log("error", "memories", "Failed to send memories email: "+lastErr.Error(), nil)
+		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email"})
 		return
 	}
 
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": fmt.Sprintf("Sent %d memories via email", len(memories))})
+	if logService != nil {
+		logService.Log("info", "memories", fmt.Sprintf("Sent %d memories via email to %d recipient(s)", len(memories), sent), nil)
+	}
+	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": fmt.Sprintf("Sent %d memories via email to %d recipient(s)", len(memories), sent)})
 }
 
 func scanEventsWithPerson(rows *sql.Rows) []models.TimelineEvent {
@@ -4257,7 +4250,7 @@ Tags:`, sanitizePrompt(input.Title), sanitizePrompt(input.Description), sanitize
 // @Success 200 {array} object "users"
 // @Router /users [get]
 func getUsers(c *gin.Context) {
-	rows, err := db.Query(`SELECT id, username, display_name, color, avatar_url, created_at,
+	rows, err := db.Query(`SELECT id, username, display_name, email, color, avatar_url, created_at,
 		(SELECT COUNT(*) FROM timeline_events WHERE user_id = users.id) as event_count
 		FROM users ORDER BY display_name ASC`)
 	if err != nil {
@@ -4269,7 +4262,7 @@ func getUsers(c *gin.Context) {
 	users := make([]models.User, 0)
 	for rows.Next() {
 		var u models.User
-		err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Color, &u.AvatarURL, &u.CreatedAt, &u.EventCount)
+		err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Color, &u.AvatarURL, &u.CreatedAt, &u.EventCount)
 		if err != nil {
 			continue
 		}
@@ -4296,8 +4289,8 @@ func saveUser(c *gin.Context) {
 	}
 
 	if u.ID == 0 {
-		result, err := db.Exec("INSERT INTO users (username, display_name, color, avatar_url) VALUES (?, ?, ?, ?)",
-			u.Username, u.DisplayName, u.Color, u.AvatarURL)
+		result, err := db.Exec("INSERT INTO users (username, display_name, email, color, avatar_url) VALUES (?, ?, ?, ?, ?)",
+			u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -4305,8 +4298,8 @@ func saveUser(c *gin.Context) {
 		id, _ := result.LastInsertId()
 		u.ID = int(id)
 	} else {
-		_, err := db.Exec("UPDATE users SET username=?, display_name=?, color=?, avatar_url=? WHERE id=?",
-			u.Username, u.DisplayName, u.Color, u.AvatarURL, u.ID)
+		_, err := db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=?, avatar_url=? WHERE id=?",
+			u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, u.ID)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -4894,10 +4887,6 @@ func createTables() {
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			min_severity TEXT NOT NULL DEFAULT 'warn'
 		)`,
-		`CREATE TABLE IF NOT EXISTS site_settings (
-			id INTEGER PRIMARY KEY CHECK (id = 1),
-			eink_enabled INTEGER DEFAULT 0
-		)`,
 	}
 
 	for _, q := range queries {
@@ -4963,11 +4952,6 @@ func createTables() {
 		db.Exec("INSERT INTO otel_settings (id, endpoint, traces_enabled, metrics_enabled, logs_enabled) VALUES (1, '', 0, 0, 0)")
 	}
 
-	var siteCount int
-	db.QueryRow("SELECT COUNT(*) FROM site_settings").Scan(&siteCount)
-	if siteCount == 0 {
-		db.Exec("INSERT INTO site_settings (id, eink_enabled) VALUES (1, 0)")
-	}
 }
 
 func createFTS5Table() {

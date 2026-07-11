@@ -10,10 +10,8 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
-    <script src="/static/eink.js"></script>
     <script>
       (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
-      (function(){var q=new URLSearchParams(window.location.search);if(q.get('eink')==='1'){window.einkMode.enable()}else if(q.get('eink')==='0'){window.einkMode.disable()}else{var f=document.cookie.split(';').some(function(c){return c.trim().indexOf('eink=1')===0});if(f){window.einkMode.enable()}else{fetch('/api/config').then(function(r){return r.json()}).then(function(c){if(c.eink_enabled&&!window.einkMode.enabled()){window.einkMode.enable()}}).catch(function(){})}}})();
     </script>
     <style>
         :root {
@@ -736,8 +734,9 @@
                                 </div>
                             </div>
                             <div class="mb-3">
-                                <label class="form-label">Send To</label>
+                                <label class="form-label">Fallback Recipient</label>
                                 <input type="email" class="form-control" id="email-to" placeholder="recipient@example.com">
+                                <div class="text-muted" style="font-size:0.85rem">Used as fallback when no users have email configured. Per-user emails in the Users tab take priority.</div>
                             </div>
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-primary" aria-label="Save email settings"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
@@ -810,23 +809,6 @@
                             </div>
                         </form>
                         <div id="umami-result" class="mt-3"></div>
-                    </div>
-                </div>
-
-                <div class="card mb-3">
-                    <div class="card-header"><i class="fa-solid fa-file-lines me-2" aria-hidden="true"></i>E-Ink Mode</div>
-                    <div class="card-body">
-                        <form id="eink-form">
-                            <div class="form-check form-switch mb-3">
-                                <input class="form-check-input" type="checkbox" id="eink-enabled">
-                                <label class="form-check-label fw-bold">Enable E-Ink Mode</label>
-                                <div class="text-muted" style="font-size:0.85rem">High-contrast, no-animation layout for e-ink displays (Boox, Kindle, reMarkable). Also toggle via <code>?eink=1</code> URL parameter.</div>
-                            </div>
-                            <div class="d-flex gap-2">
-                                <button type="submit" class="btn btn-primary" aria-label="Save e-ink settings"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
-                            </div>
-                        </form>
-                        <div id="eink-result" class="mt-3"></div>
                     </div>
                 </div>
 

@@ -750,48 +750,4 @@ test.describe('TRACES Admin Backend', () => {
     const data = await resp.json();
     expect(Array.isArray(data)).toBeTruthy();
   });
-
-  test('should toggle e-ink mode via admin API', async ({ request }) => {
-    // Enable e-ink via API
-    let resp = await request.post('/api/eink/config', {
-      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
-      data: { eink_enabled: true }
-    });
-    expect(resp.ok()).toBeTruthy();
-
-    // Verify via GET
-    resp = await request.get('/api/eink/config', {
-      headers: { Cookie: `session=${sessionCookie}` }
-    });
-    expect(resp.ok()).toBeTruthy();
-    const cfg = await resp.json();
-    expect(cfg.eink_enabled).toBeTruthy();
-
-    // Disable e-ink
-    resp = await request.post('/api/eink/config', {
-      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
-      data: { eink_enabled: false }
-    });
-    expect(resp.ok()).toBeTruthy();
-
-    resp = await request.get('/api/eink/config', {
-      headers: { Cookie: `session=${sessionCookie}` }
-    });
-    const cfg2 = await resp.json();
-    expect(cfg2.eink_enabled).toBeFalsy();
-  });
-
-  test('should have e-ink form visible on admin page', async ({ page }) => {
-    // Inject auth cookie before navigation to avoid redirect
-    await page.context().addCookies([
-      { name: 'session', value: sessionCookie, domain: 'localhost', path: '/' }
-    ]);
-    await page.goto('/admin.html');
-    await page.waitForFunction(() => typeof (window as any).loadEinkConfig !== 'undefined', { timeout: 10000 });
-    // The eink form is inside the Integrations tab pane which is hidden by default
-    await page.locator('#integrations-tab').click();
-    await page.waitForTimeout(300);
-    await expect(page.locator('#eink-form')).toBeVisible();
-    await expect(page.locator('#eink-enabled')).toBeVisible();
-  });
 });

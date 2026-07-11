@@ -51,7 +51,7 @@ func Migrate(db *sql.DB) {
 		schemaVersion = 0
 	}
 
-	for v := schemaVersion; v < 18; v++ {
+	for v := schemaVersion; v < 19; v++ {
 		RunMigration(db, v)
 		_, _ = db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", v+1)
 	}
@@ -133,6 +133,7 @@ func createTables(db *sql.DB) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT UNIQUE,
 			display_name TEXT DEFAULT '',
+			email TEXT DEFAULT '',
 			color TEXT DEFAULT '#7c3aed',
 			avatar_url TEXT DEFAULT '',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -232,7 +233,7 @@ func seedDefaults(db *sql.DB) {
 
 	db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
 	if count == 0 {
-		db.Exec("INSERT INTO users (id, username, display_name, color) VALUES (1, 'default', 'Default User', '#7c3aed')")
+		db.Exec("INSERT INTO users (id, username, display_name, email, color) VALUES (1, 'default', 'Default User', '', '#7c3aed')")
 	}
 
 	db.QueryRow("SELECT COUNT(*) FROM ollama_settings").Scan(&count)
@@ -429,6 +430,11 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			enabled INTEGER DEFAULT 0
 		)`)
 		_, _ = db.Exec(`INSERT OR IGNORE INTO umami_settings (id, url, site_id, enabled) VALUES (1, '', '', 0)`)
+	case 18:
+		_, err := db.Exec(`ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''`)
+		if err == nil {
+			log.Printf("[DB] Added column: email to users")
+		}
 	}
 }
 
