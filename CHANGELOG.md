@@ -1,3 +1,17 @@
+# [1.26.0](https://github.com/martynvdijke/traces/compare/v1.25.9...v1.26.0) (2026-07-12)
+
+
+### Bug Fixes
+
+* add missing email column to users table schema ([2274f00](https://github.com/martynvdijke/traces/commit/2274f0066e482c9bbbb0e3be1de0d33d16fce56d))
+* **deps:** update module github.com/yuin/goldmark to v1.8.4 ([4559b11](https://github.com/martynvdijke/traces/commit/4559b1167fddd979d34d4e4b9d5bed238f533550))
+
+
+### Features
+
+* add OTLP HTTP/protobuf exporters with otelgin tracing and Prometheus bridge ([1b583f9](https://github.com/martynvdijke/traces/commit/1b583f9b8b5ab8ae792f452828301f250be9ba1c))
+* add per-user email for memories notifications ([8ffd8e7](https://github.com/martynvdijke/traces/commit/8ffd8e7e4318c32e537a61b9c4c4593005f5726a))
+
 ## [1.25.9](https://github.com/martynvdijke/traces/compare/v1.25.8...v1.25.9) (2026-07-09)
 
 
