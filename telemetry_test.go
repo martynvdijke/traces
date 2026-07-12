@@ -1,11 +1,13 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -13,6 +15,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
 func init() {
@@ -679,6 +682,130 @@ func TestHandleGetLogSources(t *testing.T) {
 	}
 	if !sourceSet["source-b"] {
 		t.Error("expected 'source-b' in sources")
+	}
+}
+
+// --- OTel Add-on Tests ---
+
+func TestParseOTelProtocol(t *testing.T) {
+	tests := []struct {
+		env     string
+		want    string
+	}{
+		{"", "grpc"},
+		{"grpc", "grpc"},
+		{"http/protobuf", "http/protobuf"},
+		{"invalid", "grpc"},
+	}
+	for _, tt := range tests {
+		t.Run("protocol_"+tt.env, func(t *testing.T) {
+			orig := os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
+			os.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.env)
+			defer os.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", orig)
+
+			parseOTelProtocol()
+			if otelExporterProtocol != tt.want {
+				t.Errorf("otelExporterProtocol = %q, want %q", otelExporterProtocol, tt.want)
+			}
+		})
+	}
+}
+
+func TestParseOTelResourceAttributes(t *testing.T) {
+	tests := []struct {
+		env  string
+		want int // number of attributes
+	}{
+		{"", 0},
+		{"key=value", 1},
+		{"key1=value1,key2=value2", 2},
+		{"key=value,empty=,trailing,==", 3},
+	}
+	for _, tt := range tests {
+		t.Run("attrs_"+tt.env, func(t *testing.T) {
+			orig := os.Getenv("OTEL_RESOURCE_ATTRIBUTES")
+			os.Setenv("OTEL_RESOURCE_ATTRIBUTES", tt.env)
+			defer os.Setenv("OTEL_RESOURCE_ATTRIBUTES", orig)
+
+			attrs := parseOTelResourceAttributes()
+			if len(attrs) != tt.want {
+				t.Errorf("got %d attributes, want %d: %v", len(attrs), tt.want, attrs)
+			}
+		})
+	}
+}
+
+func TestTraceDBQuery(t *testing.T) {
+	ctx := context.Background()
+
+	t.Run("successful_query", func(t *testing.T) {
+		err := TraceDBQuery(ctx, "test-operation", func(ctx context.Context) error {
+			return nil
+		})
+		if err != nil {
+			t.Errorf("expected nil error, got %v", err)
+		}
+	})
+
+	t.Run("error_query", func(t *testing.T) {
+		expectedErr := fmt.Errorf("query failed")
+		err := TraceDBQuery(ctx, "test-error", func(ctx context.Context) error {
+			return expectedErr
+		})
+		if err != expectedErr {
+			t.Errorf("expected %v, got %v", expectedErr, err)
+		}
+	})
+}
+
+func TestInitShutdownTelemetry(t *testing.T) {
+	t.Run("nil_provider", func(t *testing.T) {
+		// Should not panic
+		initShutdownTelemetry(nil)()
+	})
+
+	t.Run("valid_provider", func(t *testing.T) {
+		// Create a simple tracer provider to verify shutdown doesn't panic
+		tp := sdktrace.NewTracerProvider()
+		initShutdownTelemetry(tp)()
+	})
+}
+
+func TestTelemetryGracefulDegradation(t *testing.T) {
+	// Save and restore OTel global state and env vars
+	origEndpoint := otelEndpoint
+	origTraces := otelTracesEnabled
+	origMetrics := otelMetricsEnabled
+	origLogs := otelLogsEnabled
+	origProtocol := otelExporterProtocol
+	origSvcName := os.Getenv("OTEL_SERVICE_NAME")
+	defer func() {
+		otelEndpoint = origEndpoint
+		otelTracesEnabled = origTraces
+		otelMetricsEnabled = origMetrics
+		otelLogsEnabled = origLogs
+		otelExporterProtocol = origProtocol
+		os.Setenv("OTEL_SERVICE_NAME", origSvcName)
+	}()
+
+	// Set an unreachable endpoint to test graceful degradation
+	otelEndpoint = "http://127.0.0.1:1"
+	otelTracesEnabled = true
+	otelMetricsEnabled = true
+	otelLogsEnabled = true
+	os.Setenv("OTEL_SERVICE_NAME", "traces-test")
+
+	// This should not panic despite the unreachable endpoint;
+	// it should fall back to stdout exporters
+	tp, err := initTelemetry()
+	if err != nil {
+		t.Logf("initTelemetry returned error (acceptable in test): %v", err)
+	} else {
+		if tp == nil {
+			t.Error("expected non-nil tracer provider even with degradation")
+		} else {
+			tp.Shutdown(context.Background())
+		}
 	}
 }
 

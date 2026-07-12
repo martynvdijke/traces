@@ -56,6 +56,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/yuin/goldmark"
 	"go.opentelemetry.io/otel/attribute"
@@ -229,12 +230,11 @@ func main() {
 	if err != nil {
 		log.Printf("Failed to initialize telemetry: %v", err)
 	} else {
-		r.Use(metricsMiddleware())
-		defer func() {
-			if err := tp.Shutdown(context.Background()); err != nil {
-				log.Printf("Error shutting down tracer provider: %v", err)
-			}
-		}()
+		// otelgin middleware for automatic request tracing with semantic conventions
+		r.Use(otelgin.Middleware("traces"))
+		// Metrics middleware records Prometheus/OTel metrics (no span creation - otelgin handles that)
+		r.Use(prometheusMetricsMiddleware())
+		defer initShutdownTelemetry(tp)
 	}
 
 	r.Use(func(c *gin.Context) {
