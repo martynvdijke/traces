@@ -56,9 +56,9 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
-	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"github.com/rwcarlsen/goexif/exif"
 	"github.com/yuin/goldmark"
+	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
@@ -4817,6 +4817,7 @@ func createTables() {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT UNIQUE,
 			display_name TEXT DEFAULT '',
+			email TEXT DEFAULT '',
 			color TEXT DEFAULT '#7c3aed',
 			avatar_url TEXT DEFAULT '',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
@@ -5128,6 +5129,9 @@ func runMigration(fromVersion int) {
 			enabled INTEGER DEFAULT 0
 		)`)
 		_, _ = db.Exec(`INSERT OR IGNORE INTO umami_settings (id, url, site_id, enabled) VALUES (1, '', '', 0)`)
+	case 18:
+	case 19:
+		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''`)
 	}
 }
 

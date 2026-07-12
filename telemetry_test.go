@@ -689,8 +689,8 @@ func TestHandleGetLogSources(t *testing.T) {
 
 func TestParseOTelProtocol(t *testing.T) {
 	tests := []struct {
-		env     string
-		want    string
+		env  string
+		want string
 	}{
 		{"", "grpc"},
 		{"grpc", "grpc"},
