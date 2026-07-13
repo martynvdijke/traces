@@ -2,7 +2,7 @@ module traces
 
 go 1.26.2
 
-require github.com/mattn/go-sqlite3 v1.14.47
+require github.com/mattn/go-sqlite3 v1.14.48
 
 require (
 	github.com/gin-gonic/gin v1.12.0
