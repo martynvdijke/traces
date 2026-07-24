@@ -1,3 +1,10 @@
+## [1.26.6](https://github.com/martynvdijke/traces/compare/v1.26.5...v1.26.6) (2026-07-24)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/prometheus/client_golang to v1.24.1 ([#46](https://github.com/martynvdijke/traces/issues/46)) ([92928b4](https://github.com/martynvdijke/traces/commit/92928b4f469af3c32e90f0143f4418d1394df2cb))
+
 ## [1.26.5](https://github.com/martynvdijke/traces/compare/v1.26.4...v1.26.5) (2026-07-21)
 
 
