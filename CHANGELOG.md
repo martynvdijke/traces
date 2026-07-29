@@ -1,3 +1,10 @@
+## [1.26.11](https://github.com/martynvdijke/traces/compare/v1.26.10...v1.26.11) (2026-07-29)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/mattn/go-sqlite3 to v1.14.49 ([#51](https://github.com/martynvdijke/traces/issues/51)) ([e71bdb3](https://github.com/martynvdijke/traces/commit/e71bdb3433565e716bf62b92513e5a29428af7f3))
+
 ## [1.26.10](https://github.com/martynvdijke/traces/compare/v1.26.9...v1.26.10) (2026-07-28)
 
 
