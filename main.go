@@ -129,6 +129,7 @@ var (
 	gotifyToken        = ""
 	umamiURL           = ""
 	umamiSiteID        = ""
+	umamiEnabled       bool
 	immichURL          = ""
 	immichAPIKey       = ""
 	otelEndpoint       = ""
@@ -204,6 +205,7 @@ func main() {
 		if err := db.QueryRow("SELECT url, site_id, enabled FROM umami_settings WHERE id = 1").Scan(&cfg.URL, &cfg.SiteID, &enabledInt); err == nil {
 			umamiURL = cfg.URL
 			umamiSiteID = cfg.SiteID
+			umamiEnabled = enabledInt == 1
 		}
 	}
 
@@ -575,8 +577,9 @@ func serverError(c *gin.Context, err error) {
 // @Router /config [get]
 func getPublicConfig(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{
-		"umami_url":  umamiURL,
-		"umami_site": umamiSiteID,
+		"umami_url":     umamiURL,
+		"umami_site":    umamiSiteID,
+		"umami_enabled": umamiEnabled,
 	})
 }
 
@@ -3234,6 +3237,7 @@ func saveUmamiConfig(c *gin.Context) {
 
 	umamiURL = cfg.URL
 	umamiSiteID = cfg.SiteID
+	umamiEnabled = cfg.Enabled
 
 	if logService != nil {
 		logService.Log("info", "umami", "Umami settings saved", nil)
