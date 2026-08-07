@@ -1,3 +1,10 @@
+## [1.26.16](https://github.com/martynvdijke/traces/compare/v1.26.15...v1.26.16) (2026-08-07)
+
+
+### Bug Fixes
+
+* honor umami enabled flag when injecting analytics script ([d72a95e](https://github.com/martynvdijke/traces/commit/d72a95ee1dff7ca05db999e916fa46b0842262b7))
+
 ## [1.26.15](https://github.com/martynvdijke/traces/compare/v1.26.14...v1.26.15) (2026-08-05)
 
 
