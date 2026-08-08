@@ -610,6 +610,155 @@ test.describe('TRACES Admin Backend', () => {
     expect(saveResp.ok()).toBeTruthy();
   });
 
+  test('should get and update log settings', async ({ request }) => {
+    const getResp = await request.get('/api/logs/settings', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    expect(getResp.ok()).toBeTruthy();
+    const settings = await getResp.json();
+    expect(settings).toHaveProperty('min_severity');
+
+    // Lower the threshold to 'info' so subsequent info-level saves are stored
+    const saveResp = await request.post('/api/logs/settings', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { min_severity: 'info' }
+    });
+    expect(saveResp.ok()).toBeTruthy();
+
+    const invalidResp = await request.post('/api/logs/settings', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { min_severity: 'bogus' }
+    });
+    expect(invalidResp.status()).toBe(400);
+  });
+
+  test('should get and save umami config', async ({ request }) => {
+    // Get config
+    const getResp = await request.get('/api/umami/config', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    expect(getResp.ok()).toBeTruthy();
+    const cfg = await getResp.json();
+    expect(cfg).toHaveProperty('url');
+    expect(cfg).toHaveProperty('site_id');
+    expect(cfg).toHaveProperty('enabled');
+
+    // Save config (disabled)
+    const saveResp = await request.post('/api/umami/config', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { url: 'https://umami.example.com', site_id: 'test-site-id', enabled: false }
+    });
+    expect(saveResp.ok()).toBeTruthy();
+    const body = await saveResp.json();
+    expect(body.status).toBe('ok');
+
+    // Verify persisted values are returned
+    const getResp2 = await request.get('/api/umami/config', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    const cfg2 = await getResp2.json();
+    expect(cfg2.url).toBe('https://umami.example.com');
+    expect(cfg2.site_id).toBe('test-site-id');
+    expect(cfg2.enabled).toBe(false);
+  });
+
+  test('should expose umami config via public /api/config', async ({ request }) => {
+    const resp = await request.get('/api/config');
+    expect(resp.ok()).toBeTruthy();
+    const cfg = await resp.json();
+    expect(cfg).toHaveProperty('umami_url');
+    expect(cfg).toHaveProperty('umami_site');
+    expect(cfg).toHaveProperty('umami_enabled');
+    expect(cfg.umami_url).toBe('https://umami.example.com');
+    expect(cfg.umami_site).toBe('test-site-id');
+    expect(cfg.umami_enabled).toBe(false);
+  });
+
+  test('should gate analytics script loading on umami enabled flag', async ({ page, request }) => {
+    // Umami is currently disabled -> no analytics script on the public timeline
+    await page.goto('/');
+    await page.waitForLoadState('domcontentloaded');
+    await page.waitForTimeout(500);
+    expect(await page.locator('script[data-website-id]').count()).toBe(0);
+
+    // Enable Umami -> script is injected with async + defer
+    const enableResp = await request.post('/api/umami/config', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { url: 'https://umami.example.com', site_id: 'test-site-id', enabled: true }
+    });
+    expect(enableResp.ok()).toBeTruthy();
+
+    await page.reload();
+    const script = page.locator('script[data-website-id="test-site-id"]');
+    await expect(script).toHaveCount(1, { timeout: 5000 });
+    expect(await script.getAttribute('async')).not.toBeNull();
+    expect(await script.getAttribute('defer')).not.toBeNull();
+
+    // Disable again and verify the script disappears on next load
+    const disableResp = await request.post('/api/umami/config', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { url: 'https://umami.example.com', site_id: 'test-site-id', enabled: false }
+    });
+    expect(disableResp.ok()).toBeTruthy();
+
+    await page.reload();
+    await page.waitForTimeout(500);
+    expect(await page.locator('script[data-website-id]').count()).toBe(0);
+  });
+
+  test('should record umami config saves in app logs', async ({ request }) => {
+    const resp = await request.get('/api/logs?source=umami&limit=20', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    expect(resp.ok()).toBeTruthy();
+    const logs = await resp.json();
+    expect(Array.isArray(logs)).toBeTruthy();
+    const saved = logs.find((l: any) => l.message === 'Umami settings saved');
+    expect(saved).toBeDefined();
+    expect(saved.severity).toBe('info');
+    expect(saved.source).toBe('umami');
+  });
+
+  test('should render admin Logs tab with recorded entries', async ({ page }) => {
+    await page.goto('/login.html');
+    await page.fill('input[name="username"]', 'admin');
+    await page.fill('input[name="password"]', 'admin123');
+    await page.click('button[type="submit"]');
+    await page.waitForURL('**/admin.html', { timeout: 15000 });
+    await page.waitForFunction(() => typeof (window as any).openEventModal === 'function', { timeout: 15000 });
+
+    await page.click('#logs-tab');
+    await expect(page.locator('#logs-pane')).toBeVisible();
+    await expect(page.locator('#log-table')).toBeVisible();
+    await expect(page.locator('#log-list')).toContainText('Umami settings saved', { timeout: 10000 });
+  });
+
+  test('should count and clear logs', async ({ request }) => {
+    const countResp = await request.get('/api/logs/count', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    expect(countResp.ok()).toBeTruthy();
+    const { count } = await countResp.json();
+    expect(count).toBeGreaterThan(0);
+
+    const clearResp = await request.delete('/api/logs', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken }
+    });
+    expect(clearResp.ok()).toBeTruthy();
+
+    const afterResp = await request.get('/api/logs/count', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    const { count: after } = await afterResp.json();
+    expect(after).toBe(0);
+
+    // Restore default log verbosity for subsequent runs
+    await request.post('/api/logs/settings', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { min_severity: 'warn' }
+    });
+  });
+
   test('should get calendar data', async ({ request }) => {
     const resp = await request.get('/api/calendar?year=2026&month=05', {
       headers: { Cookie: `session=${sessionCookie}` }
