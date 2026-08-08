@@ -1,3 +1,10 @@
+## [1.26.17](https://github.com/martynvdijke/traces/compare/v1.26.16...v1.26.17) (2026-08-08)
+
+
+### Bug Fixes
+
+* gate umami analytics script on enabled flag in frontend ([a4382f0](https://github.com/martynvdijke/traces/commit/a4382f0a0bcc2bf478b03469184a02e282829e9c))
+
 ## [1.26.16](https://github.com/martynvdijke/traces/compare/v1.26.15...v1.26.16) (2026-08-07)
 
 

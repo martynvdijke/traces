@@ -108,7 +108,7 @@ func init() {
 
 const defaultColor = "#7c3aed"
 const currentSchemaVersion = 18
-const currentVersion = "1.26.16"
+const currentVersion = "1.26.17"
 
 var (
 	publicMode    bool = false
