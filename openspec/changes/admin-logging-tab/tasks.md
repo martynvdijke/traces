@@ -71,4 +71,4 @@
 - [x] 8.2 Run `npx tsc` to verify TypeScript compilation
 - [x] 8.3 Run `go vet ./...` for static analysis
 - [x] 8.4 Run `go test -v ./...` to ensure existing tests pass
-- [ ] 8.5 Manual smoke test: start server, navigate admin, verify Logs tab renders, verify config saves produce log entries
+- [x] 8.5 E2E coverage: Playwright tests verify Logs tab renders, config saves produce log entries, filtering, count and clear
