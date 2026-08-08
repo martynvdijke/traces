@@ -1361,7 +1361,7 @@ async function loadWrapped(): Promise<void> {
 
 function loadAnalytics(): void {
   fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg) {
-    if (cfg.umami_url && cfg.umami_site) {
+    if (cfg.umami_url && cfg.umami_site && cfg.umami_enabled) {
       var s = document.createElement('script');
       s.async = true;
       s.defer = true;
