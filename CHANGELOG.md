@@ -1,3 +1,10 @@
+# [1.27.0](https://github.com/martynvdijke/traces/compare/v1.26.18...v1.27.0) (2026-08-10)
+
+
+### Features
+
+* add video posters, responsive image variants, and map clustering ([b0b3066](https://github.com/martynvdijke/traces/commit/b0b30666fbce2ba8d331a7eb2e0ff885f2bded72))
+
 ## [1.26.18](https://github.com/martynvdijke/traces/compare/v1.26.17...v1.26.18) (2026-08-10)
 
 ## [1.26.17](https://github.com/martynvdijke/traces/compare/v1.26.16...v1.26.17) (2026-08-08)
