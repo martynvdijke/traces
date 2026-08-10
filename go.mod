@@ -5,7 +5,9 @@ go 1.26.2
 require github.com/mattn/go-sqlite3 v1.14.49
 
 require (
+	github.com/chai2010/webp v1.4.0
 	github.com/gin-gonic/gin v1.12.0
+	github.com/nfnt/resize v0.0.0-20180221191011-83c6a9932646
 	github.com/prometheus/client_golang v1.24.1
 	github.com/rwcarlsen/goexif v0.0.0-20190401172101-9e8deecbddbd
 	github.com/swaggo/files/v2 v2.0.2
@@ -32,7 +34,6 @@ require (
 	go.opentelemetry.io/otel/sdk/metric v1.45.0
 	go.opentelemetry.io/otel/trace v1.45.0
 	golang.org/x/crypto v0.54.0
-	golang.org/x/image v0.44.0
 	golang.org/x/net v0.57.0
 )
 

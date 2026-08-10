@@ -9,6 +9,7 @@ interface TimelineEvent {
   media_type: string;
   media_url: string;
   thumbnail: string;
+  variants?: { thumb?: string; sm?: string; md?: string };
   media_caption: string;
   tags: string;
   sort_order: number;
@@ -53,6 +54,32 @@ interface Weather {
   condition: string;
   icon: string;
   wind_speed: number;
+}
+
+function responsiveSrcset(e: TimelineEvent): string {
+  const v = e.variants || {};
+  const parts: string[] = [];
+  if (v.thumb) parts.push(v.thumb + ' 300w');
+  if (v.sm) parts.push(v.sm + ' 640w');
+  if (v.md) parts.push(v.md + ' 1280w');
+  return parts.join(', ');
+}
+
+function webpSourceHtml(e: TimelineEvent): string {
+  const v = e.variants || {};
+  const parts: string[] = [];
+  if (v.sm) parts.push(v.sm + ' 640w');
+  if (v.md) parts.push(v.md + ' 1280w');
+  if (parts.length === 0) return '';
+  return '<source type="image/webp" srcset="' + parts.join(', ') + '">';
+}
+
+// Renders an image with WebP <picture> wrapper and srcset/sizes when variants
+// exist; falls back to a plain <img> for pre-existing media without variants.
+function imageWithSrcset(e: TimelineEvent, fallback: string, sizes: string, alt: string): string {
+  const srcset = responsiveSrcset(e);
+  const srcsetAttr = srcset ? ' srcset="' + srcset + '" sizes="' + sizes + '"' : '';
+  return '<picture>' + webpSourceHtml(e) + '<img src="' + fallback + '"' + srcsetAttr + ' alt="' + alt + '"></picture>';
 }
 
 type Theme = 'light' | 'dark';
@@ -309,11 +336,13 @@ function renderTimeline(): void {
     if (hasMedia) {
       const thumbUrl = e.thumbnail || e.media_url;
       if (e.media_type === 'video') {
-        thumbHtml = '<div class="timeline-thumb"><video src="' + thumbUrl + '" muted></video></div>';
+        thumbHtml = e.thumbnail
+          ? '<div class="timeline-thumb"><img src="' + e.thumbnail + '" alt="' + escapeHtml(e.title) + '"></div>'
+          : '<div class="timeline-thumb"><video src="' + e.media_url + '" muted></video></div>';
       } else if (e.media_type === 'audio') {
         thumbHtml = '<div class="timeline-thumb"><div class="audio-placeholder-sm"><i class="fa-solid fa-music fa-2x"></i></div></div>';
       } else {
-        thumbHtml = '<div class="timeline-thumb"><img src="' + thumbUrl + '" alt="' + escapeHtml(e.title) + '"></div>';
+        thumbHtml = '<div class="timeline-thumb">' + imageWithSrcset(e, thumbUrl, '300px', escapeHtml(e.title)) + '</div>';
       }
     }
 
@@ -418,10 +447,10 @@ function renderGallery(): void {
       <div class="col-md-4 col-lg-3">
         <div class="gallery-item" onclick="showMedia(${e.id})">
           ${e.media_type === 'video'
-            ? '<video src="' + e.media_url + '" muted></video>'
+            ? (e.thumbnail ? '<img src="' + e.thumbnail + '" alt="' + escapeHtml(e.title) + '">' : '<video src="' + e.media_url + '" muted></video>')
             : e.media_type === 'audio'
             ? '<div class="audio-placeholder"><i class="fa-solid fa-music fa-3x"></i></div>'
-            : '<img src="' + (e.thumbnail || e.media_url) + '" alt="' + escapeHtml(e.title) + '">'
+            : imageWithSrcset(e, e.thumbnail || e.media_url, '(max-width: 768px) 100vw, 25vw', escapeHtml(e.title))
           }
           <div class="gallery-overlay">
             <i class="${getMediaIcon(e.media_type)}"></i>
@@ -523,11 +552,11 @@ function showMedia(id: number): void {
   let mediaHtml = '';
   if (event.media_url) {
     if (event.media_type === 'video') {
-      mediaHtml = '<video controls class="w-100" src="' + event.media_url + '"></video>';
+      mediaHtml = '<video controls class="w-100" src="' + event.media_url + '"' + (event.thumbnail ? ' poster="' + event.thumbnail + '"' : '') + '></video>';
     } else if (event.media_type === 'audio') {
       mediaHtml = '<audio controls class="w-100" src="' + event.media_url + '"></audio>';
     } else {
-      mediaHtml = '<img src="' + event.media_url + '" class="img-fluid" alt="' + event.title + '">';
+      mediaHtml = imageWithSrcset(event, event.media_url, '(max-width: 768px) 100vw, 80vw', event.title);
     }
   }
 
@@ -572,10 +601,10 @@ async function loadMoreGallery(): Promise<void> {
         <div class="col-md-4 col-lg-3">
           <div class="gallery-item" onclick="showMedia(${e.id})">
             ${e.media_type === 'video'
-              ? '<video src="' + e.media_url + '" muted></video>'
+              ? (e.thumbnail ? '<img src="' + e.thumbnail + '" alt="' + escapeHtml(e.title) + '">' : '<video src="' + e.media_url + '" muted></video>')
               : e.media_type === 'audio'
               ? '<div class="audio-placeholder"><i class="fa-solid fa-music fa-3x"></i></div>'
-              : '<img src="' + (e.thumbnail || e.media_url) + '" alt="' + escapeHtml(e.title) + '">'
+              : imageWithSrcset(e, e.thumbnail || e.media_url, '(max-width: 768px) 100vw, 25vw', escapeHtml(e.title))
             }
             <div class="gallery-overlay">
               <i class="${getMediaIcon(e.media_type)}"></i>

@@ -7,6 +7,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.3.0/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
     <style>
         :root { --traces-primary: #7c3aed; --traces-dark: #111; }
@@ -45,12 +47,16 @@
         <div id="map"></div>
         <div class="map-sidebar" id="sidebar">
             <h3><i class="fa-solid fa-list me-2" aria-hidden="true"></i>Events on Map</h3>
+            <div class="mb-3">
+                <input type="text" class="form-control form-control-sm" id="location-filter" placeholder="Filter by location..." autocomplete="off">
+            </div>
             <div id="event-list"></div>
         </div>
     </div>
 
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/static/js/map.js"></script>
 </body>
 </html>

@@ -63,7 +63,6 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/image/draw"
 	"golang.org/x/net/webdav"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
@@ -1265,6 +1264,7 @@ func handleUpload(c *gin.Context) {
 	uploadPath := filepath.Join(dir, filename)
 	url := "/media/" + subDir + "/" + filename
 	var thumbnailURL string
+	variants := map[string]string{}
 
 	if mediaType == "image" && ext != ".gif" && ext != ".svg" && ext != ".tiff" && ext != ".tif" {
 		img, format, err := image.Decode(bytes.NewReader(data))
@@ -1274,18 +1274,19 @@ func handleUpload(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Image dimensions too large (max 10000x10000)"})
 				return
 			}
-			if size.X > 1920 || size.Y > 1920 {
-				img = resizeImage(img, 1920)
+			if size.X > fullMaxDim || size.Y > fullMaxDim {
+				img = resizeImage(img, fullMaxDim)
 			}
 
 			if err := saveImage(uploadPath, img, format); err != nil {
 				os.WriteFile(uploadPath, data, 0644)
 			}
 
-			thumb := resizeImage(img, 300)
-			thumbFilename := hashStr + "_thumb" + ext
-			if err := saveImage(filepath.Join(dir, thumbFilename), thumb, format); err == nil {
-				thumbnailURL = "/media/" + subDir + "/" + thumbFilename
+			// Responsive variants: _thumb (original format, backward compatible),
+			// _sm/_md (WebP) for photographic sources.
+			variants = writeImageVariants(mediaPath, subDir, hashStr, ext, format, img)
+			if v, ok := variants["thumb"]; ok {
+				thumbnailURL = v
 			}
 		} else {
 			os.WriteFile(uploadPath, data, 0644)
@@ -1295,9 +1296,14 @@ func handleUpload(c *gin.Context) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to save file"})
 			return
 		}
+		if mediaType == "video" {
+			// Best-effort poster-frame thumbnail via optional ffmpeg binary.
+			// Empty on absence/failure; frontend falls back to video placeholder.
+			thumbnailURL = extractVideoPoster(uploadPath, hashStr, subDir)
+		}
 	}
 
-	// EXIF GPS extraction
+	// EXIF GPS extraction + best-effort reverse geocoding
 	var exifLat, exifLng *float64
 	if mediaType == "image" {
 		exifLat, exifLng = extractEXIFGPS(data)
@@ -1310,9 +1316,13 @@ func handleUpload(c *gin.Context) {
 		"media_type": mediaType,
 		"thumbnail":  thumbnailURL,
 	}
+	if len(variants) > 0 {
+		resp["variants"] = variants
+	}
 	if exifLat != nil && exifLng != nil {
 		resp["latitude"] = *exifLat
 		resp["longitude"] = *exifLng
+		resp["location_suggestion"] = reverseGeocode(*exifLat, *exifLng)
 	}
 	c.JSON(http.StatusOK, resp)
 }
@@ -1327,40 +1337,6 @@ func extractEXIFGPS(data []byte) (*float64, *float64) {
 		return nil, nil
 	}
 	return &lat, &lng
-}
-
-func resizeImage(img image.Image, maxDim int) image.Image {
-	bounds := img.Bounds()
-	w := bounds.Dx()
-	h := bounds.Dy()
-
-	if w <= maxDim && h <= maxDim {
-		return img
-	}
-
-	ratio := float64(maxDim) / float64(max(w, h))
-	newW := int(float64(w) * ratio)
-	newH := int(float64(h) * ratio)
-
-	dst := image.NewRGBA(image.Rect(0, 0, newW, newH))
-	draw.CatmullRom.Scale(dst, dst.Bounds(), img, bounds, draw.Over, nil)
-
-	return dst
-}
-
-func saveImage(path string, img image.Image, format string) error {
-	f, err := os.Create(path)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-
-	switch format {
-	case "png":
-		return png.Encode(f, img)
-	default:
-		return jpeg.Encode(f, img, &jpeg.Options{Quality: 85})
-	}
 }
 
 // @Summary Search events
@@ -3021,7 +2997,7 @@ func deletePerson(c *gin.Context) {
 // @Router /map [get]
 func getMapData(c *gin.Context) {
 	year := c.Query("year")
-	query := `SELECT id, title, description, event_date, location, media_type, media_url, latitude, longitude 
+	query := `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, latitude, longitude 
 		FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0 AND longitude != 0`
 	args := []any{}
 
@@ -3046,6 +3022,7 @@ func getMapData(c *gin.Context) {
 		Location    string  `json:"location"`
 		MediaType   string  `json:"media_type"`
 		MediaURL    string  `json:"media_url"`
+		Thumbnail   string  `json:"thumbnail"`
 		Latitude    float64 `json:"latitude"`
 		Longitude   float64 `json:"longitude"`
 	}
@@ -3054,13 +3031,14 @@ func getMapData(c *gin.Context) {
 	for rows.Next() {
 		var f MapFeature
 		var lat, lng sql.NullFloat64
-		var mediaURL, mediaType sql.NullString
-		err := rows.Scan(&f.ID, &f.Title, &f.Description, &f.Date, &f.Location, &mediaType, &mediaURL, &lat, &lng)
+		var mediaURL, mediaType, thumbnail sql.NullString
+		err := rows.Scan(&f.ID, &f.Title, &f.Description, &f.Date, &f.Location, &mediaType, &mediaURL, &thumbnail, &lat, &lng)
 		if err != nil {
 			continue
 		}
 		f.MediaType = mediaType.String
 		f.MediaURL = mediaURL.String
+		f.Thumbnail = thumbnail.String
 		if lat.Valid {
 			f.Latitude = lat.Float64
 		}

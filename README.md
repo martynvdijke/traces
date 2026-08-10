@@ -121,6 +121,13 @@ task prepush
 | `GOTIFY_URL` | Gotify server URL for notifications | — |
 | `GOTIFY_TOKEN` | Gotify app token | — |
 | `GOTIFY_ENABLED` | Enable Gotify notifications | `false` |
+| `TRACES_JPEG_QUALITY` | JPEG quality (1–100) for full-size image uploads | `82` |
+| `TRACES_NOMINATIM_URL` | Nominatim reverse-geocoding endpoint (blank to disable suggestions) | `https://nominatim.openstreetmap.org/reverse` |
+
+> **Optional runtime dependency — `ffmpeg`:** When `ffmpeg` is on the server `PATH`,
+> TRACES generates a poster-frame thumbnail for every uploaded video (used in
+> timeline/grid/lightbox previews). Without it, uploads still work and videos
+> fall back to the generic video placeholder.
 
 ## Project Structure
 

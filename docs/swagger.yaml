@@ -1,3 +1,138 @@
+definitions:
+  models.BackupConfig:
+    properties:
+      auto_prune:
+        type: boolean
+      retention_days:
+        type: integer
+    type: object
+  models.Collection:
+    properties:
+      color:
+        type: string
+      created_at:
+        type: string
+      description:
+        type: string
+      event_count:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  models.EventTemplate:
+    properties:
+      created_at:
+        type: string
+      description:
+        type: string
+      id:
+        type: integer
+      location:
+        type: string
+      media_type:
+        type: string
+      person_id:
+        type: integer
+      tags:
+        type: string
+      title:
+        type: string
+      user_id:
+        type: integer
+    type: object
+  models.Person:
+    properties:
+      avatar_url:
+        type: string
+      bio:
+        type: string
+      birth_date:
+        type: string
+      color:
+        type: string
+      created_at:
+        type: string
+      event_count:
+        type: integer
+      id:
+        type: integer
+      name:
+        type: string
+    type: object
+  models.TimelineEvent:
+    properties:
+      created_at:
+        type: string
+      date:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      end_time:
+        type: string
+      id:
+        type: integer
+      is_favorite:
+        type: boolean
+      is_public:
+        type: boolean
+      latitude:
+        type: number
+      location:
+        type: string
+      longitude:
+        type: number
+      media_caption:
+        type: string
+      media_type:
+        type: string
+      media_url:
+        type: string
+      person:
+        $ref: '#/definitions/models.Person'
+      person_id:
+        type: integer
+      recurring:
+        type: string
+      sort_order:
+        type: integer
+      start_time:
+        type: string
+      tags:
+        type: string
+      thumbnail:
+        type: string
+      title:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: integer
+      weather_data:
+        type: string
+    type: object
+  models.User:
+    properties:
+      avatar_url:
+        type: string
+      color:
+        type: string
+      created_at:
+        type: string
+      display_name:
+        type: string
+      email:
+        type: string
+      event_count:
+        type: integer
+      id:
+        type: integer
+      username:
+        type: string
+    type: object
 info:
   contact: {}
 paths:
@@ -79,6 +214,48 @@ paths:
       summary: Create backup
       tags:
       - System
+  /backup/config:
+    get:
+      description: Gets the backup configuration
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.BackupConfig'
+      summary: Get backup config
+      tags:
+      - System
+    post:
+      consumes:
+      - application/json
+      description: Saves the backup configuration
+      parameters:
+      - description: Backup config
+        in: body
+        name: config
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Save backup config
+      tags:
+      - System
   /backups:
     get:
       description: Lists all database backups
@@ -122,6 +299,136 @@ paths:
       summary: Check setup status
       tags:
       - Info
+  /collections:
+    delete:
+      description: Deletes a collection by ID
+      parameters:
+      - description: models.Collection ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete collection
+      tags:
+      - models.Collections
+    get:
+      description: Returns all collections with event counts
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.Collection'
+            type: array
+      summary: Get collections
+      tags:
+      - models.Collections
+    post:
+      consumes:
+      - application/json
+      description: Creates a new collection or updates an existing one
+      parameters:
+      - description: models.Collection data
+        in: body
+        name: collection
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.Collection'
+      summary: Create or update collection
+      tags:
+      - models.Collections
+  /collections/{id}/events:
+    delete:
+      description: Remove an event from a collection
+      parameters:
+      - description: models.Collection ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Event ID
+        in: query
+        name: event_id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Remove event from collection
+      tags:
+      - models.Collections
+    get:
+      description: Returns all events for a given collection
+      parameters:
+      - description: models.Collection ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.TimelineEvent'
+            type: array
+      summary: Get events in a collection
+      tags:
+      - models.Collections
+    post:
+      consumes:
+      - application/json
+      description: Add an event to a collection
+      parameters:
+      - description: models.Collection ID
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Event ID
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Add event to collection
+      tags:
+      - models.Collections
   /config:
     get:
       description: Returns public configuration (umami analytics settings)
@@ -332,6 +639,29 @@ paths:
       summary: Create or update event
       tags:
       - Events
+  /events/batch:
+    post:
+      consumes:
+      - application/json
+      description: Batch edit, delete, or export events
+      parameters:
+      - description: Batch operation
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Batch operations on events
+      tags:
+      - Events
   /events/clone:
     post:
       consumes:
@@ -362,6 +692,20 @@ paths:
       summary: Clone event
       tags:
       - Events
+  /events/empty-trash:
+    post:
+      description: Permanently delete all trashed events
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Empty trash
+      tags:
+      - Events
   /events/export:
     get:
       description: Export events as JSON or CSV
@@ -388,6 +732,29 @@ paths:
       summary: Export events
       tags:
       - Events
+  /events/favorite:
+    post:
+      consumes:
+      - application/json
+      description: Toggle the favorite status of an event
+      parameters:
+      - description: Event ID
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Toggle favorite status
+      tags:
+      - Events
   /events/full:
     get:
       description: Returns all events with complete field data, ordered by date ascending
@@ -401,6 +768,24 @@ paths:
               type: object
             type: array
       summary: Get all events with full fields
+      tags:
+      - Events
+  /events/ics:
+    get:
+      description: Export events in iCalendar (.ics) format
+      parameters:
+      - description: Filter by year
+        in: query
+        name: year
+        type: string
+      produces:
+      - text/calendar
+      responses:
+        "200":
+          description: iCalendar data
+          schema:
+            type: string
+      summary: Export events as iCalendar
       tags:
       - Events
   /events/import:
@@ -459,6 +844,29 @@ paths:
       summary: Generate recurring events
       tags:
       - Events
+  /events/restore:
+    post:
+      consumes:
+      - application/json
+      description: Restore soft-deleted events
+      parameters:
+      - description: Event IDs to restore
+        in: body
+        name: ids
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Restore events from trash
+      tags:
+      - Events
   /events/search:
     get:
       description: Full-text search across events with multiple filters
@@ -505,6 +913,21 @@ paths:
               type: object
             type: array
       summary: Search events
+      tags:
+      - Events
+  /events/trash:
+    get:
+      description: List soft-deleted events in the recycle bin
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: trashed events
+          schema:
+            items:
+              type: object
+            type: array
+      summary: Get trashed events
       tags:
       - Events
   /gotify/config:
@@ -570,6 +993,21 @@ paths:
       summary: Test Gotify notification
       tags:
       - Notifications
+  /health:
+    get:
+      description: Returns server health status and version
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Health check
+      tags:
+      - System
   /login:
     post:
       consumes:
@@ -867,6 +1305,10 @@ paths:
         in: query
         name: year
         type: string
+      - description: Filter by month (01-12)
+        in: query
+        name: month
+        type: string
       produces:
       - application/json
       responses:
@@ -979,6 +1421,156 @@ paths:
       summary: Get tags
       tags:
       - Events
+  /tags/delete:
+    post:
+      consumes:
+      - application/json
+      description: Remove a tag from all events
+      parameters:
+      - description: Delete tag
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete tag
+      tags:
+      - Tags
+  /tags/merge:
+    post:
+      consumes:
+      - application/json
+      description: Replace all occurrences of source tag with target tag
+      parameters:
+      - description: Merge tags
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Merge tags
+      tags:
+      - Tags
+  /tags/rename:
+    post:
+      consumes:
+      - application/json
+      description: Rename a tag across all events
+      parameters:
+      - description: Rename tag
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Rename tag
+      tags:
+      - Tags
+  /templates:
+    delete:
+      description: Deletes a template by ID
+      parameters:
+      - description: Template ID
+        in: query
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Delete template
+      tags:
+      - Templates
+    get:
+      description: Returns all event templates
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/models.EventTemplate'
+            type: array
+      summary: Get event templates
+      tags:
+      - Templates
+    post:
+      consumes:
+      - application/json
+      description: Creates a new template or updates an existing one
+      parameters:
+      - description: Template data
+        in: body
+        name: template
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.EventTemplate'
+      summary: Create or update template
+      tags:
+      - Templates
+  /templates/apply:
+    post:
+      consumes:
+      - application/json
+      description: Creates an event from a template with a specified date
+      parameters:
+      - description: Apply template
+        in: body
+        name: body
+        required: true
+        schema:
+          type: object
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/models.TimelineEvent'
+      summary: Apply template
+      tags:
+      - Templates
   /upload:
     post:
       consumes:
@@ -1151,4 +1743,23 @@ paths:
       summary: Fetch weather data
       tags:
       - Events
+  /wrapped:
+    get:
+      description: Returns year-end wrapped summary data
+      parameters:
+      - description: Year
+        in: query
+        name: year
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            additionalProperties: true
+            type: object
+      summary: Get wrapped summary
+      tags:
+      - Stats
 swagger: "2.0"

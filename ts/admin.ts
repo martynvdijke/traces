@@ -13,7 +13,7 @@ let locationMarker: any = null;
 let searchTimeout: any = null;
 let viewingPersonId: number | null = null;
 let eventPhotoUrl = '';
-
+let locationSuggestion = '';
 function setupDropZone(
   zone: HTMLElement | null,
   onDrop: (file: File) => void,
@@ -858,10 +858,31 @@ async function uploadEventMedia(file: File): Promise<void> {
     nameEl.textContent = file.name;
     preview.style.display = 'block';
     (document.getElementById('event-upload-zone') as HTMLElement).style.display = 'none';
-    result.innerHTML = '';
+    const locationInput = document.getElementById('event-location') as HTMLInputElement;
+    if (data.location_suggestion && !locationInput.value) {
+      locationSuggestion = data.location_suggestion;
+      result.innerHTML = '<div class="alert alert-info py-2 mb-1 d-flex justify-content-between align-items-center" role="alert">'
+        + '<span class="small"><i class="fa-solid fa-location-dot me-1" aria-hidden="true"></i>Detected: <strong class="user-select-all">' + escapeHtml(data.location_suggestion) + '</strong></span>'
+        + '<span class="ms-2 text-nowrap"><button type="button" class="btn btn-sm btn-primary me-1" onclick="applyLocationSuggestion()">Use</button>'
+        + '<button type="button" class="btn btn-sm btn-outline-secondary" onclick="dismissLocationSuggestion()">Dismiss</button></span></div>';
+    } else {
+      result.innerHTML = '';
+    }
   } else {
     result.innerHTML = '<div class="alert alert-danger py-1">Upload failed: ' + (data.error || '') + '</div>';
   }
+}
+
+function applyLocationSuggestion(): void {
+  const input = document.getElementById('event-location') as HTMLInputElement;
+  if (locationSuggestion && input) input.value = locationSuggestion;
+  dismissLocationSuggestion();
+}
+
+function dismissLocationSuggestion(): void {
+  locationSuggestion = '';
+  const result = document.getElementById('event-media-result');
+  if (result) result.innerHTML = '';
 }
 
 async function loadGotifyConfig(): Promise<void> {
@@ -2071,6 +2092,8 @@ init();
 (window as any).saveInlinePerson = saveInlinePerson;
 (window as any).hideInlinePersonForm = hideInlinePersonForm;
 (window as any).clearEventMedia = clearEventMedia;
+(window as any).applyLocationSuggestion = applyLocationSuggestion;
+(window as any).dismissLocationSuggestion = dismissLocationSuggestion;
 (window as any).clearPersonAvatar = clearPersonAvatar;
 (window as any).selectAutocomplete = selectAutocomplete;
 (window as any).addTag = addTag;
