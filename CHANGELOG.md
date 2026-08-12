@@ -1,3 +1,10 @@
+## [1.27.1](https://github.com/martynvdijke/traces/compare/v1.27.0...v1.27.1) (2026-08-12)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/crypto to v0.55.0 ([#57](https://github.com/martynvdijke/traces/issues/57)) ([c3f201f](https://github.com/martynvdijke/traces/commit/c3f201fefb4d88e77cb635fe29df10b762d74930))
+
 # [1.27.0](https://github.com/martynvdijke/traces/compare/v1.26.18...v1.27.0) (2026-08-10)
 
 
