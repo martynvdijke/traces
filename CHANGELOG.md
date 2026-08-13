@@ -1,3 +1,10 @@
+## [1.28.1](https://github.com/martynvdijke/traces/compare/v1.28.0...v1.28.1) (2026-08-13)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/net to v0.58.0 ([#58](https://github.com/martynvdijke/traces/issues/58)) ([27dafe9](https://github.com/martynvdijke/traces/commit/27dafe908628e2f0dbe1ba1c7c03a374395f5d53))
+
 # [1.28.0](https://github.com/martynvdijke/traces/compare/v1.27.1...v1.28.0) (2026-08-13)
 
 
