@@ -18,17 +18,10 @@
       (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
     </script>
     <style>
-        #map-container { height: 450px; border-radius: 10px; overflow: hidden; }
-        #map-container .leaflet-container { height: 100%; width: 100%; border-radius: 10px; }
         .map-popup { font-family: 'DM Sans', sans-serif; }
         .map-popup h6 { margin: 0 0 4px 0; font-weight: 700; }
         .map-popup p { margin: 0; font-size: 0.85rem; }
         .legend-squares { display: flex; gap: 3px; }
-        .main-tabs { border-bottom: 2px solid var(--border); margin-bottom: 1.5rem; }
-        .main-tabs .nav-link { color: var(--text-muted); font-weight: 600; border: none; padding: 0.75rem 1.25rem; position: relative; }
-        .main-tabs .nav-link:hover { color: var(--primary); }
-        .main-tabs .nav-link.active { color: var(--primary); background: transparent; }
-        .main-tabs .nav-link.active::after { content: ''; position: absolute; bottom: -2px; left: 0; right: 0; height: 2px; background: var(--primary); }
         .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
         .calendar-header { text-align: center; font-weight: 700; padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted); }
         .calendar-day { min-height: 80px; padding: 4px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
@@ -56,7 +49,7 @@
         .memories-section { margin-top: 1rem; }
         .memories-item { padding: 0.75rem; border-left: 3px solid var(--primary); margin-bottom: 0.5rem; background: var(--bg); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
         .global-search-wrapper { position: relative; }
-        .global-search-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: var(--card-bg); border: 1px solid var(--border); border-radius: 8px; max-height: 320px; overflow-y: auto; z-index: 1050; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
+        .global-search-dropdown { position: absolute; top: 100%; left: 0; right: 0; background: var(--bg); border: 1px solid var(--border); border-radius: 8px; max-height: 320px; overflow-y: auto; z-index: 1050; box-shadow: 0 8px 24px rgba(0,0,0,0.15); }
         .global-search-item { padding: 0.5rem 0.75rem; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
         .global-search-item:last-child { border-bottom: none; }
         .global-search-item:hover, .global-search-item.active { background: var(--primary-glow); }
@@ -76,13 +69,12 @@
         .weekday-chart { display: flex; gap: 6px; align-items: flex-end; height: 100px; }
         .weekday-bar { flex: 1; background: var(--primary); border-radius: 4px 4px 0 0; position: relative; transition: height 0.3s; }
         .weekday-bar-label { text-align: center; font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; }
-        .dist-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
+        .dist-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
         .dist-card h5 { font-size: 0.9rem; margin-bottom: 0.75rem; font-weight: 700; }
         .geo-spread { font-size: 0.8rem; color: var(--text-muted); }
         .top-day-badge { display: inline-block; padding: 4px 10px; background: var(--primary-glow); border-radius: 8px; font-weight: 700; font-size: 0.85rem; }
         @media (max-width: 768px) {
             .calendar-day { min-height: 60px; font-size: 0.75rem; }
-            .main-tabs .nav-link { padding: 0.5rem 0.75rem; font-size: 0.8rem; }
         }
     </style>
 </head>
@@ -120,15 +112,41 @@
     </header>
 
     <main class="container my-4">
-        <section class="year-selector mb-4">
-            <div class="row align-items-center g-3">
-                <div class="col-md-4 d-flex align-items-center gap-2">
-                    <h2 class="mb-0"><i class="fa-solid fa-calendar me-2" aria-hidden="true"></i>Year <span id="current-year">2026</span></h2>
-                    <a class="btn btn-sm btn-outline-secondary" id="ics-download" href="/api/events/ics?year=2026" title="Download Calendar (iCal)" download><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i></a>
+
+        <!-- ── Story toolbar: year chips, month filter, quick actions ── -->
+        <section class="year-selector story-toolbar mb-4">
+            <div class="story-toolbar-row">
+                <div class="story-now d-flex align-items-center gap-2">
+                    <i class="fa-solid fa-clock-rotate-left text-primary" aria-hidden="true"></i>
+                    <span class="story-now-label text-uppercase small">Viewing</span>
+                    <span class="story-now-year" id="current-year">2026</span>
                 </div>
-                <div class="col-md-8">
-                    <div class="d-flex gap-2 flex-wrap align-items-center" id="year-buttons">
-                    </div>
+                <div class="d-flex gap-2 flex-wrap align-items-center justify-content-end" id="year-buttons">
+                </div>
+            </div>
+            <div class="story-toolbar-row mt-3">
+                <div class="month-filter d-flex gap-1 flex-wrap">
+                    <button class="btn btn-sm btn-dark active" onclick="filterMonth(0)">All Year</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(1)">Jan</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(2)">Feb</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(3)">Mar</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(4)">Apr</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(5)">May</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(6)">Jun</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(7)">Jul</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(8)">Aug</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(9)">Sep</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(10)">Oct</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(11)">Nov</button>
+                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(12)">Dec</button>
+                </div>
+                <div class="d-flex gap-2 flex-wrap align-items-center">
+                    <a class="btn btn-sm btn-outline-secondary" id="ics-download" href="/api/events/ics?year=2026" title="Download Calendar (iCal)" download><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i></a>
+                    <button class="btn btn-sm btn-outline-primary" id="fav-filter-btn" onclick="toggleFavFilter()" title="Favorites only"><i class="fa-regular fa-star" aria-hidden="true"></i></button>
+                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleFilters()" title="Advanced Filters"><i class="fa-solid fa-filter me-1" aria-hidden="true"></i><span class="d-none d-sm-inline">Filters</span></button>
+                    <button class="btn btn-sm btn-outline-secondary" id="calendar-tab" onclick="openOverlay('calendar-overlay')"><i class="fa-regular fa-calendar-days me-1" aria-hidden="true"></i>Calendar</button>
+                    <button class="btn btn-sm btn-outline-secondary" id="map-tab" onclick="openOverlay('map-overlay')"><i class="fa-solid fa-map-location-dot me-1" aria-hidden="true"></i>Map</button>
+                    <button class="btn btn-sm btn-outline-secondary" id="stats-tab" onclick="openOverlay('stats-overlay')"><i class="fa-solid fa-chart-simple me-1" aria-hidden="true"></i>Stats</button>
                 </div>
             </div>
         </section>
@@ -148,6 +166,12 @@
                             <label class="form-label small fw-bold">Person</label>
                             <select class="form-select form-select-sm" id="filter-person" onchange="applyAdvancedFilters()">
                                 <option value="">Any person</option>
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <label class="form-label small fw-bold">Collection</label>
+                            <select class="form-select form-select-sm" id="filter-collection" onchange="filterByCollection()">
+                                <option value="">All Collections</option>
                             </select>
                         </div>
                         <div class="col-md-3">
@@ -171,188 +195,134 @@
             </div>
         </section>
 
-        <section class="contribution-hero mb-4" id="contributions">
-            <div class="row align-items-stretch g-4">
-                <div class="col-lg-8">
-                    <div class="contribution-card">
-                        <div class="contribution-header">
-                            <h3><i class="fa-solid fa-chart-pie me-2" aria-hidden="true"></i>Activity Overview</h3>
-                            <div>
-                                <button class="btn btn-sm btn-outline-primary me-1" onclick="toggleFilters()" title="Advanced Filters"><i class="fa-solid fa-filter" aria-hidden="true"></i></button>
-                                <span class="badge bg-primary" id="total-events">0 events</span>
-                            </div>
-                        </div>
-                        <div class="contribution-graph" id="contribution-graph">
-                        </div>
-                        <div class="contribution-legend">
-                            <span class="legend-label">Less</span>
-                            <div class="legend-squares">
-                                <div class="level level-0"></div>
-                                <div class="level level-1"></div>
-                                <div class="level level-2"></div>
-                                <div class="level level-3"></div>
-                                <div class="level level-4"></div>
-                            </div>
-                            <span class="legend-label">More</span>
-                        </div>
-                    </div>
-                </div>
-                <div class="col-lg-4">
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <i class="fa-solid fa-image" aria-hidden="true"></i>
-                            <span class="stat-value" id="stat-images">0</span>
-                            <span class="stat-label">Images</span>
-                        </div>
-                        <div class="stat-card">
-                            <i class="fa-solid fa-video" aria-hidden="true"></i>
-                            <span class="stat-value" id="stat-videos">0</span>
-                            <span class="stat-label">Videos</span>
-                        </div>
-                        <div class="stat-card">
-                            <i class="fa-solid fa-music" aria-hidden="true"></i>
-                            <span class="stat-value" id="stat-audio">0</span>
-                            <span class="stat-label">Audio</span>
-                        </div>
-                        <div class="stat-card">
-                            <i class="fa-solid fa-map-marker-alt" aria-hidden="true"></i>
-                            <span class="stat-value" id="stat-locations">0</span>
-                            <span class="stat-label">Locations</span>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </section>
-
         <div id="memories-section" class="memories-section mb-4" style="display:none"></div>
 
-        <ul class="nav main-tabs" id="mainTabs" role="tablist">
-            <li class="nav-item"><button class="nav-link active" id="timeline-tab" data-bs-toggle="tab" data-bs-target="#timeline-pane" type="button"><i class="fa-solid fa-clock me-1" aria-hidden="true"></i> Timeline</button></li>
-            <li class="nav-item"><button class="nav-link" id="calendar-tab" data-bs-toggle="tab" data-bs-target="#calendar-pane" type="button"><i class="fa-solid fa-calendar-days me-1" aria-hidden="true"></i> Calendar</button></li>
-            <li class="nav-item"><button class="nav-link" id="gallery-tab" data-bs-toggle="tab" data-bs-target="#gallery-pane" type="button"><i class="fa-solid fa-images me-1" aria-hidden="true"></i> Photos</button></li>
-            <li class="nav-item"><button class="nav-link" id="map-tab" data-bs-toggle="tab" data-bs-target="#map-pane" type="button"><i class="fa-solid fa-map-location-dot me-1" aria-hidden="true"></i> Map</button></li>
-            <li class="nav-item"><button class="nav-link" id="compare-tab" data-bs-toggle="tab" data-bs-target="#compare-pane" type="button"><i class="fa-solid fa-chart-bar me-1" aria-hidden="true"></i> Compare</button></li>
-            <li class="nav-item"><button class="nav-link" id="stats-tab" data-bs-toggle="tab" data-bs-target="#stats-pane" type="button"><i class="fa-solid fa-chart-simple me-1" aria-hidden="true"></i> Stats</button></li>
-        </ul>
+        <!-- ── The story: one continuous roll of photos, videos, maps, books & quotes ── -->
+        <section id="timeline" class="story-section mb-4">
+            <div class="story" id="timeline-container"></div>
+            <div id="story-sentinel" class="story-sentinel"></div>
+        </section>
+    </main>
 
-        <div class="tab-content">
-            <div class="tab-pane fade show active" id="timeline-pane">
-                <section class="month-filter mb-4">
-                    <div class="d-flex gap-2 flex-wrap">
-                        <button class="btn btn-sm btn-dark active" onclick="filterMonth(0)">All Year</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(1)">Jan</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(2)">Feb</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(3)">Mar</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(4)">Apr</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(5)">May</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(6)">Jun</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(7)">Jul</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(8)">Aug</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(9)">Sep</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(10)">Oct</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(11)">Nov</button>
-                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(12)">Dec</button>
-                    </div>
-                </section>
-
-                <section id="timeline" class="timeline-section mb-4">
-                    <div class="timeline" id="timeline-container"></div>
-                </section>
+    <!-- ── Calendar overlay ── -->
+    <div class="overlay" id="calendar-overlay" role="dialog" aria-modal="true" aria-label="Calendar">
+        <div class="overlay-backdrop" onclick="closeOverlay('calendar-overlay')"></div>
+        <div class="overlay-panel">
+            <div class="overlay-header">
+                <h2><i class="fa-regular fa-calendar-days me-2 text-primary" aria-hidden="true"></i>Calendar</h2>
+                <button class="overlay-close" onclick="closeOverlay('calendar-overlay')" aria-label="Close calendar"><i class="fa-solid fa-xmark"></i></button>
             </div>
-
-            <div class="tab-pane fade" id="calendar-pane">
-                <section class="calendar-section mb-4">
-                    <div class="calendar-nav">
-                        <button class="btn btn-outline-primary btn-sm" onclick="calendarPrevMonth()"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
-                        <h3 id="calendar-title"></h3>
-                        <button class="btn btn-outline-primary btn-sm" onclick="calendarNextMonth()"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
-                        <button class="btn btn-outline-secondary btn-sm ms-auto" onclick="calendarToday()">Today</button>
-                    </div>
-                    <div class="calendar-grid" id="calendar-grid"></div>
-                    <div class="mt-3" id="calendar-selected-day" style="display:none">
-                        <h5 id="calendar-selected-date" class="fw-bold"></h5>
-                        <div class="calendar-event-list" id="calendar-event-list"></div>
-                    </div>
-                </section>
+            <div class="calendar-nav">
+                <button class="btn btn-outline-primary btn-sm" onclick="calendarPrevMonth()"><i class="fa-solid fa-chevron-left" aria-hidden="true"></i></button>
+                <h3 id="calendar-title"></h3>
+                <button class="btn btn-outline-primary btn-sm" onclick="calendarNextMonth()"><i class="fa-solid fa-chevron-right" aria-hidden="true"></i></button>
+                <button class="btn btn-outline-secondary btn-sm ms-auto" onclick="calendarToday()">Today</button>
             </div>
-
-            <div class="tab-pane fade" id="gallery-pane">
-                <section id="gallery" class="gallery-section mb-4">
-                    <h4 class="mb-3"><i class="fa-solid fa-images me-2" aria-hidden="true"></i>Media Gallery</h4>
-                    <div class="row g-4" id="gallery-container"></div>
-                    <div class="text-center mt-4">
-                        <button class="btn btn-outline-primary" onclick="loadMoreGallery()" id="load-more-btn">Load More</button>
-                    </div>
-                </section>
-            </div>
-
-            <div class="tab-pane fade" id="map-pane">
-                <section class="map-section mb-4">
-                    <h4 class="mb-3"><i class="fa-solid fa-map-location-dot me-2" aria-hidden="true"></i>Event Map</h4>
-                    <div class="d-flex gap-2 mb-2 align-items-center">
-                        <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" id="show-location-path" onchange="renderMapInstance()">
-                            <label class="form-check-label small" for="show-location-path"><i class="fa-solid fa-route me-1" aria-hidden="true"></i>Location Timeline Path</label>
-                        </div>
-                        <span class="text-muted small">connects geo-tagged events in chronological order</span>
-                    </div>
-                    <div class="card">
-                        <div class="card-body p-2">
-                            <div id="map-container">
-                                <div class="text-center text-muted py-5" id="map-placeholder">
-                                    <i class="fa-solid fa-map-location-dot fa-3x mb-3" aria-hidden="true"></i>
-                                    <p>Loading map...</p>
-                                </div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-
-            <div class="tab-pane fade" id="compare-pane">
-                <section class="compare-section mb-4">
-                    <h4 class="mb-3"><i class="fa-solid fa-chart-bar me-2" aria-hidden="true"></i>Year Comparison</h4>
-                    <div class="row g-4">
-                        <div class="col-md-5">
-                            <div class="card">
-                                <div class="card-body">
-                                    <select class="form-select mb-3" id="compare-year-1" onchange="updateCompare()"></select>
-                                    <div id="compare-stats-1"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-md-2 d-flex align-items-center justify-content-center">
-                            <div class="text-center">
-                                <i class="fa-solid fa-arrows-left-right fa-2x text-muted" aria-hidden="true"></i>
-                            </div>
-                        </div>
-                        <div class="col-md-5">
-                            <div class="card">
-                                <div class="card-body">
-                                    <select class="form-select mb-3" id="compare-year-2" onchange="updateCompare()"></select>
-                                    <div id="compare-stats-2"></div>
-                                </div>
-                            </div>
-                        </div>
-                        <div class="col-12">
-                            <div class="card">
-                                <div class="card-body" id="compare-result"></div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-            </div>
-
-            <div class="tab-pane fade" id="stats-pane">
-                <section class="stats-section mb-4">
-                    <h4 class="mb-3"><i class="fa-solid fa-chart-simple me-2" aria-hidden="true"></i>Event Distributions</h4>
-                    <div id="stats-distribution-container">
-                        <div class="text-center text-muted py-5">Loading statistics...</div>
-                    </div>
-                </section>
+            <div class="calendar-grid" id="calendar-grid"></div>
+            <div class="mt-3" id="calendar-selected-day" style="display:none">
+                <h5 id="calendar-selected-date" class="fw-bold"></h5>
+                <div class="calendar-event-list" id="calendar-event-list"></div>
             </div>
         </div>
-    </main>
+    </div>
+
+    <!-- ── Map overlay ── -->
+    <div class="overlay" id="map-overlay" role="dialog" aria-modal="true" aria-label="Event map">
+        <div class="overlay-backdrop" onclick="closeOverlay('map-overlay')"></div>
+        <div class="overlay-panel overlay-panel-wide">
+            <div class="overlay-header">
+                <h2><i class="fa-solid fa-map-location-dot me-2 text-primary" aria-hidden="true"></i>Event Map</h2>
+                <button class="overlay-close" onclick="closeOverlay('map-overlay')" aria-label="Close map"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <section class="map-section">
+                <div class="d-flex gap-2 mb-2 align-items-center flex-wrap">
+                    <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" id="show-location-path" onchange="renderMapInstance()">
+                        <label class="form-check-label small" for="show-location-path"><i class="fa-solid fa-route me-1" aria-hidden="true"></i>Location Timeline Path</label>
+                    </div>
+                    <span class="text-muted small">connects geo-tagged events in chronological order</span>
+                </div>
+                <div class="card">
+                    <div class="card-body p-2">
+                        <div id="map-container">
+                            <div class="text-center text-muted py-5" id="map-placeholder">
+                                <i class="fa-solid fa-map-location-dot fa-3x mb-3" aria-hidden="true"></i>
+                                <p>Loading map...</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+        </div>
+    </div>
+
+    <!-- ── Stats overlay ── -->
+    <div class="overlay" id="stats-overlay" role="dialog" aria-modal="true" aria-label="Statistics">
+        <div class="overlay-backdrop" onclick="closeOverlay('stats-overlay')"></div>
+        <div class="overlay-panel overlay-panel-wide">
+            <div class="overlay-header">
+                <h2><i class="fa-solid fa-chart-simple me-2 text-primary" aria-hidden="true"></i>Stats <span class="text-muted" id="stats-year"></span></h2>
+                <button class="overlay-close" onclick="closeOverlay('stats-overlay')" aria-label="Close stats"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <section id="contributions">
+                <div class="row align-items-stretch g-4">
+                    <div class="col-lg-8">
+                        <div class="contribution-card">
+                            <div class="contribution-header">
+                                <h3><i class="fa-solid fa-chart-pie me-2" aria-hidden="true"></i>Activity Overview <span class="text-muted" id="contribution-year"></span></h3>
+                                <div>
+                                    <span class="badge bg-primary" id="total-events">0 events</span>
+                                </div>
+                            </div>
+                            <div class="contribution-graph" id="contribution-graph">
+                            </div>
+                            <div class="contribution-legend">
+                                <span class="legend-label">Less</span>
+                                <div class="legend-squares">
+                                    <div class="level level-0"></div>
+                                    <div class="level level-1"></div>
+                                    <div class="level level-2"></div>
+                                    <div class="level level-3"></div>
+                                    <div class="level level-4"></div>
+                                </div>
+                                <span class="legend-label">More</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-lg-4">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <i class="fa-solid fa-image" aria-hidden="true"></i>
+                                <span class="stat-value" id="stat-images">0</span>
+                                <span class="stat-label">Images</span>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fa-solid fa-video" aria-hidden="true"></i>
+                                <span class="stat-value" id="stat-videos">0</span>
+                                <span class="stat-label">Videos</span>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fa-solid fa-music" aria-hidden="true"></i>
+                                <span class="stat-value" id="stat-audio">0</span>
+                                <span class="stat-label">Audio</span>
+                            </div>
+                            <div class="stat-card">
+                                <i class="fa-solid fa-map-marker-alt" aria-hidden="true"></i>
+                                <span class="stat-value" id="stat-locations">0</span>
+                                <span class="stat-label">Locations</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+            <section class="stats-section mt-4">
+                <h4 class="mb-3"><i class="fa-solid fa-chart-column me-2" aria-hidden="true"></i>Event Distributions</h4>
+                <div id="stats-distribution-container">
+                    <div class="text-center text-muted py-5">Loading statistics...</div>
+                </div>
+            </section>
+        </div>
+    </div>
 
     <!-- ── Lightbox ── -->
     <div class="lightbox" id="lightbox" role="dialog" aria-modal="true" aria-label="Media viewer">
@@ -375,7 +345,7 @@
 
     <footer class="py-5 mt-5">
         <div class="container text-center">
-            <p class="mb-0 text-uppercase fw-bold"><i class="fa-solid fa-clock mx-2" aria-hidden="true"></i> 2026 TRACES <i class="fa-solid fa-clock mx-2" aria-hidden="true"></i></p>
+            <p class="mb-0 text-uppercase fw-bold"><i class="fa-solid fa-clock mx-2" aria-hidden="true"></i> TRACES <i class="fa-solid fa-clock mx-2" aria-hidden="true"></i></p>
             <span class="small opacity-50 text-uppercase letter-spacing-2 mt-2 d-block">Your memories, beautifully preserved.</span>
             <span class="small opacity-50 text-uppercase letter-spacing-2 mt-2 d-block" id="version-display">Version loading...</span>
         </div>

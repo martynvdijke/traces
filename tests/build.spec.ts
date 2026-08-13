@@ -188,7 +188,9 @@ test.describe('Window Global Function Exports', () => {
       calendarNextMonth: typeof (window as any).calendarNextMonth,
       calendarToday: typeof (window as any).calendarToday,
       showCalendarDay: typeof (window as any).showCalendarDay,
-      updateCompare: typeof (window as any).updateCompare,
+      openOverlay: typeof (window as any).openOverlay,
+      closeOverlay: typeof (window as any).closeOverlay,
+      openMapAt: typeof (window as any).openMapAt,
     }));
     expect(fns.changeYear).toBe('function');
     expect(fns.searchEvents).toBe('function');
@@ -199,7 +201,9 @@ test.describe('Window Global Function Exports', () => {
     expect(fns.calendarNextMonth).toBe('function');
     expect(fns.calendarToday).toBe('function');
     expect(fns.showCalendarDay).toBe('function');
-    expect(fns.updateCompare).toBe('function');
+    expect(fns.openOverlay).toBe('function');
+    expect(fns.closeOverlay).toBe('function');
+    expect(fns.openMapAt).toBe('function');
   });
 
   test('admin page exports functions on window', async ({ page }) => {

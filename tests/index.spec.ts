@@ -17,22 +17,25 @@ test.describe('TRACES Timeline', () => {
     await expect(page.locator('#timeline')).toBeVisible();
   });
 
-  test('should have contribution graph section', async ({ page }) => {
+  test('should have contribution graph section in stats overlay', async ({ page }) => {
     await page.goto('/');
+    await page.locator('#stats-tab').click();
+    await page.waitForTimeout(600);
     await expect(page.locator('#contributions')).toBeVisible();
     await expect(page.locator('.contribution-graph')).toBeVisible();
   });
 
-  test('should have a gallery section', async ({ page }) => {
+  test('should not have a separate gallery (photos live in the story roll)', async ({ page }) => {
     await page.goto('/');
-    await page.locator('#gallery-tab').click();
-    await page.waitForTimeout(500);
-    await expect(page.locator('#gallery')).toBeVisible();
+    await expect(page.locator('#gallery')).toHaveCount(0);
   });
 
-  test('should have navigation links', async ({ page }) => {
+  test('should have story navigation controls', async ({ page }) => {
     await page.goto('/');
-    await expect(page.locator('#timeline-tab')).toContainText('Timeline');
+    await expect(page.locator('.story-now')).toBeVisible();
+    await expect(page.locator('#calendar-tab')).toContainText('Calendar');
+    await expect(page.locator('#map-tab')).toContainText('Map');
+    await expect(page.locator('#stats-tab')).toContainText('Stats');
   });
 
   test('should show loaded version in footer', async ({ page }) => {
@@ -190,11 +193,11 @@ test.describe('TRACES JavaScript Loading', () => {
     await expect(page.locator('#timeline-container')).toBeVisible();
   });
 
-  test('should have gallery with media', async ({ page }) => {
+  test('should render the story timeline container', async ({ page }) => {
     await page.goto('/');
-    await page.locator('#gallery-tab').click();
     await page.waitForTimeout(500);
-    await expect(page.locator('#gallery')).toBeVisible();
+    await expect(page.locator('#timeline-container')).toBeVisible();
+    await expect(page.locator('#story-sentinel')).toBeAttached();
   });
 });
 
