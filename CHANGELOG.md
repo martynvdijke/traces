@@ -1,3 +1,10 @@
+# [1.28.0](https://github.com/martynvdijke/traces/compare/v1.27.1...v1.28.0) (2026-08-13)
+
+
+### Features
+
+* redesign main page as continuous story timeline ([f02e11e](https://github.com/martynvdijke/traces/commit/f02e11e4203f5d3392802fa3ad181f5ba7339862))
+
 ## [1.27.1](https://github.com/martynvdijke/traces/compare/v1.27.0...v1.27.1) (2026-08-12)
 
 
