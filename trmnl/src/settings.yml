@@ -1,0 +1,49 @@
+---
+strategy: polling
+no_screen_padding: 'no'
+dark_mode: 'no'
+static_data: ''
+polling_verb: get
+framework_version: 2.3.7
+serverless_language:
+polling_url: "{{url}}/api/trmnl/summary"
+polling_headers: ''
+polling_body: ''
+oauth_enabled: 'false'
+oauth_pkce_enabled: 'no'
+oauth_authorize_url: ''
+oauth_token_url: ''
+oauth_scopes: ''
+oauth_scope_separator: ''
+oauth_refresh_url: ''
+oauth_auth_params: ''
+oauth_token_headers: ''
+oauth_token_site: ''
+oauth_token_params: ''
+oauth_token_request_auth_method: ''
+oauth_body_format: ''
+oauth_token_response_metadata: ''
+oauth_authorization_method: ''
+oauth_refresh_params: ''
+oauth_token_field_name: ''
+oauth_expiry_field_name: ''
+oauth_expiry_strategy: ''
+oauth_fixed_expiry_ms: ''
+custom_fields:
+- keyname: url
+  field_type: url
+  name: Address of traces instance
+  description: URL
+  placeholder: https://traces.vandijke.xyz
+  help_text: Please include http:// or https://
+- keyname: bio
+  name: About This Plugin
+  category: lifestyle
+  field_type: author_bio
+  description: This month in history highlights from my TRACES timeline, straight on the wall.
+  github_url: https://github.com/martynvdijke/traces
+  learn_more_url: https://traces.vandijke.xyz/
+  email_address: martyn@vandijke.xyz
+name: TRACES Monthly Highlights
+description: "This month in history highlights"
+refresh_interval: 1440

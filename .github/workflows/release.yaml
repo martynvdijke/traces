@@ -86,8 +86,15 @@ jobs:
           
           docker push martynvandijke/traces:latest
           docker push martynvandijke/traces:$VERSION
-          docker push ghcr.io/martynvdijke/traces:latest
-          docker push ghcr.io/martynvdijke/traces:$VERSION
+          docker push ghcr.io/martynvandijke/traces:latest
+          docker push ghcr.io/martynvandijke/traces:$VERSION
+
+  trml:
+    needs: [ci, release]
+    if: needs.release.result == 'success' && needs.release.outputs.new_release_published == 'true'
+    name: TRMNL Plugin
+    uses: ./.github/workflows/trml.yaml
+    secrets: inherit
 
   notify:
     needs: [ci, release]

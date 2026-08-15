@@ -1,0 +1,45 @@
+<div class="layout layout--col gap--xsmall">
+  {% assign url = trml.plugin_settings.custom_fields_values.url %}
+  {% if events.size == 0 %}
+    <div class="item">
+      <div class="content">
+        <span class="value value--xsmall">No events this month</span>
+      </div>
+    </div>
+  {% else %}
+    <div class="item">
+      <div class="content">
+        <span class="label label--small">{{ month }} in history</span>
+        <span class="value value--xsmall">{{ stats.event_count }} events{% if stats.favorite_count > 0 %} · {{ stats.favorite_count }} favorites{% endif %}</span>
+      </div>
+    </div>
+    <div class="divider--h"></div>
+    {% for event in events %}
+      {% if forloop.index <= 4 %}
+        <div class="item">
+          <div class="content">
+            <span class="value value--xxsmall">{% if event.is_favorite %}★ {% endif %}{{ event.title }}</span>
+            <span class="label label--small">{{ event.year }}{% if event.person_name %} · {{ event.person_name }}{% endif %}</span>
+          </div>
+        </div>
+      {% endif %}
+    {% endfor %}
+    {% if stats.media.size > 0 %}
+      <div class="divider--h"></div>
+      <div class="item">
+        <div class="content">
+          <span class="label label--small">
+            {%- for m in stats.media -%}
+              {% if forloop.first %}{{ m.type | capitalize }} {{ m.count }}{% else %} · {{ m.type | capitalize }} {{ m.count }}{% endif %}
+            {%- endfor -%}
+          </span>
+        </div>
+      </div>
+    {% endif %}
+  {% endif %}
+</div>
+
+<div class="title_bar">
+  {% if url %}<img class="image" src="{{ url }}/static/logo.svg" />{% endif %}
+  <span class="title">TRACES · {{ month }}</span>
+</div>
