@@ -1,3 +1,10 @@
+## [1.28.7](https://github.com/martynvdijke/traces/compare/v1.28.6...v1.28.7) (2026-08-16)
+
+
+### Bug Fixes
+
+* **trmnl:** pin plugin id 444131 ([20f55ce](https://github.com/martynvdijke/traces/commit/20f55cefd2009c6a5a60835498a7ddf3aa927b7e))
+
 ## [1.28.6](https://github.com/martynvdijke/traces/compare/v1.28.5...v1.28.6) (2026-08-16)
 
 
