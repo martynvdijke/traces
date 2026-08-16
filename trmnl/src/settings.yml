@@ -39,7 +39,7 @@ custom_fields:
   help_text: Please include http:// or https://
 - keyname: bio
   name: About This Plugin
-  category: lifestyle
+  category: analytics
   field_type: author_bio
   description: This month in history highlights from my TRACES timeline, straight on the wall.
   github_url: https://github.com/martynvdijke/traces
