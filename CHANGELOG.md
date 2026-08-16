@@ -1,3 +1,10 @@
+## [1.28.9](https://github.com/martynvdijke/traces/compare/v1.28.8...v1.28.9) (2026-08-16)
+
+
+### Bug Fixes
+
+* **trmnl:** stretch plugin layouts ([8b0152d](https://github.com/martynvdijke/traces/commit/8b0152d4820b1b9591e4db06f667574e167f034f))
+
 ## [1.28.8](https://github.com/martynvdijke/traces/compare/v1.28.7...v1.28.8) (2026-08-16)
 
 ## [1.28.7](https://github.com/martynvdijke/traces/compare/v1.28.6...v1.28.7) (2026-08-16)
