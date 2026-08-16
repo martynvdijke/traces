@@ -1,3 +1,10 @@
+## [1.28.4](https://github.com/martynvdijke/traces/compare/v1.28.3...v1.28.4) (2026-08-16)
+
+
+### Bug Fixes
+
+* **trmnl:** add missing id field to settings template ([148245d](https://github.com/martynvdijke/traces/commit/148245d33294539d1557210cbec4678ccdaf02b5))
+
 ## [1.28.3](https://github.com/martynvdijke/traces/compare/v1.28.2...v1.28.3) (2026-08-15)
 
 ## [1.28.2](https://github.com/martynvdijke/traces/compare/v1.28.1...v1.28.2) (2026-08-14)
