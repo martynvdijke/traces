@@ -86,8 +86,8 @@ jobs:
           
           docker push martynvandijke/traces:latest
           docker push martynvandijke/traces:$VERSION
-          docker push ghcr.io/martynvandijke/traces:latest
-          docker push ghcr.io/martynvandijke/traces:$VERSION
+          docker push ghcr.io/martynvdijke/traces:latest
+          docker push ghcr.io/martynvdijke/traces:$VERSION
 
   trml:
     needs: [ci, release]
