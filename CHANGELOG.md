@@ -1,3 +1,10 @@
+## [1.28.5](https://github.com/martynvdijke/traces/compare/v1.28.4...v1.28.5) (2026-08-16)
+
+
+### Bug Fixes
+
+* **ci:** correct ghcr image tag in docker push ([a2020a3](https://github.com/martynvdijke/traces/commit/a2020a3af7616d8181bd911811ce76febabbb6bf))
+
 ## [1.28.4](https://github.com/martynvdijke/traces/compare/v1.28.3...v1.28.4) (2026-08-16)
 
 
