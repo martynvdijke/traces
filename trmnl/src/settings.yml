@@ -9,6 +9,7 @@ serverless_language:
 polling_url: "{{url}}/api/trmnl/summary"
 polling_headers: ''
 polling_body: ''
+id:
 oauth_enabled: 'false'
 oauth_pkce_enabled: 'no'
 oauth_authorize_url: ''
