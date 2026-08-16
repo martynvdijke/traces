@@ -1,3 +1,10 @@
+## [1.28.6](https://github.com/martynvdijke/traces/compare/v1.28.5...v1.28.6) (2026-08-16)
+
+
+### Bug Fixes
+
+* **trmnl:** use approved author bio category ([5eb47f3](https://github.com/martynvdijke/traces/commit/5eb47f30a24c2530216df556f41842513f87c1d2))
+
 ## [1.28.5](https://github.com/martynvdijke/traces/compare/v1.28.4...v1.28.5) (2026-08-16)
 
 
