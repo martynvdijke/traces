@@ -441,6 +441,70 @@
         }
         .person-detail-header .close-btn:hover { background: rgba(255,255,255,0.2); }
 
+        /* Milestone scrapbook */
+        .milestone-group { margin-bottom: 2rem; }
+        .milestone-group-title {
+            display: flex;
+            align-items: center;
+            gap: 0.75rem;
+            font-weight: 700;
+            font-size: 1.1rem;
+            color: var(--primary);
+            margin-bottom: 1rem;
+        }
+        .milestone-group-title::after {
+            content: '';
+            flex: 1;
+            height: 1px;
+            background: var(--border);
+        }
+        .milestone-card {
+            display: flex;
+            gap: 1rem;
+            padding: 1rem;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            border-radius: var(--radius-lg);
+            margin-bottom: 0.75rem;
+        }
+        .milestone-card .thumb {
+            width: 72px;
+            height: 72px;
+            flex-shrink: 0;
+            border-radius: var(--radius-md, 8px);
+            object-fit: cover;
+        }
+        .milestone-card .thumb-placeholder {
+            width: 72px;
+            height: 72px;
+            flex-shrink: 0;
+            border-radius: var(--radius-md, 8px);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            background: var(--primary-glow, rgba(124,58,237,0.1));
+            color: var(--primary);
+            font-size: 1.5rem;
+        }
+        .milestone-card .body { flex: 1; min-width: 0; }
+        .milestone-card .title-row { display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap; }
+        .milestone-card .title { font-weight: 600; }
+        .milestone-card .date { font-size: 0.8rem; color: var(--text-muted); font-family: monospace; }
+        .age-badge {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.25rem;
+            font-size: 0.75rem;
+            font-weight: 600;
+            color: white;
+            background: var(--primary);
+            border-radius: 999px;
+            padding: 0.15rem 0.6rem;
+            white-space: nowrap;
+        }
+        .milestone-card .desc { font-size: 0.9rem; margin-top: 0.35rem; overflow-wrap: break-word; }
+        .milestone-card .meta { font-size: 0.8rem; color: var(--text-muted); margin-top: 0.35rem; }
+
         .animate-in {
             animation: slideUp 0.3s ease-out;
         }
@@ -526,6 +590,7 @@
                 <li class="nav-item"><button class="nav-link active" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button" aria-label="Events tab"><i class="fa-solid fa-calendar me-2" aria-hidden="true"></i>Events</button></li>
                 <li class="nav-item"><button class="nav-link" id="trash-tab" data-bs-toggle="tab" data-bs-target="#trash-pane" type="button" aria-label="Trash tab"><i class="fa-solid fa-trash-can me-2" aria-hidden="true"></i>Trash</button></li>
                 <li class="nav-item"><button class="nav-link" id="persons-tab" data-bs-toggle="tab" data-bs-target="#persons-pane" type="button" aria-label="Persons tab"><i class="fa-solid fa-users me-2" aria-hidden="true"></i>Persons</button></li>
+                <li class="nav-item"><button class="nav-link" id="milestones-tab" data-bs-toggle="tab" data-bs-target="#milestones-pane" type="button" aria-label="Milestones tab"><i class="fa-solid fa-book me-2" aria-hidden="true"></i>Milestones</button></li>
                 <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button" aria-label="Upload tab"><i class="fa-solid fa-upload me-2" aria-hidden="true"></i>Upload</button></li>
                 <li class="nav-item"><button class="nav-link" id="integrations-tab" data-bs-toggle="tab" data-bs-target="#integrations-pane" type="button" aria-label="Integrations tab"><i class="fa-solid fa-plug me-2" aria-hidden="true"></i>Integrations</button></li>
                 <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button" aria-label="Memories tab"><i class="fa-solid fa-clock-rotate-left me-2" aria-hidden="true"></i>Memories</button></li>
@@ -637,6 +702,18 @@
                     <input type="text" class="form-control" id="person-search" placeholder="Search people..." aria-label="Search people" oninput="renderPersonList()">
                 </div>
                 <div class="row g-3" id="person-list"></div>
+            </div>
+
+            <!-- MILESTONES TAB -->
+            <div class="tab-pane fade" id="milestones-pane">
+                <div id="milestones-empty" class="empty-state">
+                    <i class="fa-solid fa-book"></i>
+                    <p>Select a person to read their story</p>
+                </div>
+                <div id="milestones-content" style="display:none">
+                    <div class="person-detail-header animate-in" id="milestones-header"></div>
+                    <div id="milestones-groups"></div>
+                </div>
             </div>
 
             <!-- UPLOAD TAB -->

@@ -12,6 +12,7 @@ let locationMap: any = null;
 let locationMarker: any = null;
 let searchTimeout: any = null;
 let viewingPersonId: number | null = null;
+let milestonePersonId: number | null = null;
 let eventPhotoUrl = '';
 let locationSuggestion = '';
 function setupDropZone(
@@ -238,6 +239,7 @@ function renderPersonList(): void {
           <span class="count">${eventCount}</span>
           <span class="label">events</span>
         </div>
+        <button class="btn btn-sm btn-outline-primary position-absolute" style="bottom:0.75rem;right:0.75rem" onclick="event.stopPropagation(); openMilestones(${p.id})" title="View life story milestones" aria-label="View milestones for ${escapeHtml(p.name)}"><i class="fa-solid fa-book me-1" aria-hidden="true"></i>Milestones</button>
       </div>
     </div>`;
   }).join('');
@@ -402,6 +404,121 @@ function clearPersonFilter(): void {
   applyFilters();
   const banner = document.getElementById('person-banner');
   if (banner) banner.remove();
+}
+
+function formatAge(years: number | null, months: number | null): string {
+  if (years === null && months === null) return '';
+  const parts: string[] = [];
+  if (years !== null && years > 0) parts.push(String(years) + (years === 1 ? ' year' : ' years'));
+  if (months !== null && months > 0) parts.push(String(months) + (months === 1 ? ' month' : ' months'));
+  if (!parts.length) return 'newborn';
+  return 'age ' + parts.join(' &middot; ');
+}
+
+async function openMilestones(personId: number): Promise<void> {
+  milestonePersonId = personId;
+  document.getElementById('milestones-tab')!.click();
+  await loadMilestones();
+}
+
+function closeMilestones(): void {
+  milestonePersonId = null;
+  const empty = document.getElementById('milestones-empty');
+  const content = document.getElementById('milestones-content');
+  if (empty) empty.style.display = '';
+  if (content) content.style.display = 'none';
+}
+
+async function loadMilestones(): Promise<void> {
+  if (!milestonePersonId) return;
+  const empty = document.getElementById('milestones-empty');
+  const content = document.getElementById('milestones-content');
+  try {
+    const res = await fetch('/api/persons/' + milestonePersonId + '/events');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    const data = await res.json();
+    renderMilestones(data);
+    if (empty) empty.style.display = 'none';
+    if (content) content.style.display = '';
+  } catch (e) {
+    console.error('Failed to load milestones', e);
+    if (empty) {
+      empty.style.display = '';
+      empty.innerHTML = '<i class="fa-solid fa-triangle-exclamation"></i><p>Failed to load milestones</p>';
+    }
+    if (content) content.style.display = 'none';
+  }
+}
+
+function renderMilestones(data: any): void {
+  const person = data.person || {};
+  const events: any[] = data.events || [];
+  const header = document.getElementById('milestones-header');
+  const groupsEl = document.getElementById('milestones-groups');
+  if (!header || !groupsEl) return;
+
+  const initial = person.name ? person.name[0].toUpperCase() : '?';
+  header.innerHTML = `
+    ${person.avatar_url
+      ? '<img src="' + person.avatar_url + '" class="avatar-lg" alt="">'
+      : '<div class="avatar-placeholder-lg" style="background:' + (person.color || '#7c3aed') + '">' + initial + '</div>'
+    }
+    <div class="info">
+      <h2>${escapeHtml(person.name || '')}</h2>
+      <div class="sub">${person.bio ? escapeHtml(person.bio) + ' ' : ''}${person.birth_date ? '&middot; Born ' + escapeHtml(person.birth_date) : ''}</div>
+    </div>
+    <button class="close-btn" onclick="closeMilestones()" aria-label="Close milestones"><i class="fa-solid fa-xmark"></i></button>
+  `;
+
+  if (!events.length) {
+    groupsEl.innerHTML = '<div class="empty-state"><i class="fa-solid fa-seedling"></i><p>No milestones yet — add events linked to this person</p></div>';
+    return;
+  }
+
+  // Group preserving server order (events arrive date-ascending).
+  const groups: { name: string; items: any[] }[] = [];
+  for (const ev of events) {
+    const g = groups.find((x) => x.name === ev.group);
+    if (g) g.items.push(ev);
+    else groups.push({ name: ev.group, items: [ev] });
+  }
+
+  groupsEl.innerHTML = groups.map((g) => `
+    <section class="milestone-group">
+      <div class="milestone-group-title">${escapeHtml(g.name)} <span class="text-muted" style="font-size:0.8rem">(${g.items.length})</span></div>
+      ${g.items.map(renderMilestoneCard).join('')}
+    </section>
+  `).join('');
+}
+
+function renderMilestoneCard(ev: any): string {
+  const age = formatAge(ev.age_years ?? null, ev.age_months ?? null);
+  const ageBadge = age ? `<span class="age-badge"><i class="fa-solid fa-cake-candles"></i>${age}</span>` : '';
+  let thumb: string;
+  if (ev.thumbnail || ev.media_url) {
+    const src = ev.thumbnail || ev.media_url;
+    thumb = `<img src="${src}" class="thumb" alt="" loading="lazy">`;
+  } else {
+    const icon = ev.media_url ? getMediaIcon(ev.media_type || '') : 'fa-feather';
+    thumb = `<div class="thumb-placeholder"><i class="fa-solid ${icon}"></i></div>`;
+  }
+  const metaBits: string[] = [];
+  if (ev.location) metaBits.push('<i class="fa-solid fa-location-dot me-1"></i>' + escapeHtml(ev.location));
+  if (ev.person && ev.person.name) metaBits.push('<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (ev.person.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(ev.person.name) + '</span>');
+  return `
+    <div class="milestone-card animate-in">
+      ${thumb}
+      <div class="body">
+        <div class="title-row">
+          <span class="title">${escapeHtml(ev.title)}</span>
+          ${ageBadge}
+        </div>
+        <div class="date">${escapeHtml(ev.date || '')}</div>
+        ${ev.description ? '<div class="desc">' + escapeHtml(ev.description) + '</div>' : ''}
+        ${metaBits.length ? '<div class="meta">' + metaBits.join(' <span>&middot;</span> ') + '</div>' : ''}
+      </div>
+    </div>
+  `;
 }
 
 function openEventModal(event?: any): void {
@@ -2071,6 +2188,8 @@ init();
 (window as any).deleteEvent = deleteEvent;
 (window as any).showPersonEvents = showPersonEvents;
 (window as any).clearPersonFilter = clearPersonFilter;
+(window as any).openMilestones = openMilestones;
+(window as any).closeMilestones = closeMilestones;
 (window as any).openPersonModal = openPersonModal;
 (window as any).deletePerson = deletePerson;
 (window as any).useMyLocation = useMyLocation;

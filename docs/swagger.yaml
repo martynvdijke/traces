@@ -1,4 +1,72 @@
 definitions:
+  main.PersonEventsResponse:
+    properties:
+      events:
+        items:
+          $ref: '#/definitions/main.PersonMilestone'
+        type: array
+      person:
+        $ref: '#/definitions/models.Person'
+    type: object
+  main.PersonMilestone:
+    properties:
+      age_months:
+        type: integer
+      age_years:
+        type: integer
+      created_at:
+        type: string
+      date:
+        type: string
+      deleted_at:
+        type: string
+      description:
+        type: string
+      end_time:
+        type: string
+      group:
+        type: string
+      id:
+        type: integer
+      is_favorite:
+        type: boolean
+      is_public:
+        type: boolean
+      latitude:
+        type: number
+      location:
+        type: string
+      longitude:
+        type: number
+      media_caption:
+        type: string
+      media_type:
+        type: string
+      media_url:
+        type: string
+      person:
+        $ref: '#/definitions/models.Person'
+      person_id:
+        type: integer
+      recurring:
+        type: string
+      sort_order:
+        type: integer
+      start_time:
+        type: string
+      tags:
+        type: string
+      thumbnail:
+        type: string
+      title:
+        type: string
+      user:
+        $ref: '#/definitions/models.User'
+      user_id:
+        type: integer
+      weather_data:
+        type: string
+    type: object
   models.BackupConfig:
     properties:
       auto_prune:
@@ -1268,7 +1336,8 @@ paths:
       - Persons
   /persons/{id}/events:
     get:
-      description: Returns all events associated with a person
+      description: Returns all events associated with a person, enriched with milestone
+        metadata (age at event and life-group) when the person has a birth date
       parameters:
       - description: Person ID
         in: path
@@ -1279,13 +1348,17 @@ paths:
       - application/json
       responses:
         "200":
-          description: timeline events
+          description: OK
           schema:
-            items:
-              type: object
-            type: array
+            $ref: '#/definitions/main.PersonEventsResponse'
         "400":
           description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Not Found
           schema:
             additionalProperties:
               type: string
@@ -1571,6 +1644,20 @@ paths:
       summary: Apply template
       tags:
       - Templates
+  /trmnl/summary:
+    get:
+      description: Public summary of events in the current calendar month across all
+        years, for TRMNL device polling
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: monthly highlights
+          schema:
+            type: object
+      summary: TRMNL monthly highlights
+      tags:
+      - TRMNL
   /upload:
     post:
       consumes:

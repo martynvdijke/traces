@@ -1718,7 +1718,7 @@
         },
         "/persons/{id}/events": {
             "get": {
-                "description": "Returns all events associated with a person",
+                "description": "Returns all events associated with a person, enriched with milestone metadata (age at event and life-group) when the person has a birth date",
                 "produces": [
                     "application/json"
                 ],
@@ -1737,16 +1737,22 @@
                 ],
                 "responses": {
                     "200": {
-                        "description": "timeline events",
+                        "description": "OK",
                         "schema": {
-                            "type": "array",
-                            "items": {
-                                "type": "object"
-                            }
+                            "$ref": "#/definitions/main.PersonEventsResponse"
                         }
                     },
                     "400": {
                         "description": "Bad Request",
+                        "schema": {
+                            "type": "object",
+                            "additionalProperties": {
+                                "type": "string"
+                            }
+                        }
+                    },
+                    "404": {
+                        "description": "Not Found",
                         "schema": {
                             "type": "object",
                             "additionalProperties": {
@@ -2182,6 +2188,26 @@
                 }
             }
         },
+        "/trmnl/summary": {
+            "get": {
+                "description": "Public summary of events in the current calendar month across all years, for TRMNL device polling",
+                "produces": [
+                    "application/json"
+                ],
+                "tags": [
+                    "TRMNL"
+                ],
+                "summary": "TRMNL monthly highlights",
+                "responses": {
+                    "200": {
+                        "description": "monthly highlights",
+                        "schema": {
+                            "type": "object"
+                        }
+                    }
+                }
+            }
+        },
         "/upload": {
             "post": {
                 "description": "Upload an image, video, or audio file. Returns the URL and optional thumbnail URL.",
@@ -2470,6 +2496,109 @@
         }
     },
     "definitions": {
+        "main.PersonEventsResponse": {
+            "type": "object",
+            "properties": {
+                "events": {
+                    "type": "array",
+                    "items": {
+                        "$ref": "#/definitions/main.PersonMilestone"
+                    }
+                },
+                "person": {
+                    "$ref": "#/definitions/models.Person"
+                }
+            }
+        },
+        "main.PersonMilestone": {
+            "type": "object",
+            "properties": {
+                "age_months": {
+                    "type": "integer"
+                },
+                "age_years": {
+                    "type": "integer"
+                },
+                "created_at": {
+                    "type": "string"
+                },
+                "date": {
+                    "type": "string"
+                },
+                "deleted_at": {
+                    "type": "string"
+                },
+                "description": {
+                    "type": "string"
+                },
+                "end_time": {
+                    "type": "string"
+                },
+                "group": {
+                    "type": "string"
+                },
+                "id": {
+                    "type": "integer"
+                },
+                "is_favorite": {
+                    "type": "boolean"
+                },
+                "is_public": {
+                    "type": "boolean"
+                },
+                "latitude": {
+                    "type": "number"
+                },
+                "location": {
+                    "type": "string"
+                },
+                "longitude": {
+                    "type": "number"
+                },
+                "media_caption": {
+                    "type": "string"
+                },
+                "media_type": {
+                    "type": "string"
+                },
+                "media_url": {
+                    "type": "string"
+                },
+                "person": {
+                    "$ref": "#/definitions/models.Person"
+                },
+                "person_id": {
+                    "type": "integer"
+                },
+                "recurring": {
+                    "type": "string"
+                },
+                "sort_order": {
+                    "type": "integer"
+                },
+                "start_time": {
+                    "type": "string"
+                },
+                "tags": {
+                    "type": "string"
+                },
+                "thumbnail": {
+                    "type": "string"
+                },
+                "title": {
+                    "type": "string"
+                },
+                "user": {
+                    "$ref": "#/definitions/models.User"
+                },
+                "user_id": {
+                    "type": "integer"
+                },
+                "weather_data": {
+                    "type": "string"
+                }
+            }
+        },
         "models.BackupConfig": {
             "type": "object",
             "properties": {
