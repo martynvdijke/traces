@@ -849,13 +849,15 @@ test.describe('TRACES Admin Backend', () => {
     });
     const event = await evResp.json();
 
-    // Get person events
+    // Get person events (response shape: { person, events } with life-year groups)
     const resp = await request.get(`/api/persons/${person.id}/events`, {
       headers: { Cookie: `session=${sessionCookie}` }
     });
     expect(resp.ok()).toBeTruthy();
-    const events = await resp.json();
-    expect(events.some((e: any) => e.title === 'Linked Event')).toBeTruthy();
+    const data = await resp.json();
+    expect(data.person.name).toBe('Person Events Test');
+    expect(Array.isArray(data.events)).toBeTruthy();
+    expect(data.events.some((e: any) => e.title === 'Linked Event')).toBeTruthy();
 
     // Cleanup
     await request.delete(`/api/events?id=${event.id}`, {
