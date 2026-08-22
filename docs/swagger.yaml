@@ -198,6 +198,11 @@ definitions:
         type: integer
       id:
         type: integer
+      password:
+        description: |-
+          Password is write-only input for account creation/updates; it is never
+          populated on read paths and omitted from responses.
+        type: string
       username:
         type: string
     type: object
@@ -1748,7 +1753,8 @@ paths:
     post:
       consumes:
       - application/json
-      description: Creates a new user or updates an existing one
+      description: Creates a new user or updates an existing one. Providing a password
+        creates or replaces the family member's login credentials (bcrypt-hashed).
       parameters:
       - description: User data
         in: body

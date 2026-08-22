@@ -51,7 +51,7 @@ func Migrate(db *sql.DB) {
 		schemaVersion = 0
 	}
 
-	for v := schemaVersion; v < 19; v++ {
+	for v := schemaVersion; v < 20; v++ {
 		RunMigration(db, v)
 		_, _ = db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", v+1)
 	}
@@ -136,6 +136,7 @@ func createTables(db *sql.DB) {
 			email TEXT DEFAULT '',
 			color TEXT DEFAULT '#7c3aed',
 			avatar_url TEXT DEFAULT '',
+			password_hash TEXT DEFAULT '',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS ollama_settings (
@@ -434,6 +435,11 @@ func RunMigration(db *sql.DB, fromVersion int) {
 		_, err := db.Exec(`ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''`)
 		if err == nil {
 			log.Printf("[DB] Added column: email to users")
+		}
+	case 19:
+		_, err := db.Exec(`ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''`)
+		if err == nil {
+			log.Printf("[DB] Added column: password_hash to users")
 		}
 	}
 }

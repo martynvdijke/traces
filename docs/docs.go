@@ -2309,7 +2309,7 @@ const docTemplate = `{
                 }
             },
             "post": {
-                "description": "Creates a new user or updates an existing one",
+                "description": "Creates a new user or updates an existing one. Providing a password creates or replaces the family member's login credentials (bcrypt-hashed).",
                 "consumes": [
                     "application/json"
                 ],
@@ -2808,6 +2808,10 @@ const docTemplate = `{
                 },
                 "id": {
                     "type": "integer"
+                },
+                "password": {
+                    "description": "Password is write-only input for account creation/updates; it is never\npopulated on read paths and omitted from responses.",
+                    "type": "string"
                 },
                 "username": {
                     "type": "string"

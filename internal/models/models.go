@@ -83,6 +83,9 @@ type User struct {
 	AvatarURL   string `json:"avatar_url"`
 	EventCount  int    `json:"event_count,omitempty"`
 	CreatedAt   string `json:"created_at"`
+	// Password is write-only input for account creation/updates; it is never
+	// populated on read paths and omitted from responses.
+	Password string `json:"password,omitempty"`
 }
 
 type GotifyConfig struct {

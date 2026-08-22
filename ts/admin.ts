@@ -178,6 +178,13 @@ function getPerson(id: number): any {
   return allPersons.find((p: any) => p.id === id);
 }
 
+function getUserAttribution(userId: any): string {
+  if (!userId) return '';
+  const u = adminUsers.find((u: any) => u.id === userId);
+  if (!u) return '';
+  return '<span class="d-inline-flex align-items-center gap-1 added-by"><span class="color-dot" style="background:' + (u.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(u.display_name || u.username) + '</span>';
+}
+
 function renderEventList(): void {
   const list = document.getElementById('event-list');
   if (!list) return;
@@ -190,10 +197,11 @@ function renderEventList(): void {
   list.innerHTML = data.map((e: any) => {
     const p = getPerson(e.person_id);
     const favIcon = e.is_favorite ? 'fa-solid fa-star text-warning' : 'fa-regular fa-star';
+    const attribution = getUserAttribution(e.user_id);
     return `<tr class="animate-in ${e.is_favorite ? 'table-active' : ''}">
       <td class="ps-3 text-center"><input type="checkbox" class="event-select-cb" value="${e.id}" onchange="updateBatchButton()"></td>
       <td class="ps-1 fw-bold font-monospace" style="font-size:0.85rem">${e.date}</td>
-      <td><span class="fw-medium">${escapeHtml(e.title)}</span></td>
+      <td><span class="fw-medium">${escapeHtml(e.title)}</span>${attribution ? '<div class="text-muted small">' + attribution + '</div>' : ''}</td>
       <td>${e.location ? '<i class="fa-solid fa-location-dot me-1 text-muted" style="font-size:0.7rem"></i>' + escapeHtml(e.location) : '<span class="text-muted">—</span>'}</td>
       <td>${p ? '<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (p.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(p.name) + '</span>' : '<span class="text-muted">—</span>'}</td>
       <td>${e.media_url ? '<span class="media-type-badge ' + e.media_type + '"><i class="fa-solid ' + getMediaIcon(e.media_type) + ' me-1"></i>' + e.media_type + '</span>' : '<span class="text-muted">—</span>'}</td>
@@ -505,6 +513,8 @@ function renderMilestoneCard(ev: any): string {
   const metaBits: string[] = [];
   if (ev.location) metaBits.push('<i class="fa-solid fa-location-dot me-1"></i>' + escapeHtml(ev.location));
   if (ev.person && ev.person.name) metaBits.push('<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (ev.person.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(ev.person.name) + '</span>');
+  const attribution = getUserAttribution(ev.user_id);
+  if (attribution) metaBits.push(attribution);
   return `
     <div class="milestone-card animate-in">
       ${thumb}
@@ -1322,6 +1332,7 @@ async function loadUsers(): Promise<void> {
     adminUsers = await res.json();
     renderUserList();
     updateUserSelect();
+    renderEventList();
   } catch (e) { console.error('Failed to load users', e); }
 }
 

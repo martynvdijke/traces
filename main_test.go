@@ -96,7 +96,7 @@ func TestHandleLogin(t *testing.T) {
 	}
 	defer db.Close()
 
-	sessionStore = make(map[string]int64)
+	sessionStore = make(map[string]sessionInfo)
 	csrfTokens = make(map[string]string)
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS admin_users (
@@ -121,7 +121,7 @@ func TestHandleLogin(t *testing.T) {
 	router.POST("/api/login", handleLogin)
 
 	t.Run("bcrypt_login_success", func(t *testing.T) {
-		sessionStore = make(map[string]int64)
+		sessionStore = make(map[string]sessionInfo)
 		csrfTokens = make(map[string]string)
 
 		w := httptest.NewRecorder()
@@ -141,7 +141,7 @@ func TestHandleLogin(t *testing.T) {
 	})
 
 	t.Run("bcrypt_login_wrong_password", func(t *testing.T) {
-		sessionStore = make(map[string]int64)
+		sessionStore = make(map[string]sessionInfo)
 		csrfTokens = make(map[string]string)
 
 		w := httptest.NewRecorder()
@@ -180,7 +180,7 @@ func TestHandleLogin(t *testing.T) {
 		db = db2
 		defer func() { db = origDB2 }()
 
-		sessionStore = make(map[string]int64)
+		sessionStore = make(map[string]sessionInfo)
 		csrfTokens = make(map[string]string)
 
 		w := httptest.NewRecorder()
@@ -203,7 +203,7 @@ func TestHandleLogin(t *testing.T) {
 	})
 
 	t.Run("setup_rejected_when_users_exist", func(t *testing.T) {
-		sessionStore = make(map[string]int64)
+		sessionStore = make(map[string]sessionInfo)
 		csrfTokens = make(map[string]string)
 
 		w := httptest.NewRecorder()
@@ -240,7 +240,7 @@ func TestHandleLogin(t *testing.T) {
 		db = db2
 		defer func() { db = origDB3 }()
 
-		sessionStore = make(map[string]int64)
+		sessionStore = make(map[string]sessionInfo)
 		csrfTokens = make(map[string]string)
 
 		w := httptest.NewRecorder()
@@ -505,7 +505,7 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 	}
 	defer db.Close()
 
-	sessionStore = make(map[string]int64)
+	sessionStore = make(map[string]sessionInfo)
 	csrfTokens = make(map[string]string)
 	mediaPath = t.TempDir()
 
@@ -2396,7 +2396,7 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 	}
 	defer db.Close()
 
-	sessionStore = make(map[string]int64)
+	sessionStore = make(map[string]sessionInfo)
 	csrfTokens = make(map[string]string)
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
@@ -2435,14 +2435,14 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 	)`)
 
 	sessionID := "test-roundtrip-session"
-	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+	sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
 	csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
 
 	router := gin.New()
 	auth := router.Group("")
 	auth.Use(func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
-		if err != nil || sessionStore[cookie] == 0 {
+		if err != nil || sessionStore[cookie].expiresAt == 0 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
@@ -4686,7 +4686,7 @@ func TestRecycleBin(t *testing.T) {
 	}
 	defer db.Close()
 
-	sessionStore = make(map[string]int64)
+	sessionStore = make(map[string]sessionInfo)
 	csrfTokens = make(map[string]string)
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
@@ -4728,7 +4728,7 @@ func TestRecycleBin(t *testing.T) {
 	auth := router.Group("")
 	auth.Use(func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
-		if err != nil || sessionStore[cookie] == 0 {
+		if err != nil || sessionStore[cookie].expiresAt == 0 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
@@ -4741,7 +4741,7 @@ func TestRecycleBin(t *testing.T) {
 	auth.POST("/api/events", saveEvent)
 
 	sessionID := "test-trash-session"
-	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+	sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
 
 	t.Run("soft_delete_moves_event_to_trash", func(t *testing.T) {
 		_, err := db.Exec("INSERT INTO timeline_events (title, description, event_date) VALUES (?, ?, ?)", "Trash Event", "Will be deleted", "2026-07-04")
@@ -4859,7 +4859,7 @@ func TestHTMXEndpoints(t *testing.T) {
 	initDB()
 	initTemplates()
 
-	sessionStore = make(map[string]int64)
+	sessionStore = make(map[string]sessionInfo)
 	csrfTokens = make(map[string]string)
 
 	r := gin.New()
@@ -4888,7 +4888,7 @@ func TestHTMXEndpoints(t *testing.T) {
 
 	sessionID := "htmx-test-session"
 	csrfToken := "htmx-test-csrf-token"
-	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+	sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
 	csrfTokens[sessionID] = csrfToken
 
 	t.Run("htmx_events_list_returns_html", func(t *testing.T) {

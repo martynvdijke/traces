@@ -106,7 +106,7 @@ func init() {
 }
 
 const defaultColor = "#7c3aed"
-const currentSchemaVersion = 18
+const currentSchemaVersion = 19
 const currentVersion = "1.29.0"
 
 var (
@@ -115,9 +115,17 @@ var (
 	immichEnabled bool
 )
 
+// sessionInfo carries the identity and expiry of an authenticated session.
+// userID 0 means the admin (legacy behaviour); any other value is a users.id
+// from a family login.
+type sessionInfo struct {
+	userID    int64
+	expiresAt int64
+}
+
 var (
 	db                 *sql.DB
-	sessionStore       = make(map[string]int64)
+	sessionStore       = make(map[string]sessionInfo)
 	csrfTokens         = make(map[string]string)
 	sessionMu          sync.RWMutex
 	basePath           = "/app"
@@ -367,9 +375,9 @@ func main() {
 		cookie, err := c.Cookie("session")
 		if err == nil {
 			sessionMu.RLock()
-			expiry, ok := sessionStore[cookie]
+			sess, ok := sessionStore[cookie]
 			sessionMu.RUnlock()
-			if ok && time.Now().Unix() <= expiry {
+			if ok && time.Now().Unix() <= sess.expiresAt {
 				c.File(filepath.Join(basePath, "static/admin.html"))
 				return
 			}
@@ -381,9 +389,9 @@ func main() {
 		cookie, err := c.Cookie("session")
 		if err == nil {
 			sessionMu.RLock()
-			expiry, ok := sessionStore[cookie]
+			sess, ok := sessionStore[cookie]
 			sessionMu.RUnlock()
-			if ok && time.Now().Unix() <= expiry {
+			if ok && time.Now().Unix() <= sess.expiresAt {
 				c.Redirect(http.StatusFound, "/admin.html")
 				return
 			}
@@ -435,7 +443,7 @@ func main() {
 			sessionMu.Lock()
 			now := time.Now().Unix()
 			for k, v := range sessionStore {
-				if now > v {
+				if now > v.expiresAt {
 					delete(sessionStore, k)
 					delete(csrfTokens, k)
 				}
@@ -481,6 +489,46 @@ func main() {
 	log.Fatal(srv.ListenAndServe())
 }
 
+// currentUser is the resolved identity of the logged-in account.
+// ID 0 is the admin; any other value is a users.id from a family login.
+type currentUser struct {
+	ID    int64
+	Name  string
+	Color string
+}
+
+const (
+	ctxKeyUserID    = "current_user_id"
+	ctxKeyUserName  = "current_user_name"
+	ctxKeyUserColor = "current_user_color"
+)
+
+// getCurrentUser returns the identity resolved by authMiddlewareGin.
+// Falls back to the admin identity when middleware did not run (tests).
+func getCurrentUser(c *gin.Context) currentUser {
+	id, _ := c.Get(ctxKeyUserID)
+	uid, _ := id.(int64)
+	name, _ := c.Get(ctxKeyUserName)
+	uname, _ := name.(string)
+	color, _ := c.Get(ctxKeyUserColor)
+	ucolor, _ := color.(string)
+	return currentUser{ID: uid, Name: uname, Color: ucolor}
+}
+
+// resolveSessionUser maps a session's userID to a display identity.
+// userID 0 (or an unknown/deleted user) resolves to the admin identity,
+// preserving legacy behaviour for expiry-only sessions.
+func resolveSessionUser(userID int64) currentUser {
+	if userID != 0 {
+		var name, color string
+		err := db.QueryRow("SELECT COALESCE(NULLIF(display_name,''), username), COALESCE(color, ?) FROM users WHERE id = ?", defaultColor, userID).Scan(&name, &color)
+		if err == nil {
+			return currentUser{ID: userID, Name: name, Color: color}
+		}
+	}
+	return currentUser{ID: 0, Name: "Admin", Color: defaultColor}
+}
+
 func authMiddlewareGin() gin.HandlerFunc {
 	return func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
@@ -489,13 +537,13 @@ func authMiddlewareGin() gin.HandlerFunc {
 			return
 		}
 		sessionMu.RLock()
-		expiry, ok := sessionStore[cookie]
+		sess, ok := sessionStore[cookie]
 		sessionMu.RUnlock()
 		if !ok {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
 			return
 		}
-		if time.Now().Unix() > expiry {
+		if time.Now().Unix() > sess.expiresAt {
 			sessionMu.Lock()
 			delete(sessionStore, cookie)
 			delete(csrfTokens, cookie)
@@ -503,6 +551,10 @@ func authMiddlewareGin() gin.HandlerFunc {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
 			return
 		}
+		cu := resolveSessionUser(sess.userID)
+		c.Set(ctxKeyUserID, cu.ID)
+		c.Set(ctxKeyUserName, cu.Name)
+		c.Set(ctxKeyUserColor, cu.Color)
 		c.Set("session_id", cookie)
 		c.Next()
 	}
@@ -662,7 +714,7 @@ func handleLogin(c *gin.Context) {
 			return
 		}
 		sessionMu.Lock()
-		sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+		sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
 		csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
 		sessionMu.Unlock()
 		http.SetCookie(c.Writer, &http.Cookie{
@@ -677,25 +729,44 @@ func handleLogin(c *gin.Context) {
 		return
 	}
 
-	var user models.AdminUser
-	err := db.QueryRow("SELECT id, username, password FROM admin_users WHERE username = ?", input.Username).Scan(&user.ID, &user.Username, &user.Password)
-	if err != nil {
+	// Admin credentials are checked first; family accounts (users rows with a
+	// bcrypt password hash) are accepted through the same login flow.
+	var adminID int
+	var adminHash string
+	err := db.QueryRow("SELECT id, password FROM admin_users WHERE username = ?", input.Username).Scan(&adminID, &adminHash)
+	if err == nil {
+		if bcryptErr := bcrypt.CompareHashAndPassword([]byte(adminHash), []byte(input.Password)); bcryptErr != nil {
+			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+			return
+		}
+		createSession(c, 0)
+		return
+	}
+
+	var familyID int64
+	var familyHash string
+	famErr := db.QueryRow("SELECT id, COALESCE(password_hash, '') FROM users WHERE username = ?", input.Username).Scan(&familyID, &familyHash)
+	if famErr != nil || familyHash == "" {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
+		return
+	}
+	if bcryptErr := bcrypt.CompareHashAndPassword([]byte(familyHash), []byte(input.Password)); bcryptErr != nil {
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 
-	if err := bcrypt.CompareHashAndPassword([]byte(user.Password), []byte(input.Password)); err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-		return
-	}
+	createSession(c, familyID)
+}
 
+// createSession mints an identity-stamped session, sets the cookie and CSRF token.
+func createSession(c *gin.Context, userID int64) {
 	sessionID, err := generateSessionID()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate session"})
 		return
 	}
 	sessionMu.Lock()
-	sessionStore[sessionID] = time.Now().Add(24 * time.Hour).Unix()
+	sessionStore[sessionID] = sessionInfo{userID: userID, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
 	csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
 	sessionMu.Unlock()
 	http.SetCookie(c.Writer, &http.Cookie{
@@ -950,6 +1021,13 @@ func saveEvent(c *gin.Context) {
 
 	if e.Date == "" {
 		e.Date = time.Now().Format("2006-01-02")
+	}
+
+	// Automatic attribution: a family login always owns the events it saves,
+	// regardless of the payload. Admin sessions keep the previous behaviour
+	// (payload user_id honoured, 0 by default).
+	if cu := getCurrentUser(c); cu.ID != 0 {
+		e.UserID = int(cu.ID)
 	}
 
 	span.SetAttributes(
@@ -4439,11 +4517,11 @@ func getUsers(c *gin.Context) {
 }
 
 // @Summary Create or update user
-// @Description Creates a new user or updates an existing one
+// @Description Creates a new user or updates an existing one. Providing a password creates or replaces the family member's login credentials (bcrypt-hashed).
 // @Tags Users
 // @Accept json
 // @Produce json
-// @Param user body object true "User data"
+// @Param user body object true "User data" SchemaProperties(id:{type:integer}, username:{type:string}, display_name:{type:string}, email:{type:string}, color:{type:string}, avatar_url:{type:string}, password:{type:string})
 // @Success 200 {object} object "saved user"
 // @Failure 400 {object} map[string]string
 // @Router /users [post]
@@ -4454,9 +4532,33 @@ func saveUser(c *gin.Context) {
 		return
 	}
 
+	var passwordHash string
+	if u.Password != "" {
+		hashed, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
+			return
+		}
+		passwordHash = string(hashed)
+	}
+
 	if u.ID == 0 {
-		result, err := db.Exec("INSERT INTO users (username, display_name, email, color, avatar_url) VALUES (?, ?, ?, ?, ?)",
-			u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL)
+		// Family usernames must not shadow the admin login.
+		var adminCount int
+		db.QueryRow("SELECT COUNT(*) FROM admin_users WHERE username = ?", u.Username).Scan(&adminCount)
+		if adminCount > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already taken"})
+			return
+		}
+		var userCount int
+		db.QueryRow("SELECT COUNT(*) FROM users WHERE username = ?", u.Username).Scan(&userCount)
+		if userCount > 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already taken"})
+			return
+		}
+
+		result, err := db.Exec("INSERT INTO users (username, display_name, email, color, avatar_url, password_hash) VALUES (?, ?, ?, ?, ?, ?)",
+			u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, passwordHash)
 		if err != nil {
 			serverError(c, err)
 			return
@@ -4464,14 +4566,24 @@ func saveUser(c *gin.Context) {
 		id, _ := result.LastInsertId()
 		u.ID = int(id)
 	} else {
-		_, err := db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=?, avatar_url=? WHERE id=?",
-			u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, u.ID)
-		if err != nil {
-			serverError(c, err)
-			return
+		if passwordHash != "" {
+			_, err := db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=?, avatar_url=?, password_hash=? WHERE id=?",
+				u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, passwordHash, u.ID)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
+		} else {
+			_, err := db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=?, avatar_url=? WHERE id=?",
+				u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, u.ID)
+			if err != nil {
+				serverError(c, err)
+				return
+			}
 		}
 	}
 
+	u.Password = ""
 	c.JSON(http.StatusOK, u)
 }
 
