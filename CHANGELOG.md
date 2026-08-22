@@ -1,3 +1,10 @@
+# [1.29.0](https://github.com/martynvdijke/traces/compare/v1.28.12...v1.29.0) (2026-08-22)
+
+
+### Features
+
+* add child milestone view with age grouping ([155078a](https://github.com/martynvdijke/traces/commit/155078ad53422922a401cfdd6ba30f1450bc02e0))
+
 ## [1.28.12](https://github.com/martynvdijke/traces/compare/v1.28.11...v1.28.12) (2026-08-20)
 
 ## [1.28.11](https://github.com/martynvdijke/traces/compare/v1.28.10...v1.28.11) (2026-08-18)
