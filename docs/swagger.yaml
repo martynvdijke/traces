@@ -52,6 +52,10 @@ definitions:
         type: string
       sort_order:
         type: integer
+      source:
+        type: string
+      source_ref:
+        type: string
       start_time:
         type: string
       tags:
@@ -167,6 +171,10 @@ definitions:
         type: string
       sort_order:
         type: integer
+      source:
+        type: string
+      source_ref:
+        type: string
       start_time:
         type: string
       tags:

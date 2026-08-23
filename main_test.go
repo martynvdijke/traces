@@ -2422,7 +2422,9 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 		event_start_time TEXT DEFAULT '',
 		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0,
-		deleted_at TEXT DEFAULT ''
+		deleted_at TEXT DEFAULT '',
+		source TEXT DEFAULT '',
+		source_ref TEXT DEFAULT ''
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -2601,7 +2603,9 @@ func TestGetPublicEvents(t *testing.T) {
 		event_start_time TEXT DEFAULT '',
 		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0,
-		deleted_at TEXT DEFAULT ''
+		deleted_at TEXT DEFAULT '',
+		source TEXT DEFAULT '',
+		source_ref TEXT DEFAULT ''
 	)`)
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
@@ -4414,7 +4418,10 @@ func TestSendMemoriesEmailHandler(t *testing.T) {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT,
 		description TEXT,
-		event_date TEXT
+		event_date TEXT,
+		deleted_at TEXT DEFAULT '',
+		source TEXT DEFAULT '',
+		source_ref TEXT DEFAULT ''
 	)`)
 
 	t.Run("fails_when_email_not_fully_configured", func(t *testing.T) {
@@ -4712,7 +4719,9 @@ func TestRecycleBin(t *testing.T) {
 		event_start_time TEXT DEFAULT '',
 		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0,
-		deleted_at TEXT DEFAULT ''
+		deleted_at TEXT DEFAULT '',
+		source TEXT DEFAULT '',
+		source_ref TEXT DEFAULT ''
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -51,7 +51,7 @@ func Migrate(db *sql.DB) {
 		schemaVersion = 0
 	}
 
-	for v := schemaVersion; v < 20; v++ {
+	for v := schemaVersion; v < 21; v++ {
 		RunMigration(db, v)
 		_, _ = db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", v+1)
 	}
@@ -84,7 +84,9 @@ func createTables(db *sql.DB) {
 			user_id INTEGER DEFAULT 0,
 			event_start_time TEXT DEFAULT '',
 			event_end_time TEXT DEFAULT '',
-			deleted_at TEXT DEFAULT ''
+			deleted_at TEXT DEFAULT '',
+			source TEXT DEFAULT '',
+			source_ref TEXT DEFAULT ''
 		)`,
 		`CREATE TABLE IF NOT EXISTS admin_users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -157,6 +159,12 @@ func createTables(db *sql.DB) {
 			site_id TEXT DEFAULT '',
 			enabled INTEGER DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS bgg_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			username TEXT DEFAULT '',
+			enabled INTEGER DEFAULT 0,
+			last_sync TEXT DEFAULT ''
+		)`,
 		`CREATE TABLE IF NOT EXISTS backup_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			retention_days INTEGER DEFAULT 7,
@@ -212,6 +220,7 @@ func createTables(db *sql.DB) {
 			log.Fatalf("[DB] Create table failed: %v", err)
 		}
 	}
+	_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_events_bgg_ref ON timeline_events(source_ref) WHERE source='bgg'`)
 }
 
 func seedDefaults(db *sql.DB) {
@@ -250,6 +259,11 @@ func seedDefaults(db *sql.DB) {
 	db.QueryRow("SELECT COUNT(*) FROM umami_settings").Scan(&count)
 	if count == 0 {
 		db.Exec("INSERT INTO umami_settings (id, url, site_id, enabled) VALUES (1, '', '', 0)")
+	}
+
+	db.QueryRow("SELECT COUNT(*) FROM bgg_settings").Scan(&count)
+	if count == 0 {
+		db.Exec("INSERT INTO bgg_settings (id, username, enabled, last_sync) VALUES (1, '', 0, '')")
 	}
 
 	db.QueryRow("SELECT COUNT(*) FROM backup_settings").Scan(&count)
@@ -441,6 +455,23 @@ func RunMigration(db *sql.DB, fromVersion int) {
 		if err == nil {
 			log.Printf("[DB] Added column: password_hash to users")
 		}
+	case 20:
+		_, err := db.Exec(`ALTER TABLE timeline_events ADD COLUMN source TEXT DEFAULT ''`)
+		if err == nil {
+			log.Printf("[DB] Added column: source to timeline_events")
+		}
+		_, err = db.Exec(`ALTER TABLE timeline_events ADD COLUMN source_ref TEXT DEFAULT ''`)
+		if err == nil {
+			log.Printf("[DB] Added column: source_ref to timeline_events")
+		}
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS bgg_settings (
+			id INTEGER PRIMARY KEY CHECK (id = 1),
+			username TEXT DEFAULT '',
+			enabled INTEGER DEFAULT 0,
+			last_sync TEXT DEFAULT ''
+		)`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO bgg_settings (id, username, enabled, last_sync) VALUES (1, '', 0, '')`)
+		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_events_bgg_ref ON timeline_events(source_ref) WHERE source='bgg'`)
 	}
 }
 

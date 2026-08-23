@@ -2587,6 +2587,12 @@ const docTemplate = `{
                 "sort_order": {
                     "type": "integer"
                 },
+                "source": {
+                    "type": "string"
+                },
+                "source_ref": {
+                    "type": "string"
+                },
                 "start_time": {
                     "type": "string"
                 },
@@ -2761,6 +2767,12 @@ const docTemplate = `{
                 },
                 "sort_order": {
                     "type": "integer"
+                },
+                "source": {
+                    "type": "string"
+                },
+                "source_ref": {
+                    "type": "string"
                 },
                 "start_time": {
                     "type": "string"

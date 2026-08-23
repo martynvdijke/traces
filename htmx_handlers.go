@@ -60,7 +60,7 @@ func registerHTMXRoutes(r *gin.Engine) {
 func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string) ([]EventRow, error) {
 	query := `SELECT e.id, e.title, e.event_date, e.location, e.media_type, COALESCE(e.media_url,''), e.is_favorite, e.person_id, COALESCE(e.tags,''), e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
 		p.name, p.color
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL)`
 	args := []any{}
 
 	if year != "" {
@@ -369,7 +369,7 @@ func htmxEditEventForm(c *gin.Context) {
 func htmxListPersons(c *gin.Context) {
 	q := c.Query("q")
 	query := `SELECT p.id, p.name, COALESCE(p.avatar_url,''), COALESCE(p.bio,''), COALESCE(p.birth_date,''), COALESCE(p.color,'#7c3aed'),
-		(SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count
+		(SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id AND (source = '' OR source IS NULL)) as event_count
 		FROM persons p`
 	args := []any{}
 	if q != "" {
@@ -448,7 +448,7 @@ func htmxPersonEvents(c *gin.Context) {
 
 func htmxListTags(c *gin.Context) {
 	rows, err := db.Query(`SELECT name, COUNT(*) as cnt FROM (
-		SELECT TRIM(value) as name FROM timeline_events, json_each('["' || REPLACE(tags, ',', '","') || '"]') WHERE tags != '' AND tags IS NOT NULL AND (deleted_at IS NULL OR deleted_at = '')
+		SELECT TRIM(value) as name FROM timeline_events, json_each('["' || REPLACE(tags, ',', '","') || '"]') WHERE tags != '' AND tags IS NOT NULL AND (deleted_at IS NULL OR deleted_at = '') AND (timeline_events.source = '' OR timeline_events.source IS NULL)
 	) GROUP BY name ORDER BY cnt DESC, name ASC`)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
@@ -640,7 +640,7 @@ func htmxEditTemplateForm(c *gin.Context) {
 
 func htmxListUsers(c *gin.Context) {
 	rows, err := db.Query(`SELECT u.id, u.username, COALESCE(u.display_name,''), COALESCE(u.email,''), COALESCE(u.color,'#7c3aed'),
-		(SELECT COUNT(*) FROM timeline_events WHERE user_id = u.id) as event_count
+		(SELECT COUNT(*) FROM timeline_events WHERE user_id = u.id AND (source = '' OR source IS NULL)) as event_count
 		FROM users u ORDER BY u.display_name ASC`)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)

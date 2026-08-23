@@ -67,6 +67,7 @@ async function init(): Promise<void> {
   loadUsers();
   loadOllamaConfig();
   loadImmichConfig();
+  loadBGGConfig();
   loadUmamiConfig();
   loadAdminAnalytics();
   loadBackups();
@@ -79,6 +80,7 @@ async function init(): Promise<void> {
 
   document.getElementById('integrations-tab')?.addEventListener('shown.bs.tab', () => {
     loadImmichMemories();
+    loadBGGCorner();
   });
   document.getElementById('trash-tab')?.addEventListener('shown.bs.tab', () => {
     loadTrash();
@@ -1279,6 +1281,136 @@ async function importSelectedImmichMemories(): Promise<void> {
   }
 }
 
+async function loadBGGConfig(): Promise<void> {
+  try {
+    const res = await fetch('/api/bgg/config');
+    const cfg = await res.json();
+    (document.getElementById('bgg-username') as HTMLInputElement).value = cfg.username || '';
+    (document.getElementById('bgg-enabled') as HTMLInputElement).checked = cfg.enabled || false;
+  } catch (e) { }
+}
+
+document.getElementById('bgg-form')!.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  await ensureCSRF();
+  const data = {
+    username: (document.getElementById('bgg-username') as HTMLInputElement).value,
+    enabled: (document.getElementById('bgg-enabled') as HTMLInputElement).checked
+  };
+  const res = await fetch('/api/bgg/config', {
+    method: 'POST',
+    headers: csrfHeaders('application/json'),
+    body: JSON.stringify(data)
+  });
+  const result = await res.json();
+  document.getElementById('bgg-result')!.innerHTML = res.ok
+    ? '<div class="alert alert-success">BGG settings saved.</div>'
+    : '<div class="alert alert-danger">Error: ' + (result.error || '') + '</div>';
+});
+
+async function testBGG(): Promise<void> {
+  const el = document.getElementById('bgg-result')!;
+  el.innerHTML = '<div class="alert alert-info">Testing connection...</div>';
+  await ensureCSRF();
+  const res = await fetch('/api/bgg/test', { method: 'POST', headers: csrfHeaders() });
+  const data = await res.json();
+  el.innerHTML = res.ok
+    ? '<div class="alert alert-success">' + (data.message || 'Connection successful!') + '</div>'
+    : '<div class="alert alert-danger">Error: ' + (data.error || '') + '</div>';
+}
+
+async function syncBGG(): Promise<void> {
+  const el = document.getElementById('bgg-sync-result')!;
+  el.innerHTML = '<div class="alert alert-info"><i class="fa-solid fa-spinner fa-spin me-1"></i> Syncing BGG plays...</div>';
+  await ensureCSRF();
+  const res = await fetch('/api/bgg/sync', { method: 'POST', headers: csrfHeaders() });
+  const data = await res.json();
+  if (res.ok) {
+    el.innerHTML = '<div class="alert alert-success"><i class="fa-solid fa-check me-1"></i> ' + (data.message || ('Imported ' + data.imported + ' plays')) + '</div>';
+    loadBGGCorner();
+  } else {
+    el.innerHTML = '<div class="alert alert-danger">Error: ' + (data.error || '') + '</div>';
+  }
+}
+
+async function loadBGGCorner(): Promise<void> {
+  const list = document.getElementById('bgg-corner-list')!;
+  const statsEl = document.getElementById('bgg-stats')!;
+  list.innerHTML = '<div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading BGG plays...</div>';
+  if (statsEl) statsEl.innerHTML = '';
+  try {
+    try {
+      const sres = await fetch('/api/bgg/stats');
+      if (sres.ok) {
+        const s = await sres.json();
+        const byYear: Record<string, number> = s.by_year || {};
+        const byGame: Record<string, number> = s.by_game || {};
+        const total = Object.values(byYear).reduce((a: number, b: number) => a + b, 0) || Object.values(byGame).reduce((a: number, b: number) => a + b, 0) || 0;
+        let statsHtml = '';
+        if (total || Object.keys(byYear).length || Object.keys(byGame).length) {
+          const uniqueGames = Object.keys(byGame).length;
+          const totalPlays = total || (s.total as number) || 0;
+          statsHtml = '<div class="d-flex gap-2 flex-wrap">';
+          if (totalPlays) statsHtml += '<span class="badge bg-primary"><i class="fa-solid fa-dice me-1"></i>' + totalPlays + ' plays</span>';
+          if (uniqueGames) statsHtml += '<span class="badge bg-secondary"><i class="fa-solid fa-chess-board me-1"></i>' + uniqueGames + ' games</span>';
+          const yearKeys = Object.keys(byYear).sort().reverse().slice(0, 3);
+          yearKeys.forEach((y: string) => {
+            statsHtml += '<span class="badge bg-light text-dark border">' + escapeHtml(y) + ': ' + byYear[y] + '</span>';
+          });
+          statsHtml += '</div>';
+          if (Object.keys(byGame).length) {
+            const sorted = Object.entries(byGame).sort((a: any, b: any) => (b[1] as number) - (a[1] as number)).slice(0, 5);
+            statsHtml += '<div class="mt-2 small text-muted">Top games: ' + sorted.map(([g, c]) => escapeHtml(g) + ' (' + c + ')').join(' &middot; ') + '</div>';
+          }
+        }
+        if (statsHtml) statsEl.innerHTML = statsHtml;
+        else statsEl.innerHTML = '<div class="text-muted small">No BGG stats yet. Sync to populate.</div>';
+      }
+    } catch (e) { }
+    const res = await fetch('/api/bgg/events');
+    if (!res.ok) {
+      const err = await res.json();
+      list.innerHTML = '<div class="alert alert-warning">' + (err.error || 'Could not fetch BGG plays.') + '</div>';
+      return;
+    }
+    const data = await res.json();
+    const events: any[] = Array.isArray(data) ? data : (data.events || []);
+    if (!events.length) {
+      list.innerHTML = '<div class="text-center text-muted py-4"><i class="fa-solid fa-dice me-2" style="font-size:2rem"></i><p class="mt-2">No board game plays yet. Sync BGG to import.</p></div>';
+      return;
+    }
+    list.innerHTML = events.map((ev: any) => {
+      const rawTitle: string = ev.title || '';
+      const gameTitle = rawTitle.replace(/^Played\s+/, '') || ev.name || 'Board Game';
+      const date: string = ev.date || ev.event_date || '';
+      const location: string = ev.location || '';
+      const desc: string = ev.description || '';
+      let playersHtml = '';
+      if (desc) {
+        const firstLine = desc.split('\n')[0];
+        if (firstLine.includes('Players:')) playersHtml = '<div class="text-muted small">' + escapeHtml(firstLine) + '</div>';
+      }
+      if (!playersHtml && ev.players) {
+        const p = Array.isArray(ev.players) ? ev.players.join(', ') : String(ev.players);
+        if (p) playersHtml = '<div class="text-muted small"><i class="fa-solid fa-users me-1"></i>' + escapeHtml(p) + '</div>';
+      }
+      const thumb = ev.thumbnail ? '<img src="' + ev.thumbnail + '" class="rounded" style="width:48px;height:48px;object-fit:cover" alt="">' : ev.media_url ? '<img src="' + ev.media_url + '" class="rounded" style="width:48px;height:48px;object-fit:cover" alt="">' : '<div style="width:48px;height:48px;background:var(--primary-glow);border-radius:8px;display:flex;align-items:center;justify-content:center;color:var(--primary)"><i class="fa-solid fa-dice"></i></div>';
+      const descRemainder = desc && playersHtml ? desc.split('\n').slice(1).join(' ').trim() : (!playersHtml && desc ? desc : '');
+      const descSnippet = descRemainder ? '<div class="text-muted small mt-1">' + escapeHtml(descRemainder.substring(0, 120)) + (descRemainder.length > 120 ? '...' : '') + '</div>' : '';
+      return '<div class="d-flex align-items-start gap-3 p-3 border-bottom animate-in">'
+        + '<div class="flex-shrink-0">' + thumb + '</div>'
+        + '<div class="flex-grow-1" style="min-width:0">'
+        + '<div class="fw-semibold">' + escapeHtml(gameTitle) + '</div>'
+        + (date ? '<div class="text-muted" style="font-size:0.85rem"><i class="fa-solid fa-calendar me-1"></i>' + escapeHtml(date) + '</div>' : '')
+        + (location ? '<div class="text-muted" style="font-size:0.8rem"><i class="fa-solid fa-location-dot me-1"></i>' + escapeHtml(location) + '</div>' : '')
+        + playersHtml + descSnippet
+        + '</div></div>';
+    }).join('');
+  } catch (e) {
+    list.innerHTML = '<div class="alert alert-danger">Failed to load BGG plays</div>';
+  }
+}
+
 async function loadEmailConfig(): Promise<void> {
   try {
     const res = await fetch('/api/email/config');
@@ -2212,6 +2344,10 @@ init();
 (window as any).loadImmichMemories = loadImmichMemories;
 (window as any).importSelectedImmichMemories = importSelectedImmichMemories;
 (window as any).toggleSelectAllImmich = toggleSelectAllImmich;
+(window as any).testBGG = testBGG;
+(window as any).syncBGG = syncBGG;
+(window as any).loadBGGCorner = loadBGGCorner;
+(window as any).loadBGGConfig = loadBGGConfig;
 (window as any).testEmailConfig = testEmailConfig;
 (window as any).createBackup = createBackup;
 (window as any).openUserModal = openUserModal;

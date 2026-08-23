@@ -56,7 +56,9 @@ func setupTRMNLTestDB(t *testing.T) (*gin.Engine, *sql.DB) {
 		event_start_time TEXT DEFAULT '',
 		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0,
-		deleted_at TEXT DEFAULT ''
+		deleted_at TEXT DEFAULT '',
+		source TEXT DEFAULT '',
+		source_ref TEXT DEFAULT ''
 	)`); err != nil {
 		t.Fatal(err)
 	}

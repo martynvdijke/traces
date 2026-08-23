@@ -38,6 +38,8 @@ type TimelineEvent struct {
 	UserID       int      `json:"user_id"`
 	User         *User    `json:"user,omitempty"`
 	DeletedAt    string   `json:"deleted_at"`
+	Source       string   `json:"source"`
+	SourceRef    string   `json:"source_ref"`
 }
 
 type EventStats struct {
@@ -127,6 +129,12 @@ type UmamiConfig struct {
 	Enabled bool   `json:"enabled"`
 }
 
+type BGGConfig struct {
+	Username string `json:"username"`
+	Enabled  bool   `json:"enabled"`
+	LastSync string `json:"last_sync"`
+}
+
 type BackupConfig struct {
 	RetentionDays int  `json:"retention_days"`
 	AutoPrune     bool `json:"auto_prune"`
@@ -190,8 +198,8 @@ type CalendarDay struct {
 // Constants
 const (
 	DefaultColor         = "#7c3aed"
-	CurrentSchemaVersion = 20
-	CurrentVersion       = "1.22.0"
+	CurrentSchemaVersion = 21
+	CurrentVersion       = "1.29.0"
 )
 
 // Helper functions
