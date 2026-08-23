@@ -1,3 +1,11 @@
+# [1.30.0](https://github.com/martynvdijke/traces/compare/v1.29.0...v1.30.0) (2026-08-23)
+
+
+### Features
+
+* add BoardGameGeek corner with play sync and quarantine ([94fbc32](https://github.com/martynvdijke/traces/commit/94fbc3265f25b3f5d8d61f0db0de6205ef49a0e9))
+* add family member logins with automatic event attribution ([28e5820](https://github.com/martynvdijke/traces/commit/28e58204ec4b470a62acd7fdffafb7d897118b7c))
+
 # [1.29.0](https://github.com/martynvdijke/traces/compare/v1.28.12...v1.29.0) (2026-08-22)
 
 
