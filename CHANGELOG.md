@@ -1,3 +1,11 @@
+## [1.30.4](https://github.com/martynvdijke/traces/compare/v1.30.3...v1.30.4) (2026-08-28)
+
+
+### Bug Fixes
+
+* **ci:** make pinact check non-blocking ([ee329e7](https://github.com/martynvdijke/traces/commit/ee329e778d154d0345538fb16d67b541de7f4f2b))
+* **ci:** update actionlint to v1.7.12 (v1 tag removed upstream) ([74d257d](https://github.com/martynvdijke/traces/commit/74d257d91085a575a210086f0e8b161e40bb13a2))
+
 ## [1.30.3](https://github.com/martynvdijke/traces/compare/v1.30.2...v1.30.3) (2026-08-28)
 
 
