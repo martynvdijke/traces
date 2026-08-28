@@ -1,3 +1,10 @@
+## [1.30.3](https://github.com/martynvdijke/traces/compare/v1.30.2...v1.30.3) (2026-08-28)
+
+
+### Bug Fixes
+
+* **ci:** remove unsupported --diff flag from pinact ([b982b65](https://github.com/martynvdijke/traces/commit/b982b652189d9401e7426cf9e25f66a84c872f56))
+
 ## [1.30.2](https://github.com/martynvdijke/traces/compare/v1.30.1...v1.30.2) (2026-08-26)
 
 
