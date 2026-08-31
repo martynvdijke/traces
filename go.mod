@@ -13,7 +13,8 @@ require (
 	github.com/swaggo/files/v2 v2.0.2
 	github.com/swaggo/gin-swagger v1.6.1
 	github.com/swaggo/swag v1.16.6
-	github.com/yuin/goldmark v1.8.5
+	github.com/yuin/goldmark v1.4.13
+	github.com/yuin/goldmark/v2 v2.0.0
 	go.opentelemetry.io/contrib/bridges/otelslog v0.20.1
 	go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin v0.71.0
 	go.opentelemetry.io/otel v1.46.0
