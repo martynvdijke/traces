@@ -2,7 +2,7 @@ module traces
 
 go 1.26.2
 
-require github.com/mattn/go-sqlite3 v1.14.50
+require github.com/mattn/go-sqlite3 v1.14.52
 
 require (
 	github.com/chai2010/webp v1.4.0
