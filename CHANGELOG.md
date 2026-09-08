@@ -1,3 +1,10 @@
+## [1.31.1](https://github.com/martynvdijke/traces/compare/v1.31.0...v1.31.1) (2026-09-08)
+
+
+### Bug Fixes
+
+* **deps:** update module golang.org/x/oauth2 to v0.37.0 ([#76](https://github.com/martynvdijke/traces/issues/76)) ([f83789c](https://github.com/martynvdijke/traces/commit/f83789c4bf446302f1ea06d306ab99baa2381122))
+
 # [1.31.0](https://github.com/martynvdijke/traces/compare/v1.30.9...v1.31.0) (2026-09-08)
 
 
