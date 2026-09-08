@@ -217,6 +217,27 @@ definitions:
 info:
   contact: {}
 paths:
+  /auth/oidc/callback:
+    get:
+      description: Handle Authelia code exchange, verify ID token, create session
+      responses: {}
+      summary: OIDC callback
+      tags:
+      - Authentication
+  /auth/oidc/login:
+    get:
+      description: Redirect to Authelia for OIDC Authorization Code + PKCE login
+      responses: {}
+      summary: OIDC login
+      tags:
+      - Authentication
+  /auth/oidc/logout:
+    get:
+      description: Clear local session and redirect to Authelia logout
+      responses: {}
+      summary: OIDC logout
+      tags:
+      - Authentication
   /auto-tag:
     post:
       consumes:

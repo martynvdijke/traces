@@ -4,6 +4,36 @@
         "contact": {}
     },
     "paths": {
+        "/auth/oidc/callback": {
+            "get": {
+                "description": "Handle Authelia code exchange, verify ID token, create session",
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "OIDC callback",
+                "responses": {}
+            }
+        },
+        "/auth/oidc/login": {
+            "get": {
+                "description": "Redirect to Authelia for OIDC Authorization Code + PKCE login",
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "OIDC login",
+                "responses": {}
+            }
+        },
+        "/auth/oidc/logout": {
+            "get": {
+                "description": "Clear local session and redirect to Authelia logout",
+                "tags": [
+                    "Authentication"
+                ],
+                "summary": "OIDC logout",
+                "responses": {}
+            }
+        },
         "/auto-tag": {
             "post": {
                 "description": "Automatically generates tags for an event using AI/Ollama",

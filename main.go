@@ -106,7 +106,7 @@ func init() {
 }
 
 const defaultColor = "#7c3aed"
-const currentSchemaVersion = 21
+const currentSchemaVersion = 22
 const currentVersion = "1.30.9"
 
 var (
@@ -249,6 +249,8 @@ func main() {
 		}
 	}
 
+	initOIDCFromEnv()
+
 	r := gin.Default()
 	r.MaxMultipartMemory = 32 << 20
 
@@ -287,6 +289,9 @@ func main() {
 		api.GET("/check-setup", handleCheckSetup)
 		api.POST("/login", handleLogin)
 		api.POST("/logout", handleLogout)
+		api.GET("/auth/oidc/login", handleOIDCLogin)
+		api.GET("/auth/oidc/callback", handleOIDCCallback)
+		api.GET("/auth/oidc/logout", handleOIDCLogout)
 		api.GET("/public", getPublicEvents)
 		api.GET("/share", getShareLink)
 		api.GET("/config", getPublicConfig)
@@ -656,6 +661,7 @@ func getPublicConfig(c *gin.Context) {
 		"umami_url":     umamiURL,
 		"umami_site":    umamiSiteID,
 		"umami_enabled": umamiEnabled,
+		"oidc_enabled":  oidcReady(),
 	})
 }
 
@@ -5129,7 +5135,10 @@ func createTables() {
 			email TEXT DEFAULT '',
 			color TEXT DEFAULT '#7c3aed',
 			avatar_url TEXT DEFAULT '',
-			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			oidc_sub TEXT DEFAULT '',
+			auth_method TEXT DEFAULT '',
+			is_admin INTEGER DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS ollama_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -5466,6 +5475,12 @@ func runMigration(fromVersion int) {
 		)`)
 		_, _ = db.Exec(`INSERT OR IGNORE INTO bgg_settings (id, username, enabled, last_sync) VALUES (1, '', 0, '')`)
 		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_events_bgg_ref ON timeline_events(source_ref) WHERE source='bgg'`)
+	case 21:
+		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN oidc_sub TEXT DEFAULT ''`)
+		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN auth_method TEXT DEFAULT ''`)
+		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`)
+		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(oidc_sub) WHERE oidc_sub <> ''`)
+		_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`)
 	}
 }
 

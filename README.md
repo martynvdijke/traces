@@ -123,6 +123,13 @@ task prepush
 | `GOTIFY_ENABLED` | Enable Gotify notifications | `false` |
 | `TRACES_JPEG_QUALITY` | JPEG quality (1–100) for full-size image uploads | `82` |
 | `TRACES_NOMINATIM_URL` | Nominatim reverse-geocoding endpoint (blank to disable suggestions) | `https://nominatim.openstreetmap.org/reverse` |
+| `OIDC_ENABLED` | Enable OIDC login via Authelia (`true`/`false`); password login stays as fallback | `false` |
+| `OIDC_ISSUER_URL` | OIDC issuer, e.g. `https://authelia.vandijke.xyz` | — |
+| `OIDC_CLIENT_ID` | OIDC client id registered in Authelia | — |
+| `OIDC_CLIENT_SECRET_FILE` | Path to file containing the client secret (preferred; never commit) | — |
+| `OIDC_CLIENT_SECRET` | Client secret inline (dev only; prefer `_FILE`) | — |
+| `OIDC_REDIRECT_URL` | Callback URL, e.g. `https://traces.vandijke.xyz/api/auth/oidc/callback` | — |
+| `OIDC_SCOPES` | Space-separated scopes | `openid email profile groups` |
 
 > **Optional runtime dependency — `ffmpeg`:** When `ffmpeg` is on the server `PATH`,
 > TRACES generates a poster-frame thumbnail for every uploaded video (used in

@@ -198,7 +198,7 @@ type CalendarDay struct {
 // Constants
 const (
 	DefaultColor         = "#7c3aed"
-	CurrentSchemaVersion = 21
+	CurrentSchemaVersion = 22
 	CurrentVersion       = "1.29.0"
 )
 
