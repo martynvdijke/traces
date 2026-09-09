@@ -1,3 +1,10 @@
+## [1.31.3](https://github.com/martynvdijke/traces/compare/v1.31.2...v1.31.3) (2026-09-09)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#77](https://github.com/martynvdijke/traces/issues/77)) ([79b8a90](https://github.com/martynvdijke/traces/commit/79b8a9060daf18588c3b951adfb2e1aaadaaeb4e))
+
 ## [1.31.2](https://github.com/martynvdijke/traces/compare/v1.31.1...v1.31.2) (2026-09-08)
 
 
