@@ -1,9 +1,11 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"encoding/json"
 	"log"
+	"log/slog"
 	"net/http"
 	"strconv"
 	"strings"
@@ -87,8 +89,30 @@ func (ls *LogService) Log(severity, source, message string, metadata map[string]
 		return
 	}
 
+	// Mirror the entry into the OTel log pipeline. Without this the slog bridge
+	// configured in initTelemetry has no producers and the OTLP logs exporter
+	// stays empty. Gated on the OTel logs setting to avoid noise when disabled.
+	if otelLogsEnabled {
+		slog.Default().Log(context.Background(), severityToSlog(severity), message,
+			"source", source, "metadata", metaJSON)
+	}
+
 	// Prune to 10K rows
 	ls.db.Exec("DELETE FROM app_logs WHERE id NOT IN (SELECT id FROM app_logs ORDER BY id DESC LIMIT 10000)")
+}
+
+// severityToSlog maps the app's severity strings to slog levels.
+func severityToSlog(severity string) slog.Level {
+	switch severity {
+	case "debug":
+		return slog.LevelDebug
+	case "warn":
+		return slog.LevelWarn
+	case "error":
+		return slog.LevelError
+	default:
+		return slog.LevelInfo
+	}
 }
 
 // SetMinSeverity updates the minimum severity threshold and persists it.

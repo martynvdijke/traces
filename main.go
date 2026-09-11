@@ -34,6 +34,7 @@ import (
 	"encoding/csv"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"image"
 	"image/jpeg"
@@ -46,12 +47,14 @@ import (
 	"net/http"
 	"net/smtp"
 	"os"
+	"os/signal"
 	"path/filepath"
 	"slices"
 	"sort"
 	"strconv"
 	"strings"
 	"sync"
+	"syscall"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -233,15 +236,20 @@ func main() {
 		}
 	}
 
-	// Load OTel settings from DB (fallback if env not set)
-	var otelCfg models.OtelConfig
+	// Load OTel settings from DB, then let standard OTel env vars take
+	// precedence (OTEL_EXPORTER_OTLP_ENDPOINT / *_EXPORTER=none).
 	var tEnabled, mEnabled, lEnabled int
 	if err := db.QueryRow("SELECT endpoint, traces_enabled, metrics_enabled, logs_enabled FROM otel_settings WHERE id = 1").Scan(&otelEndpoint, &tEnabled, &mEnabled, &lEnabled); err == nil {
 		otelTracesEnabled = tEnabled == 1
 		otelMetricsEnabled = mEnabled == 1
 		otelLogsEnabled = lEnabled == 1
 	}
-	_ = otelCfg
+	if envEndpoint := os.Getenv("OTEL_EXPORTER_OTLP_ENDPOINT"); envEndpoint != "" {
+		otelEndpoint = envEndpoint
+		otelTracesEnabled = os.Getenv("OTEL_TRACES_EXPORTER") != "none"
+		otelMetricsEnabled = os.Getenv("OTEL_METRICS_EXPORTER") != "none"
+		otelLogsEnabled = os.Getenv("OTEL_LOGS_EXPORTER") != "none"
+	}
 
 	if os.Getenv("BACKUP_RETENTION_DAYS") != "" {
 		if days, err := strconv.Atoi(os.Getenv("BACKUP_RETENTION_DAYS")); err == nil && days > 0 {
@@ -259,11 +267,11 @@ func main() {
 		log.Printf("Failed to initialize telemetry: %v", err)
 	} else {
 		// otelgin middleware for automatic request tracing with semantic conventions
-		r.Use(otelgin.Middleware("traces"))
+		r.Use(otelgin.Middleware(otelServiceName))
 		// Metrics middleware records Prometheus/OTel metrics (no span creation - otelgin handles that)
 		r.Use(prometheusMetricsMiddleware())
-		defer initShutdownTelemetry(tp)
 	}
+	shutdownTelemetry := initShutdownTelemetry(tp)
 
 	r.Use(func(c *gin.Context) {
 		c.Header("X-Frame-Options", "DENY")
@@ -515,7 +523,29 @@ func main() {
 		WriteTimeout: 60 * time.Second,
 		IdleTimeout:  120 * time.Second,
 	}
-	log.Fatal(srv.ListenAndServe())
+
+	// Run until interrupted, then flush telemetry before exiting.
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	srvErr := make(chan error, 1)
+	go func() { srvErr <- srv.ListenAndServe() }()
+
+	select {
+	case err := <-srvErr:
+		if err != nil && !errors.Is(err, http.ErrServerClosed) {
+			log.Printf("Server error: %v", err)
+		}
+	case <-ctx.Done():
+		log.Println("Shutdown signal received, draining...")
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+	if err := srv.Shutdown(shutdownCtx); err != nil {
+		log.Printf("HTTP server shutdown error: %v", err)
+	}
+	shutdownTelemetry()
 }
 
 // currentUser is the resolved identity of the logged-in account.

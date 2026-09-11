@@ -13,8 +13,10 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
 
@@ -102,7 +104,7 @@ func TestMetricsMiddleware(t *testing.T) {
 	httpRequestDuration.Reset()
 
 	router := gin.New()
-	router.Use(metricsMiddleware())
+	router.Use(prometheusMetricsMiddleware())
 	router.GET("/api/test", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
@@ -125,7 +127,7 @@ func TestMetricsMiddlewareErrorStatus(t *testing.T) {
 	httpRequestsTotal.Reset()
 
 	router := gin.New()
-	router.Use(metricsMiddleware())
+	router.Use(prometheusMetricsMiddleware())
 	router.GET("/api/error", func(c *gin.Context) {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "test error"})
 	})
@@ -711,30 +713,6 @@ func TestParseOTelProtocol(t *testing.T) {
 	}
 }
 
-func TestParseOTelResourceAttributes(t *testing.T) {
-	tests := []struct {
-		env  string
-		want int // number of attributes
-	}{
-		{"", 0},
-		{"key=value", 1},
-		{"key1=value1,key2=value2", 2},
-		{"key=value,empty=,trailing,==", 3},
-	}
-	for _, tt := range tests {
-		t.Run("attrs_"+tt.env, func(t *testing.T) {
-			orig := os.Getenv("OTEL_RESOURCE_ATTRIBUTES")
-			os.Setenv("OTEL_RESOURCE_ATTRIBUTES", tt.env)
-			defer os.Setenv("OTEL_RESOURCE_ATTRIBUTES", orig)
-
-			attrs := parseOTelResourceAttributes()
-			if len(attrs) != tt.want {
-				t.Errorf("got %d attributes, want %d: %v", len(attrs), tt.want, attrs)
-			}
-		})
-	}
-}
-
 func TestTraceDBQuery(t *testing.T) {
 	ctx := context.Background()
 
@@ -807,6 +785,35 @@ func TestTelemetryGracefulDegradation(t *testing.T) {
 			tp.Shutdown(context.Background())
 		}
 	}
+}
+
+func TestOTelMetricsExportedToPrometheus(t *testing.T) {
+	res, err := resource.New(context.Background(), resource.WithTelemetrySDK())
+	if err != nil {
+		t.Fatalf("creating resource: %v", err)
+	}
+
+	reg := prometheus.NewRegistry()
+	if err := initMetricExporterWithRegisterer(res, reg); err != nil {
+		t.Fatalf("initMetricExporterWithRegisterer: %v", err)
+	}
+	initOTelMetrics()
+	RecordEventOperation("prometheus-bridge-test")
+
+	mfs, err := reg.Gather()
+	if err != nil {
+		t.Fatalf("gather: %v", err)
+	}
+	for _, mf := range mfs {
+		if strings.Contains(mf.GetName(), "traces_event_operations") {
+			return
+		}
+	}
+	names := make([]string, 0, len(mfs))
+	for _, mf := range mfs {
+		names = append(names, mf.GetName())
+	}
+	t.Fatalf("OTel event operations metric not exported to Prometheus; got: %v", names)
 }
 
 func TestMetricsConcurrentSafety(t *testing.T) {

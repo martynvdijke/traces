@@ -6,7 +6,6 @@ import (
 	stdlog "log"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/gin-gonic/gin"
@@ -75,6 +74,10 @@ var (
 
 	// Exporter protocol selection (set from OTEL_EXPORTER_OTLP_PROTOCOL env var)
 	otelExporterProtocol = "grpc" // default; can be "http/protobuf"
+
+	// otelServiceName is the resolved service name used for the OTel resource
+	// and the otelgin middleware.
+	otelServiceName = "traces"
 )
 
 // initOTelMetrics creates OTel metric instruments after the meter provider is set up.
@@ -122,102 +125,32 @@ func parseOTelProtocol() {
 	}
 }
 
-// parseOTelResourceAttributes parses OTEL_RESOURCE_ATTRIBUTES env var and returns key-value pairs.
-func parseOTelResourceAttributes() []attribute.KeyValue {
-	attrs := os.Getenv("OTEL_RESOURCE_ATTRIBUTES")
-	if attrs == "" {
-		return nil
-	}
-	var kv []attribute.KeyValue
-	for _, pair := range strings.Split(attrs, ",") {
-		pair = strings.TrimSpace(pair)
-		if pair == "" {
-			continue
-		}
-		parts := strings.SplitN(pair, "=", 2)
-		if len(parts) == 2 {
-			kv = append(kv, attribute.String(strings.TrimSpace(parts[0]), strings.TrimSpace(parts[1])))
-		}
-	}
-	return kv
-}
-
-// tracingMiddleware creates an OTel span for each HTTP request and collects metrics.
-func tracingMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		path := c.FullPath()
-		method := c.Request.Method
-
-		// Start OTel span
-		ctx, span := tracer.Start(c.Request.Context(), method+" "+path,
-			trace.WithAttributes(
-				semconv.HTTPMethodKey.String(method),
-				semconv.HTTPRouteKey.String(path),
-				semconv.HTTPTargetKey.String(c.Request.URL.Path),
-			),
-		)
-		defer span.End()
-
-		// Track active requests (OTel)
-		if otelActiveRequests != nil {
-			otelActiveRequests.Add(ctx, 1)
-			defer otelActiveRequests.Add(ctx, -1)
-		}
-
-		start := time.Now()
-		c.Request = c.Request.WithContext(ctx)
-		c.Next()
-
-		duration := time.Since(start).Seconds()
-		status := c.Writer.Status()
-
-		// Prometheus metrics
-		httpRequestsTotal.WithLabelValues(method, path, fmt.Sprintf("%d", status)).Inc()
-		httpRequestDuration.WithLabelValues(method, path).Observe(duration)
-
-		// OTel metrics
-		if otelRequestDuration != nil {
-			otelRequestDuration.Record(ctx, duration,
-				metric.WithAttributes(
-					attribute.String("http.method", method),
-					attribute.String("http.route", path),
-					attribute.Int("http.status_code", status),
-				),
-			)
-		}
-
-		// Set span status based on response
-		if status >= 500 {
-			span.SetStatus(codes.Error, fmt.Sprintf("HTTP %d", status))
-		} else {
-			span.SetStatus(codes.Ok, "ok")
-		}
-		span.SetAttributes(semconv.HTTPStatusCodeKey.Int(status))
-	}
-}
-
 func initTelemetry() (*sdktrace.TracerProvider, error) {
-	// Parse protocol and resource attributes from env vars
+	// Parse protocol from env vars
 	parseOTelProtocol()
 
 	serviceName := os.Getenv("OTEL_SERVICE_NAME")
 	if serviceName == "" {
 		serviceName = "traces"
 	}
+	otelServiceName = serviceName
 
-	// Build resource with service name and optional additional attributes
-	resAttrs := []attribute.KeyValue{
-		semconv.ServiceNameKey.String(serviceName),
-	}
-	if extra := parseOTelResourceAttributes(); extra != nil {
-		resAttrs = append(resAttrs, extra...)
-	}
-
+	// Build the resource with standard detectors. WithFromEnv handles
+	// OTEL_RESOURCE_ATTRIBUTES and OTEL_SERVICE_NAME; the rest add the
+	// telemetry SDK, host, OS, process and container attributes expected by
+	// most backends. Detection may return a partial-resource warning, which
+	// is non-fatal: keep the resource we got.
 	res, err := resource.New(context.Background(),
-		resource.WithAttributes(resAttrs...),
+		resource.WithFromEnv(),
+		resource.WithTelemetrySDK(),
+		resource.WithHost(),
+		resource.WithOS(),
+		resource.WithProcess(),
+		resource.WithContainer(),
+		resource.WithAttributes(semconv.ServiceNameKey.String(serviceName)),
 	)
 	if err != nil {
-		return nil, fmt.Errorf("creating resource: %w", err)
+		stdlog.Printf("[OTel] Resource detection warning: %v", err)
 	}
 
 	// Configure tracer provider with sampler
@@ -287,7 +220,7 @@ func initTelemetry() (*sdktrace.TracerProvider, error) {
 	initOTelMetrics()
 
 	// Wire the slog bridge for log-to-trace correlation
-	otelSlogHandler := otelslog.NewHandler("traces", otelslog.WithLoggerProvider(global.GetLoggerProvider()))
+	otelSlogHandler := otelslog.NewHandler(otelServiceName, otelslog.WithLoggerProvider(global.GetLoggerProvider()))
 	slog.SetDefault(slog.New(otelSlogHandler))
 	stdlog.Printf("[OTel] Slog bridge initialized for log-to-trace correlation")
 
@@ -336,7 +269,13 @@ func newOTLPLogExporter(endpoint string) (sdklog.Exporter, error) {
 
 // initMetricExporter creates an OTel metric exporter and sets the global meter provider.
 // Uses OTLP gRPC or HTTP/protobuf when endpoint configured, otherwise stdout.
+// A Prometheus reader is always attached so OTel-native instruments are scrapeable
+// at the existing /metrics endpoint alongside the client_golang metrics.
 func initMetricExporter(res *resource.Resource) error {
+	return initMetricExporterWithRegisterer(res, prometheus.DefaultRegisterer)
+}
+
+func initMetricExporterWithRegisterer(res *resource.Resource, reg prometheus.Registerer) error {
 	var metricExporter sdkmetric.Exporter
 	var err error
 
@@ -354,33 +293,24 @@ func initMetricExporter(res *resource.Resource) error {
 		stdlog.Println("[OTel] Metric exporter: stdout")
 	}
 
-	mp := sdkmetric.NewMeterProvider(
+	opts := []sdkmetric.Option{
 		sdkmetric.WithReader(sdkmetric.NewPeriodicReader(metricExporter,
 			sdkmetric.WithInterval(10*time.Second))),
 		sdkmetric.WithResource(res),
-	)
+	}
+
+	// otelprom.New registers a Prometheus collector on the given registry but
+	// returns a Reader that must be attached to a MeterProvider for it to be
+	// populated. Skip it if the registry already has it (repeated init in tests).
+	if promExporter, perr := otelprom.New(otelprom.WithRegisterer(reg)); perr != nil {
+		stdlog.Printf("[OTel] Prometheus exporter unavailable: %v", perr)
+	} else {
+		opts = append(opts, sdkmetric.WithReader(promExporter))
+		stdlog.Println("[OTel] Prometheus exporter registered for OTel metrics")
+	}
+
+	mp := sdkmetric.NewMeterProvider(opts...)
 	otel.SetMeterProvider(mp)
-
-	// Also register OTel Prometheus exporter
-	if err := initPrometheusExporter(res); err != nil {
-		stdlog.Printf("[OTel] Warning: failed to initialize Prometheus exporter: %v", err)
-	}
-
-	return nil
-}
-
-// initPrometheusExporter creates an OTel Prometheus exporter and registers it.
-func initPrometheusExporter(res *resource.Resource) error {
-	promExporter, err := otelprom.New()
-	if err != nil {
-		return fmt.Errorf("creating Prometheus exporter: %w", err)
-	}
-
-	// Register a separate meter provider with the Prometheus reader
-	// This makes OTel metrics available at the /metrics endpoint via the
-	// existing promhttp handler, alongside the client_golang metrics.
-	_ = promExporter // The exporter auto-registers with the default prometheus registry
-	stdlog.Println("[OTel] Prometheus exporter registered for OTel metrics")
 	return nil
 }
 
@@ -404,12 +334,6 @@ func newOTLPTraceExporter(endpoint string) (sdktrace.SpanExporter, error) {
 		return otlptracehttp.New(ctx, otlptracehttp.WithEndpointURL(endpoint))
 	}
 	return otlptracegrpc.New(ctx, otlptracegrpc.WithEndpointURL(endpoint))
-}
-
-// metricsMiddleware returns the tracing middleware that collects both Prometheus
-// and OTel metrics and creates spans.
-func metricsMiddleware() gin.HandlerFunc {
-	return tracingMiddleware()
 }
 
 // prometheusMetricsMiddleware records Prometheus and OTel HTTP metrics only,
@@ -500,16 +424,33 @@ func TraceDBQuery(ctx context.Context, operation string, fn func(context.Context
 	return err
 }
 
-// initShutdownTelemetry performs a graceful shutdown of all OTel providers.
+// initShutdownTelemetry performs a graceful shutdown of all OTel providers so
+// batched spans, metrics and logs are flushed. It must be called before exit.
 func initShutdownTelemetry(tp *sdktrace.TracerProvider) func() {
 	return func() {
-		if tp == nil {
-			return
-		}
 		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 		defer cancel()
-		if err := tp.Shutdown(ctx); err != nil {
-			stdlog.Printf("[OTel] Error shutting down tracer provider: %v", err)
+
+		if tp != nil {
+			if err := tp.Shutdown(ctx); err != nil {
+				stdlog.Printf("[OTel] Error shutting down tracer provider: %v", err)
+			}
+		}
+		if mp, ok := otel.GetMeterProvider().(interface {
+			Shutdown(context.Context) error
+		}); ok {
+			if err := mp.Shutdown(ctx); err != nil {
+				stdlog.Printf("[OTel] Error shutting down meter provider: %v", err)
+			}
+		}
+		if lp := global.GetLoggerProvider(); lp != nil {
+			if s, ok := lp.(interface {
+				Shutdown(context.Context) error
+			}); ok {
+				if err := s.Shutdown(ctx); err != nil {
+					stdlog.Printf("[OTel] Error shutting down logger provider: %v", err)
+				}
+			}
 		}
 	}
 }
