@@ -1,3 +1,10 @@
+# [1.32.0](https://github.com/martynvdijke/traces/compare/v1.31.5...v1.32.0) (2026-09-11)
+
+
+### Features
+
+* wire OpenTelemetry signal export end to end ([405f41b](https://github.com/martynvdijke/traces/commit/405f41bb3d3cfb02c80434e050d7d54bffd14f76))
+
 ## [1.31.5](https://github.com/martynvdijke/traces/compare/v1.31.4...v1.31.5) (2026-09-11)
 
 ## [1.31.4](https://github.com/martynvdijke/traces/compare/v1.31.3...v1.31.4) (2026-09-10)
