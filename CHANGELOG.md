@@ -1,3 +1,10 @@
+## [1.32.1](https://github.com/martynvdijke/traces/compare/v1.32.0...v1.32.1) (2026-09-13)
+
+
+### Bug Fixes
+
+* **deps:** update module github.com/yuin/goldmark/v2 to v2.1.0 ([#81](https://github.com/martynvdijke/traces/issues/81)) ([7027363](https://github.com/martynvdijke/traces/commit/702736319ceed6ead7270b8b9fd2bd391ad0a04a))
+
 # [1.32.0](https://github.com/martynvdijke/traces/compare/v1.31.5...v1.32.0) (2026-09-11)
 
 
