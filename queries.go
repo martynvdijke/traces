@@ -31,18 +31,13 @@ type EventFilters struct {
 	UseFTS    bool  // use full-text search when Query is set
 }
 
-// BGG quarantine: main feed must exclude board-game plays.
-// Use the shared constants so exclusion stays consistent at ~10 query sites.
-const bggExclude = " AND (e.source = '' OR e.source IS NULL)"
-const bggExcludeNoAlias = " AND (source = '' OR source IS NULL)"
-
 // ---- Event query builder ----
 
 // eventSelectColumns returns the static SELECT / JOIN portion for events.
 func eventSelectColumns() string {
 	return `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')` + bggExclude
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
 }
 
 // BuildEventQuery builds a complete event SELECT query + args from filters.
@@ -79,7 +74,7 @@ func BuildEventQuery(filters EventFilters) (string, []any) {
 func BuildEventQueryPrefix() string {
 	return `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')` + bggExclude + ` AND 1=1`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND 1=1`
 }
 
 // appendEventFilters adds WHERE clauses for each non-empty filter.
@@ -200,16 +195,16 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 	s.YearOverYear = make(map[string]int)
 	s.ByYear = make(map[string]int)
 
-	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?"+bggExcludeNoAlias, year).Scan(&s.Total)
-	d.QueryRow("SELECT COUNT(DISTINCT location) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''"+bggExcludeNoAlias, year).Scan(&s.Locations)
-	d.QueryRow("SELECT COUNT(DISTINCT person_id) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND person_id IS NOT NULL"+bggExcludeNoAlias, year).Scan(&s.Persons)
-	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND media_url != ''"+bggExcludeNoAlias, year).Scan(&s.MediaTotal)
-	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''"+bggExcludeNoAlias, year).Scan(&s.WithLocation)
-	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND latitude != 0 AND longitude != 0"+bggExcludeNoAlias, year).Scan(&s.WithGeo)
+	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&s.Total)
+	d.QueryRow("SELECT COUNT(DISTINCT location) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&s.Locations)
+	d.QueryRow("SELECT COUNT(DISTINCT person_id) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND person_id IS NOT NULL", year).Scan(&s.Persons)
+	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND media_url != ''", year).Scan(&s.MediaTotal)
+	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&s.WithLocation)
+	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND latitude != 0 AND longitude != 0", year).Scan(&s.WithGeo)
 	d.QueryRow("SELECT COUNT(*) FROM persons").Scan(&s.PersonCount)
 	s.WithMedia = s.MediaTotal
 
-	if monthRows, err := d.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?`+bggExcludeNoAlias+` GROUP BY strftime('%m', event_date)`, year); err == nil {
+	if monthRows, err := d.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%m', event_date)`, year); err == nil {
 		for monthRows.Next() {
 			var m string
 			var c int
@@ -219,7 +214,7 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 		monthRows.Close()
 	}
 
-	if tagRows, err := d.Query(`SELECT tags, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND tags != ''`+bggExcludeNoAlias+` GROUP BY tags`, year); err == nil {
+	if tagRows, err := d.Query(`SELECT tags, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND tags != '' GROUP BY tags`, year); err == nil {
 		for tagRows.Next() {
 			var t string
 			var c int
@@ -229,7 +224,7 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 		tagRows.Close()
 	}
 
-	if mediaRows, err := d.Query(`SELECT media_type, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?`+bggExcludeNoAlias+` GROUP BY media_type`, year); err == nil {
+	if mediaRows, err := d.Query(`SELECT media_type, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? GROUP BY media_type`, year); err == nil {
 		for mediaRows.Next() {
 			var m string
 			var c int
@@ -239,7 +234,7 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 		mediaRows.Close()
 	}
 
-	if yoyRows, err := d.Query(`SELECT strftime('%Y', event_date), COUNT(*) FROM timeline_events WHERE 1=1` + bggExcludeNoAlias + ` GROUP BY strftime('%Y', event_date) ORDER BY strftime('%Y', event_date) DESC LIMIT 5`); err == nil {
+	if yoyRows, err := d.Query(`SELECT strftime('%Y', event_date), COUNT(*) FROM timeline_events WHERE 1=1 GROUP BY strftime('%Y', event_date) ORDER BY strftime('%Y', event_date) DESC LIMIT 5`); err == nil {
 		for yoyRows.Next() {
 			var y string
 			var c int
@@ -257,7 +252,7 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 func QueryMonthlyCounts(d *sql.DB, year string) map[string]int {
 	result := make(map[string]int)
 	rows, err := d.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events
-		WHERE strftime('%Y', event_date) = ?`+bggExcludeNoAlias+` GROUP BY strftime('%m', event_date)`, year)
+		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%m', event_date)`, year)
 	if err != nil {
 		return result
 	}
@@ -275,7 +270,7 @@ func QueryMonthlyCounts(d *sql.DB, year string) map[string]int {
 func QueryWeekdayCounts(d *sql.DB, year string) map[string]int {
 	result := make(map[string]int)
 	rows, err := d.Query(`SELECT CAST(strftime('%w', event_date) AS INTEGER), COUNT(*) FROM timeline_events
-		WHERE strftime('%Y', event_date) = ?`+bggExcludeNoAlias+` GROUP BY strftime('%w', event_date)`, year)
+		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%w', event_date)`, year)
 	if err != nil {
 		return result
 	}
@@ -293,7 +288,7 @@ func QueryWeekdayCounts(d *sql.DB, year string) map[string]int {
 func QueryTagFrequency(d *sql.DB, year string) []TagCount {
 	tagMap := make(map[string]int)
 	rows, err := d.Query(`SELECT tags FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? AND tags != ''`+bggExcludeNoAlias, year)
+		WHERE strftime('%Y', event_date) = ? AND tags != ''`, year)
 	if err != nil {
 		return nil
 	}
@@ -320,7 +315,7 @@ func QueryTagFrequency(d *sql.DB, year string) []TagCount {
 func QueryPersonEventCounts(d *sql.DB, year string) []PersonCount {
 	result := make([]PersonCount, 0)
 	rows, err := d.Query(`SELECT p.id, p.name, COUNT(e.id) as cnt FROM persons p
-		LEFT JOIN timeline_events e ON e.person_id = p.id AND strftime('%Y', e.event_date) = ? AND (e.source = '' OR e.source IS NULL)
+		LEFT JOIN timeline_events e ON e.person_id = p.id AND strftime('%Y', e.event_date) = ?
 		GROUP BY p.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
 	if err != nil {
 		return result
@@ -338,7 +333,7 @@ func QueryPersonEventCounts(d *sql.DB, year string) []PersonCount {
 func QueryUserEventCounts(d *sql.DB, year string) []UserCount {
 	result := make([]UserCount, 0)
 	rows, err := d.Query(`SELECT u.id, u.display_name, COUNT(e.id) as cnt FROM users u
-		LEFT JOIN timeline_events e ON e.user_id = u.id AND strftime('%Y', e.event_date) = ? AND (e.source = '' OR e.source IS NULL)
+		LEFT JOIN timeline_events e ON e.user_id = u.id AND strftime('%Y', e.event_date) = ?
 		GROUP BY u.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
 	if err != nil {
 		return result
@@ -356,7 +351,7 @@ func QueryUserEventCounts(d *sql.DB, year string) []UserCount {
 func QueryLocationCounts(d *sql.DB, year string, limit int) []LocationCount {
 	result := make([]LocationCount, 0)
 	rows, err := d.Query(`SELECT location, latitude, longitude, COUNT(*) as cnt FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? AND location != '' AND latitude != 0 AND longitude != 0`+bggExcludeNoAlias+`
+		WHERE strftime('%Y', event_date) = ? AND location != '' AND latitude != 0 AND longitude != 0
 		GROUP BY location ORDER BY cnt DESC LIMIT ?`, year, limit)
 	if err != nil {
 		return result
@@ -374,7 +369,7 @@ func QueryLocationCounts(d *sql.DB, year string, limit int) []LocationCount {
 func QueryMediaBreakdown(d *sql.DB, year string) map[string]int {
 	result := make(map[string]int)
 	rows, err := d.Query(`SELECT media_type, COUNT(*) FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? AND media_type != ''`+bggExcludeNoAlias+` GROUP BY media_type`, year)
+		WHERE strftime('%Y', event_date) = ? AND media_type != '' GROUP BY media_type`, year)
 	if err != nil {
 		return result
 	}
@@ -393,7 +388,7 @@ func QueryTopDay(d *sql.DB, year string) string {
 	var topDay string
 	var topCount int
 	d.QueryRow(`SELECT event_date, COUNT(*) as cnt FROM timeline_events
-		WHERE strftime('%Y', event_date) = ?`+bggExcludeNoAlias+` GROUP BY event_date ORDER BY cnt DESC LIMIT 1`, year).Scan(&topDay, &topCount)
+		WHERE strftime('%Y', event_date) = ? GROUP BY event_date ORDER BY cnt DESC LIMIT 1`, year).Scan(&topDay, &topCount)
 	return topDay
 }
 

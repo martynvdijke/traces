@@ -83,7 +83,7 @@ test.describe('Milestones View', () => {
 
     // Open admin UI authenticated as the seeded session.
     await page.context().addCookies([
-      { name: 'session', value: sessionCookie, url: 'http://localhost:6270' }
+      { name: 'session', value: sessionCookie, url: `http://localhost:${process.env.E2E_PORT || '6270'}` }
     ]);
     await page.goto('/admin.html');
     await page.waitForSelector('#persons-tab', { state: 'visible', timeout: 5000 });

@@ -278,6 +278,7 @@ func TestGetMediaIcon(t *testing.T) {
 		{"video", "fa-solid fa-video"},
 		{"audio", "fa-solid fa-music"},
 		{"image", "fa-solid fa-image"},
+		{"boardgame", "fa-solid fa-dice"},
 		{"unknown", "fa-solid fa-image"},
 		{"", "fa-solid fa-image"},
 	}

@@ -532,7 +532,7 @@ test.describe('TRACES Admin Backend', () => {
   test('should create and manage a backup', async () => {
     // Use native fetch instead of Playwright request fixture to avoid
     // "Request context disposed" error on retry in serial mode
-    const resp = await fetch(`http://localhost:6270/api/backup`, {
+    const resp = await fetch(`http://localhost:${process.env.E2E_PORT || '6270'}/api/backup`, {
       method: 'POST',
       headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken }
     });

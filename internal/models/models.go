@@ -235,6 +235,8 @@ func GetMediaIcon(mediaType string) string {
 		return "fa-solid fa-video"
 	case "audio":
 		return "fa-solid fa-music"
+	case "boardgame":
+		return "fa-solid fa-dice"
 	default:
 		return "fa-solid fa-image"
 	}

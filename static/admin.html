@@ -14,16 +14,6 @@
       (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
     </script>
     <style>
-        :root {
-            --primary: #7c3aed;
-            --primary-dark: #6d28d9;
-            --primary-light: #a78bfa;
-            --primary-glow: rgba(124,58,237,0.15);
-            --radius: 12px;
-            --radius-lg: 16px;
-            --gradient: linear-gradient(135deg, #7c3aed 0%, #a78bfa 100%);
-            --gradient-hero: linear-gradient(135deg, #1e1b4b 0%, #312e81 50%, #4c1d95 100%);
-        }
         * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: var(--font-sans);
@@ -199,21 +189,6 @@
         .table td { padding: 0.875rem 1rem; vertical-align: middle; border-color: var(--border); }
         .table tbody tr { transition: background 0.15s; }
         .table tbody tr:hover { background: var(--primary-glow); }
-
-        .media-type-badge {
-            padding: 0.25rem 0.6rem;
-            border-radius: 6px;
-            font-size: 0.7rem;
-            font-weight: 600;
-            text-transform: uppercase;
-            letter-spacing: 0.05em;
-        }
-        .media-type-badge.image { background: #dbeafe; color: #1d4ed8; }
-        .media-type-badge.video { background: #fce7f3; color: #be185d; }
-        .media-type-badge.audio { background: #fef3c7; color: #b45309; }
-        [data-theme="dark"] .media-type-badge.image { background: rgba(59,130,246,0.2); color: #93c5fd; }
-        [data-theme="dark"] .media-type-badge.video { background: rgba(236,72,153,0.2); color: #f9a8d4; }
-        [data-theme="dark"] .media-type-badge.audio { background: rgba(245,158,11,0.2); color: #fcd34d; }
 
         .person-card {
             display: flex;
@@ -584,29 +559,48 @@
         </div>
     </header>
 
-    <div class="nav-tabs-wrapper">
-        <div class="container">
-            <ul class="nav nav-tabs" id="adminTabs" role="tablist">
-                <li class="nav-item"><button class="nav-link active" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button" aria-label="Events tab"><i class="fa-solid fa-calendar me-2" aria-hidden="true"></i>Events</button></li>
-                <li class="nav-item"><button class="nav-link" id="trash-tab" data-bs-toggle="tab" data-bs-target="#trash-pane" type="button" aria-label="Trash tab"><i class="fa-solid fa-trash-can me-2" aria-hidden="true"></i>Trash</button></li>
-                <li class="nav-item"><button class="nav-link" id="persons-tab" data-bs-toggle="tab" data-bs-target="#persons-pane" type="button" aria-label="Persons tab"><i class="fa-solid fa-users me-2" aria-hidden="true"></i>Persons</button></li>
-                <li class="nav-item"><button class="nav-link" id="milestones-tab" data-bs-toggle="tab" data-bs-target="#milestones-pane" type="button" aria-label="Milestones tab"><i class="fa-solid fa-book me-2" aria-hidden="true"></i>Milestones</button></li>
-                <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button" aria-label="Upload tab"><i class="fa-solid fa-upload me-2" aria-hidden="true"></i>Upload</button></li>
-                <li class="nav-item"><button class="nav-link" id="integrations-tab" data-bs-toggle="tab" data-bs-target="#integrations-pane" type="button" aria-label="Integrations tab"><i class="fa-solid fa-plug me-2" aria-hidden="true"></i>Integrations</button></li>
-                <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button" aria-label="Memories tab"><i class="fa-solid fa-clock-rotate-left me-2" aria-hidden="true"></i>Memories</button></li>
-                <li class="nav-item"><button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates-pane" type="button" aria-label="Templates tab"><i class="fa-solid fa-copy me-2" aria-hidden="true"></i>Templates</button></li>
-                <li class="nav-item"><button class="nav-link" id="collections-tab" data-bs-toggle="tab" data-bs-target="#collections-pane" type="button" aria-label="Collections tab"><i class="fa-solid fa-folder me-2" aria-hidden="true"></i>Collections</button></li>
-                <li class="nav-item"><button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags-pane" type="button" aria-label="Tags tab"><i class="fa-solid fa-tags me-2" aria-hidden="true"></i>Tags</button></li>
-                <li class="nav-item"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button" aria-label="Users tab"><i class="fa-solid fa-people-group me-2" aria-hidden="true"></i>Users</button></li>
-                <li class="nav-item"><button class="nav-link" id="ollama-tab" data-bs-toggle="tab" data-bs-target="#ollama-pane" type="button" aria-label="AI tab"><i class="fa-solid fa-robot me-2" aria-hidden="true"></i>AI</button></li>
-                <li class="nav-item"><button class="nav-link" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup-pane" type="button" aria-label="Backup tab"><i class="fa-solid fa-database me-2" aria-hidden="true"></i>Backup</button></li>
-                <li class="nav-item"><button class="nav-link" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs-pane" type="button" aria-label="Logs tab"><i class="fa-solid fa-list me-2" aria-hidden="true"></i>Logs</button></li>
-            </ul>
-        </div>
-    </div>
-
     <div class="container py-4">
-        <div class="tab-content">
+        <div class="admin-layout">
+            <nav class="admin-sidebar" aria-label="Admin sections">
+                <div class="admin-sidebar-groups">
+                    <div class="admin-nav-group">
+                        <div class="admin-nav-group-title"><i class="fa-solid fa-layer-group" aria-hidden="true"></i> Content</div>
+                        <ul class="nav nav-tabs admin-nav-list" id="adminTabs" role="tablist">
+                            <li class="nav-item"><button class="nav-link active" id="events-tab" data-bs-toggle="tab" data-bs-target="#events-pane" type="button" aria-label="Events tab"><i class="fa-solid fa-calendar me-2" aria-hidden="true"></i>Events</button></li>
+                            <li class="nav-item"><button class="nav-link" id="persons-tab" data-bs-toggle="tab" data-bs-target="#persons-pane" type="button" aria-label="Persons tab"><i class="fa-solid fa-users me-2" aria-hidden="true"></i>Persons</button></li>
+                            <li class="nav-item"><button class="nav-link" id="milestones-tab" data-bs-toggle="tab" data-bs-target="#milestones-pane" type="button" aria-label="Milestones tab"><i class="fa-solid fa-book me-2" aria-hidden="true"></i>Milestones</button></li>
+                            <li class="nav-item"><button class="nav-link" id="collections-tab" data-bs-toggle="tab" data-bs-target="#collections-pane" type="button" aria-label="Collections tab"><i class="fa-solid fa-folder me-2" aria-hidden="true"></i>Collections</button></li>
+                            <li class="nav-item"><button class="nav-link" id="tags-tab" data-bs-toggle="tab" data-bs-target="#tags-pane" type="button" aria-label="Tags tab"><i class="fa-solid fa-tags me-2" aria-hidden="true"></i>Tags</button></li>
+                        </ul>
+                    </div>
+                    <div class="admin-nav-group">
+                        <div class="admin-nav-group-title"><i class="fa-solid fa-photo-film" aria-hidden="true"></i> Media</div>
+                        <ul class="nav nav-tabs admin-nav-list" role="tablist">
+                            <li class="nav-item"><button class="nav-link" id="upload-tab" data-bs-toggle="tab" data-bs-target="#upload-pane" type="button" aria-label="Upload tab"><i class="fa-solid fa-upload me-2" aria-hidden="true"></i>Upload</button></li>
+                        </ul>
+                    </div>
+                    <div class="admin-nav-group">
+                        <div class="admin-nav-group-title"><i class="fa-solid fa-gear" aria-hidden="true"></i> System</div>
+                        <ul class="nav nav-tabs admin-nav-list" role="tablist">
+                            <li class="nav-item"><button class="nav-link" id="integrations-tab" data-bs-toggle="tab" data-bs-target="#integrations-pane" type="button" aria-label="Integrations tab"><i class="fa-solid fa-plug me-2" aria-hidden="true"></i>Integrations</button></li>
+                            <li class="nav-item"><button class="nav-link" id="memories-tab" data-bs-toggle="tab" data-bs-target="#memories-pane" type="button" aria-label="Memories tab"><i class="fa-solid fa-clock-rotate-left me-2" aria-hidden="true"></i>Memories</button></li>
+                            <li class="nav-item"><button class="nav-link" id="templates-tab" data-bs-toggle="tab" data-bs-target="#templates-pane" type="button" aria-label="Templates tab"><i class="fa-solid fa-copy me-2" aria-hidden="true"></i>Templates</button></li>
+                            <li class="nav-item"><button class="nav-link" id="users-tab" data-bs-toggle="tab" data-bs-target="#users-pane" type="button" aria-label="Users tab"><i class="fa-solid fa-people-group me-2" aria-hidden="true"></i>Users</button></li>
+                            <li class="nav-item"><button class="nav-link" id="ollama-tab" data-bs-toggle="tab" data-bs-target="#ollama-pane" type="button" aria-label="AI tab"><i class="fa-solid fa-robot me-2" aria-hidden="true"></i>AI</button></li>
+                            <li class="nav-item"><button class="nav-link" id="backup-tab" data-bs-toggle="tab" data-bs-target="#backup-pane" type="button" aria-label="Backup tab"><i class="fa-solid fa-database me-2" aria-hidden="true"></i>Backup</button></li>
+                            <li class="nav-item"><button class="nav-link" id="logs-tab" data-bs-toggle="tab" data-bs-target="#logs-pane" type="button" aria-label="Logs tab"><i class="fa-solid fa-list me-2" aria-hidden="true"></i>Logs</button></li>
+                        </ul>
+                    </div>
+                    <div class="admin-nav-group">
+                        <div class="admin-nav-group-title admin-nav-group-title--trash"><i class="fa-solid fa-trash-can" aria-hidden="true"></i> Trash</div>
+                        <ul class="nav nav-tabs admin-nav-list" role="tablist">
+                            <li class="nav-item"><button class="nav-link" id="trash-tab" data-bs-toggle="tab" data-bs-target="#trash-pane" type="button" aria-label="Trash tab"><i class="fa-solid fa-trash-can me-2" aria-hidden="true"></i>Trash</button></li>
+                        </ul>
+                    </div>
+                </div>
+            </nav>
+            <div class="admin-main">
+                <div class="tab-content">
             <!-- EVENTS TAB -->
             <div class="tab-pane fade show active" id="events-pane">
                 <div class="d-flex justify-content-between align-items-center mb-3">
@@ -628,6 +622,7 @@
                                 <option value="image">Images</option>
                                 <option value="video">Videos</option>
                                 <option value="audio">Audio</option>
+                                <option value="boardgame">Board Games</option>
                             </select>
                             <select class="form-select" id="filter-collection" style="min-width:120px" onchange="filterByCollection()" aria-label="Filter by collection">
                                 <option value="">All Collections</option>
@@ -756,8 +751,16 @@
                 <div class="d-flex justify-content-between align-items-center mb-3">
                     <h5 class="fw-bold mb-0"><i class="fa-solid fa-plug me-2 text-primary" aria-hidden="true"></i>Integrations</h5>
                 </div>
+                <nav class="integrations-subnav" aria-label="Integration sections">
+                    <a href="#integration-gotify"><i class="fa-solid fa-bell" aria-hidden="true"></i> Gotify</a>
+                    <a href="#integration-email"><i class="fa-solid fa-envelope" aria-hidden="true"></i> Email</a>
+                    <a href="#integration-immich"><i class="fa-solid fa-cloud" aria-hidden="true"></i> Immich</a>
+                    <a href="#integration-bgg"><i class="fa-solid fa-dice" aria-hidden="true"></i> BGG</a>
+                    <a href="#integration-umami"><i class="fa-solid fa-chart-simple" aria-hidden="true"></i> Umami</a>
+                    <a href="#integration-otel"><i class="fa-solid fa-tower-broadcast" aria-hidden="true"></i> OTel</a>
+                </nav>
 
-                <div class="card mb-3">
+                <div class="card mb-3" id="integration-gotify">
                     <div class="card-header"><i class="fa-solid fa-bell me-2" aria-hidden="true"></i>Gotify Notifications</div>
                     <div class="card-body">
                         <form id="gotify-form">
@@ -782,7 +785,7 @@
                     </div>
                 </div>
 
-                <div class="card mb-3">
+                <div class="card mb-3" id="integration-email">
                     <div class="card-header"><i class="fa-solid fa-envelope me-2" aria-hidden="true"></i>Email Settings</div>
                     <div class="card-body">
                         <form id="email-form">
@@ -824,7 +827,7 @@
                     </div>
                 </div>
 
-                <div class="card mb-3">
+                <div class="card mb-3" id="integration-immich">
                     <div class="card-header"><i class="fa-solid fa-cloud me-2" aria-hidden="true"></i>Immich Connection</div>
                     <div class="card-body">
                         <form id="immich-form">
@@ -847,7 +850,7 @@
                     </div>
                 </div>
 
-                <div class="card">
+                <div class="card mb-3" id="integration-immich-memories">
                     <div class="card-header d-flex justify-content-between align-items-center">
                         <span><i class="fa-solid fa-clock-rotate-left me-2" aria-hidden="true"></i>Today's Immich Memories</span>
                         <div>
@@ -863,7 +866,7 @@
                     </div>
                 </div>
 
-                <div class="card mb-3">
+                <div class="card mb-3" id="integration-bgg">
                     <div class="card-header"><i class="fa-solid fa-dice me-2" aria-hidden="true"></i>BoardGameGeek</div>
                     <div class="card-body">
                         <form id="bgg-form">
@@ -879,30 +882,15 @@
                             <div class="d-flex gap-2">
                                 <button type="submit" class="btn btn-primary" aria-label="Save BGG settings"><i class="fa-solid fa-save me-1" aria-hidden="true"></i> Save</button>
                                 <button type="button" class="btn btn-outline-secondary" onclick="testBGG()" aria-label="Test BGG connection"><i class="fa-solid fa-plug me-1" aria-hidden="true"></i> Test Connection</button>
+                                <button type="button" class="btn btn-success" onclick="syncBGG()" aria-label="Sync BGG plays"><i class="fa-solid fa-download me-1" aria-hidden="true"></i> Sync Now</button>
                             </div>
                         </form>
                         <div id="bgg-result" class="mt-3"></div>
-                    </div>
-                </div>
-
-                <div class="card mb-3">
-                    <div class="card-header d-flex justify-content-between align-items-center">
-                        <span><i class="fa-solid fa-dice me-2" aria-hidden="true"></i>Board Game Corner</span>
-                        <div>
-                            <button type="button" class="btn btn-sm btn-outline-secondary me-1" onclick="loadBGGCorner()" aria-label="Refresh BGG plays"><i class="fa-solid fa-rotate me-1" aria-hidden="true"></i> Refresh</button>
-                            <button type="button" class="btn btn-sm btn-success" onclick="syncBGG()" aria-label="Sync BGG plays"><i class="fa-solid fa-download me-1" aria-hidden="true"></i> Sync Now</button>
-                        </div>
-                    </div>
-                    <div class="card-body">
-                        <div id="bgg-stats" class="mb-3"></div>
-                        <div id="bgg-corner-list">
-                            <div class="text-center text-muted py-4"><i class="fa-solid fa-spinner fa-spin me-2" aria-hidden="true"></i>Loading...</div>
-                        </div>
                         <div id="bgg-sync-result" class="mt-3"></div>
                     </div>
                 </div>
 
-                <div class="card mb-3">
+                <div class="card mb-3" id="integration-umami">
                     <div class="card-header"><i class="fa-solid fa-chart-simple me-2" aria-hidden="true"></i>Umami Analytics</div>
                     <div class="card-body">
                         <form id="umami-form">
@@ -928,7 +916,7 @@
                     </div>
                 </div>
 
-                <div class="card mb-3">
+                <div class="card mb-3" id="integration-otel">
                     <div class="card-header"><i class="fa-solid fa-tower-broadcast me-2" aria-hidden="true"></i>Telemetry / OpenTelemetry</div>
                     <div class="card-body">
                         <form id="otel-form">
@@ -1287,6 +1275,8 @@
                 </div>
             </div>
         </div>
+            </div>
+        </div>
     </div>
 
                 <!-- USER MODAL -->
@@ -1421,6 +1411,7 @@
                                     <option value="image">Image</option>
                                     <option value="video">Video</option>
                                     <option value="audio">Audio</option>
+                                    <option value="boardgame">Board Games</option>
                                 </select>
                             </div>
                             <div class="col-sm-4">

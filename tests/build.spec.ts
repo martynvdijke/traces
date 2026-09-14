@@ -78,7 +78,7 @@ test.describe('TypeScript Build Output', () => {
     const body = await resp.text();
     expect(body).toContain('initMap');
     expect(body).toContain('focusEvent');
-    expect(body).toContain('export {}');
+    expect(body).toContain('MAP_TILE_URL');
   });
 
   test('should serve source maps for all JS files', async ({ request }) => {

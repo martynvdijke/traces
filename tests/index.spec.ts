@@ -64,7 +64,9 @@ test.describe('TRACES Timeline', () => {
 
   test('should filter by month', async ({ page }) => {
     await page.goto('/');
-    await page.locator('button:has-text("Jan")').click();
+    const jan = page.locator('.month-filter button', { hasText: 'Jan' });
+    await jan.scrollIntoViewIfNeeded();
+    await jan.click();
     await expect(page.locator('.month-filter button.btn-dark')).toHaveText('Jan');
   });
 

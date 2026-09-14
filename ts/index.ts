@@ -63,6 +63,10 @@ type Theme = 'light' | 'dark';
 
 let currentYear: number = new Date().getFullYear();
 let currentMonth: number = 0;
+// Phase 4: split view-vs-filter state — viewedYear follows scroll, filterYear/Month drive what is shown
+let viewedYear: number = currentYear;
+let filterYear: number | null = null;
+let activeFilterMonth: number = 0;
 // `allEvents` holds the full multi-year story; `events` is the currently visible (filtered) set.
 let allEvents: TimelineEvent[] = [];
 let events: TimelineEvent[] = [];
@@ -90,6 +94,58 @@ function setTheme(theme: Theme): void {
   if (themeIcon) {
     themeIcon.className = theme === 'dark' ? 'fa-solid fa-sun' : 'fa-solid fa-moon';
   }
+  if (themeToggle) themeToggle.setAttribute('aria-pressed', theme === 'dark' ? 'true' : 'false');
+}
+
+let trapOpener: HTMLElement | null = null;
+let trapContainer: HTMLElement | null = null;
+let trapHandler: ((e: KeyboardEvent) => void) | null = null;
+
+function getFocusable(container: HTMLElement): HTMLElement[] {
+  const sel = 'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+  return Array.from(container.querySelectorAll(sel) as NodeListOf<HTMLElement>).filter(el => {
+    const style = window.getComputedStyle(el);
+    return (style.display !== 'none' && style.visibility !== 'hidden' && (el as HTMLElement).offsetParent !== null) || el === document.activeElement;
+  }) as HTMLElement[];
+}
+
+function trapFocus(container: HTMLElement): void {
+  releaseFocus();
+  trapOpener = document.activeElement as HTMLElement;
+  trapContainer = container;
+  const focusable = getFocusable(container);
+  const toFocus = focusable[0] || container;
+  // ensure container can receive focus if no child
+  if (!focusable.length) {
+    container.setAttribute('tabindex', '-1');
+  }
+  toFocus.focus();
+  trapHandler = (e: KeyboardEvent) => {
+    if (e.key !== 'Tab' || !trapContainer) return;
+    const els = getFocusable(trapContainer);
+    if (els.length === 0) { e.preventDefault(); return; }
+    const first = els[0];
+    const last = els[els.length - 1];
+    if (e.shiftKey) {
+      if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+    } else {
+      if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+    }
+  };
+  container.addEventListener('keydown', trapHandler);
+}
+
+function releaseFocus(): void {
+  if (trapContainer && trapHandler) trapContainer.removeEventListener('keydown', trapHandler);
+  const opener = trapOpener;
+  trapContainer = null;
+  trapHandler = null;
+  trapOpener = null;
+  // restore focus after trap released
+  if (opener && typeof opener.focus === 'function') {
+    // restore on next tick to avoid focus being stolen by hide animation
+    setTimeout(() => opener.focus(), 0);
+  }
 }
 
 function initTheme(): void {
@@ -103,59 +159,77 @@ function initTheme(): void {
   });
 }
 
-function changeYear(year: number): void {
+function setViewedYearOnly(year: number): void {
+  viewedYear = year;
   currentYear = year;
   const yearEl = document.getElementById('current-year');
   if (yearEl) yearEl.textContent = String(year);
-  document.querySelectorAll('.year-selector .btn').forEach(b => b.classList.remove('btn-primary'));
-  document.querySelectorAll('.year-selector .btn').forEach(b => b.classList.add('btn-outline-primary'));
-  const btn = document.querySelector(`.year-selector .btn[data-year="${year}"]`);
-  if (btn) { btn.classList.remove('btn-outline-primary'); btn.classList.add('btn-primary'); }
+  document.querySelectorAll('#year-buttons .btn[data-year]').forEach(b => {
+    const active = b.getAttribute('data-year') === String(year);
+    b.classList.toggle('btn-primary', active);
+    b.classList.toggle('btn-outline-primary', !active);
+    if (active) b.setAttribute('aria-current', 'true');
+    else b.removeAttribute('aria-current');
+  });
   const icsLink = document.getElementById('ics-download') as HTMLAnchorElement;
   if (icsLink) icsLink.href = '/api/events/ics?year=' + year;
-  // The story already contains every year — just glide to this one.
+}
+
+function scrollToYear(year: number): void {
+  setViewedYearOnly(year);
   const marker = document.getElementById('year-' + year);
   if (marker) {
     marker.scrollIntoView({ behavior: 'smooth', block: 'start' });
   }
-  loadStatsDist();
+  // deliberately no fetch — year chips are scroll-aids (Phase 4 decision)
+}
+
+function changeYear(year: number): void {
+  // Back-compat: treat as scroll-aid, no filter refetch
+  scrollToYear(year);
 }
 
 function searchEvents(): void {
-  const input = document.getElementById('search-input') as HTMLInputElement | null;
-  if (input?.value) {
-    applyAdvancedFilters();
-  }
+  // Unified search: typing already live-filters; lens path is removed. Keep as no-op
+  // for back-compat (tests / inline handlers) — just ensure dropdown state is consistent.
   hideGlobalDropdown();
 }
 
-function globalSearchInput(): void {
+function updateGlobalDropdown(): void {
   const input = document.getElementById('search-input') as HTMLInputElement | null;
-  const q = input?.value?.trim();
-  if (!q || q.length < 2) {
-    hideGlobalDropdown();
-    return;
+  const dropdown = document.getElementById('global-search-dropdown');
+  if (!dropdown || !input) return;
+  const q = input.value.trim();
+  if (!q) { hideGlobalDropdown(); return; }
+  const matches = filteredEvents();
+  if (matches.length === 0) {
+    dropdown.innerHTML = '<div class="global-search-no-results" role="option" aria-selected="false">No matches found</div>';
+    dropdown.style.display = 'block';
+    input.setAttribute('aria-expanded', 'true');
+    input.removeAttribute('aria-activedescendant');
+    globalSearchIndex = -1;
+  } else {
+    const items = matches.slice(0, 8);
+    dropdown.innerHTML = items.map((e: any, i: number) => {
+      const year = e.date ? e.date.slice(0, 4) : '';
+      const loc = e.location ? ' <span class="search-year"><i class="fa-solid fa-location-dot"></i> ' + escapeHtml(e.location) + '</span>' : '';
+      return '<div class="global-search-item" id="search-option-' + i + '" role="option" aria-selected="false" data-id="' + e.id + '" onclick="selectGlobalResult(' + e.id + ')" onmouseenter="highlightGlobalItem(' + i + ')">' +
+        '<div class="fw-bold">' + escapeHtml(e.title) + '</div>' +
+        '<div class="search-year">' + year + loc + '</div>' +
+        '</div>';
+    }).join('');
+    dropdown.style.display = 'block';
+    input.setAttribute('aria-expanded', 'true');
+    globalSearchIndex = -1;
+    input.removeAttribute('aria-activedescendant');
   }
-  fetch('/api/events/search/global?q=' + encodeURIComponent(q) + '&limit=8')
-    .then(r => r.json())
-    .then((results: any[]) => {
-      const dropdown = document.getElementById('global-search-dropdown');
-      if (!dropdown) return;
-      if (!Array.isArray(results) || results.length === 0) {
-        dropdown.innerHTML = '<div class="global-search-no-results">No matches found</div>';
-      } else {
-        dropdown.innerHTML = results.map((e: any, i: number) => {
-          const year = e.date ? e.date.slice(0, 4) : '';
-          const loc = e.location ? ' <span class="search-year"><i class="fa-solid fa-location-dot"></i> ' + escapeHtml(e.location) + '</span>' : '';
-          return '<div class="global-search-item" data-id="' + e.id + '" onclick="selectGlobalResult(' + e.id + ')" onmouseenter="highlightGlobalItem(' + i + ')">' +
-            '<div class="fw-bold">' + escapeHtml(e.title) + '</div>' +
-            '<div class="search-year">' + year + loc + '</div>' +
-            '</div>';
-        }).join('');
-      }
-      dropdown.style.display = 'block';
-    })
-    .catch(() => { hideGlobalDropdown(); });
+}
+
+function globalSearchInput(): void {
+  // One input, one model: typing live-filters the story (via existing filter path)
+  // and presents the same matching results in the dropdown. No separate fetch.
+  applyAdvancedFilters();
+  updateGlobalDropdown();
 }
 
 let globalSearchIndex = -1;
@@ -184,25 +258,33 @@ function globalSearchKeydown(e: KeyboardEvent): void {
 }
 
 function updateGlobalHighlight(items: NodeListOf<Element>): void {
+  const input = document.getElementById('search-input') as HTMLInputElement | null;
   items.forEach((item, i) => {
-    item.classList.toggle('active', i === globalSearchIndex);
+    const active = i === globalSearchIndex;
+    item.classList.toggle('active', active);
+    item.setAttribute('aria-selected', active ? 'true' : 'false');
   });
+  if (input) {
+    if (globalSearchIndex >= 0 && items[globalSearchIndex]) {
+      input.setAttribute('aria-activedescendant', items[globalSearchIndex].id || 'search-option-' + globalSearchIndex);
+    } else {
+      input.removeAttribute('aria-activedescendant');
+    }
+  }
 }
 
 function highlightGlobalItem(index: number): void {
   const dropdown = document.getElementById('global-search-dropdown');
   if (!dropdown) return;
   const items = dropdown.querySelectorAll('.global-search-item');
-  items.forEach((item, i) => {
-    item.classList.toggle('active', i === index);
-  });
   globalSearchIndex = index;
+  updateGlobalHighlight(items);
 }
 
 function globalSearchFocus(): void {
   const input = document.getElementById('search-input') as HTMLInputElement | null;
-  if (input?.value?.trim() && input.value.trim().length >= 2) {
-    globalSearchInput();
+  if (input?.value?.trim()) {
+    updateGlobalDropdown();
   }
 }
 
@@ -215,6 +297,10 @@ function hideGlobalDropdown(): void {
   const dropdown = document.getElementById('global-search-dropdown');
   if (dropdown) dropdown.style.display = 'none';
   globalSearchIndex = -1;
+  const input = document.getElementById('search-input') as HTMLInputElement | null;
+  if (input) { input.setAttribute('aria-expanded', 'false'); input.removeAttribute('aria-activedescendant'); }
+  // clear aria-selected
+  if (dropdown) dropdown.querySelectorAll('[role="option"]').forEach(el => el.setAttribute('aria-selected', 'false'));
 }
 
 document.addEventListener('click', (e: Event) => {
@@ -224,28 +310,59 @@ document.addEventListener('click', (e: Event) => {
   }
 });
 
+function syncFilterURL(): void {
+  const params = new URLSearchParams(window.location.search);
+  if (filterYear !== null) params.set('year', String(filterYear));
+  else params.delete('year');
+  if (activeFilterMonth !== 0) params.set('month', String(activeFilterMonth));
+  else params.delete('month');
+  // preserve q if present
+  const q = (document.getElementById('search-input') as HTMLInputElement | null)?.value?.trim() || params.get('q') || '';
+  if (q) params.set('q', q); else params.delete('q');
+  const qs = params.toString();
+  const url = window.location.pathname + (qs ? '?' + qs : '') + window.location.hash;
+  history.replaceState(null, '', url);
+}
+
 function filterMonth(month: number): void {
+  activeFilterMonth = month;
   currentMonth = month;
   const buttons = document.querySelectorAll('.month-filter .btn');
   buttons.forEach((btn, i) => {
-    btn.classList.toggle('active', i === month);
-    btn.classList.toggle('btn-dark', i === month);
-    btn.classList.toggle('btn-outline-dark', i !== month);
+    const active = i === month;
+    btn.classList.toggle('active', active);
+    btn.classList.toggle('btn-dark', active);
+    btn.classList.toggle('btn-outline-dark', !active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
   });
+  syncFilterURL();
   renderStory();
   renderCalendar();
   updateStats();
   renderMapInstance();
+  loadStatsDist();
+}
+
+function effectiveStatsYear(): number {
+  if (filterYear !== null) return filterYear;
+  const fe = filteredEvents();
+  if (fe.length) {
+    const y = parseInt(fe[0].date.slice(0, 4));
+    if (!isNaN(y)) return y;
+  }
+  return viewedYear;
 }
 
 async function loadContributions(): Promise<void> {
   try {
-    const res = await fetch('/api/contributions?year=' + currentYear);
+    const yearForFetch = effectiveStatsYear();
+    const res = await fetch('/api/contributions?year=' + yearForFetch);
     if (!res.ok) {
       contributions = {};
     } else {
       contributions = await res.json() as ContributionMap;
     }
+    // When a month filter is active, contribution data is still year-scoped; stats below reflect month filtering via updateStats
     renderContributionGraph();
     updateStats();
   } catch (err) {
@@ -257,15 +374,16 @@ function renderContributionGraph(): void {
   const graph = document.getElementById('contribution-graph');
   if (!graph) return;
 
-  const firstDay = new Date(currentYear, 0, 1);
+  const y = effectiveStatsYear();
+  const firstDay = new Date(y, 0, 1);
   const startDay = firstDay.getDay();
-  const daysInYear = (currentYear % 4 === 0 && currentYear % 100 !== 0) || currentYear % 400 === 0 ? 366 : 365;
+  const daysInYear = (y % 4 === 0 && y % 100 !== 0) || y % 400 === 0 ? 366 : 365;
   const maxCount = Math.max(...Object.values(contributions), 1);
 
   let html = '<div class="graph-months">';
   const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
   months.forEach((m, i) => {
-    if (i === 0 || new Date(currentYear, i, 1).getDay() === 0) {
+    if (i === 0 || new Date(y, i, 1).getDay() === 0) {
       html += '<span class="month-label">' + m + '</span>';
     }
   });
@@ -277,7 +395,7 @@ function renderContributionGraph(): void {
   }
 
   for (let day = 1; day <= daysInYear; day++) {
-    const dateObj = new Date(currentYear, 0, day);
+    const dateObj = new Date(y, 0, day);
     const dateStr = dateObj.toISOString().split('T')[0];
     const count = contributions[dateStr] || 0;
     const level = count > 0 ? Math.ceil((count / maxCount) * 4) : 0;
@@ -294,11 +412,7 @@ function renderContributionGraph(): void {
 }
 
 function updateStats(): void {
-  const eventList = Array.isArray(events) ? events : [];
-  const filtered = eventList.length > 0
-    ? (currentMonth > 0 ? eventList.filter(e => new Date(e.date).getMonth() + 1 === currentMonth) : eventList)
-    : [];
-
+  const filtered = filteredEvents();
   const totalEl = document.getElementById('total-events');
   if (totalEl) totalEl.textContent = filtered.length + ' events';
 
@@ -329,6 +443,7 @@ function toggleFilters(): void {
   if (!panel) return;
   const isHidden = panel.style.display === 'none' || !panel.style.display;
   panel.style.display = isHidden ? 'block' : 'none';
+  document.getElementById('filters-toggle')?.setAttribute('aria-expanded', isHidden ? 'true' : 'false');
 }
 
 function applyAdvancedFilters(): void {
@@ -340,6 +455,7 @@ function applyAdvancedFilters(): void {
   if ((document.getElementById('filter-media-image') as HTMLInputElement | null)?.checked) mediaTypes.push('image');
   if ((document.getElementById('filter-media-video') as HTMLInputElement | null)?.checked) mediaTypes.push('video');
   if ((document.getElementById('filter-media-audio') as HTMLInputElement | null)?.checked) mediaTypes.push('audio');
+  if ((document.getElementById('filter-media-boardgame') as HTMLInputElement | null)?.checked) mediaTypes.push('boardgame');
 
   selectedCollectionId = collectionId;
 
@@ -366,16 +482,21 @@ function applyAdvancedFilters(): void {
         return selectedFilterTags.every(t => tags.includes(t.toLowerCase()));
       });
     }
-    if (mediaTypes.length === 1) result = result.filter(e => e.media_type === mediaTypes[0]);
+    if (mediaTypes.length > 0) result = result.filter(e => mediaTypes.includes(e.media_type));
     if (showFavoritesOnly) result = result.filter(e => e.is_favorite);
     events = result;
     storyChunk = 1;
+    syncFilterURL();
     renderStory();
     renderCalendar();
     updateStats();
     renderMapInstance();
-    const status = document.getElementById('filter-status');
-    if (status) status.textContent = events.length + ' results';
+    loadStatsDist();
+    updateResultCount(filteredEvents().length);
+    renderActiveFilterChips();
+    // Unified search: keep dropdown in sync with composed filters when a query is active
+    if (q) updateGlobalDropdown();
+    else hideGlobalDropdown();
   };
 
   if (collectionId) {
@@ -397,11 +518,13 @@ function applyAdvancedFilters(): void {
 
 function clearAllFilters(): void {
   (document.getElementById('search-input') as HTMLInputElement).value = '';
+  hideGlobalDropdown();
   (document.getElementById('filter-person') as HTMLSelectElement).value = '';
   (document.getElementById('filter-location') as HTMLInputElement).value = '';
   (document.getElementById('filter-media-image') as HTMLInputElement).checked = false;
   (document.getElementById('filter-media-video') as HTMLInputElement).checked = false;
   (document.getElementById('filter-media-audio') as HTMLInputElement).checked = false;
+  (document.getElementById('filter-media-boardgame') as HTMLInputElement).checked = false;
   const collectionSel = document.getElementById('filter-collection') as HTMLSelectElement | null;
   if (collectionSel) collectionSel.value = '';
   selectedCollectionId = '';
@@ -409,12 +532,30 @@ function clearAllFilters(): void {
   renderSelectedFilterTags();
   events = allEvents;
   storyChunk = 1;
+  activeFilterMonth = 0;
+  currentMonth = 0;
+  filterYear = null;
+  showFavoritesOnly = false;
+  const favBtn = document.getElementById('fav-filter-btn');
+  if (favBtn) { favBtn.classList.remove('btn-primary'); favBtn.classList.add('btn-outline-primary'); favBtn.setAttribute('aria-pressed', 'false'); }
+  document.querySelectorAll('.month-filter .btn').forEach((btn, i) => {
+    const active = i === 0;
+    btn.classList.toggle('active', active);
+    btn.classList.toggle('btn-dark', active);
+    btn.classList.toggle('btn-outline-dark', !active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+  syncFilterURL();
   renderStory();
   renderCalendar();
   updateStats();
   renderMapInstance();
+  loadStatsDist();
+  renderActiveFilterChips();
   const status = document.getElementById('filter-status');
   if (status) status.textContent = '';
+  const rc = document.getElementById('result-count');
+  if (rc) rc.textContent = '';
 }
 
 function addFilterTag(tag: string): void {
@@ -454,14 +595,94 @@ function filterLocationDebounce(): void {
 }
 
 async function loadStatsDist(): Promise<void> {
-  const container = document.getElementById('stats-distribution-container');
-  if (!container) return;
-  container.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading statistics...</div>';
+  const legacy = document.getElementById('stats-distribution-container');
+  const rhythmEl = document.getElementById('stats-rhythm-container');
+  const peopleEl = document.getElementById('stats-people-places-container');
+  const container = rhythmEl || legacy;
+  if (!container && !peopleEl && !legacy) return;
+  if (rhythmEl) rhythmEl.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading statistics...</div>';
+  else if (legacy) legacy.innerHTML = '<div class="text-center text-muted py-5"><i class="fa-solid fa-spinner fa-spin me-2"></i>Loading statistics...</div>';
+  if (peopleEl) peopleEl.innerHTML = '';
 
   try {
-    const res = await fetch('/api/stats/distribution?year=' + currentYear);
-    if (!res.ok) throw new Error('Failed');
-    const dist = await res.json();
+    // Phase 4: Stats must reflect FILTER state, not viewedYear. Prefer client aggregation from filteredEvents
+    // so month/year filtering is reflected immediately without extra fetch mismatch.
+    const list = filteredEvents();
+    // If no events loaded yet, fall back to server for effective year (initial load)
+    let dist: any;
+    if (list.length > 0 || filterYear !== null || activeFilterMonth !== 0) {
+      // client-side aggregation
+      const byMonth: Record<string, number> = {};
+      const byWeekday: Record<string, number> = {};
+      for (let i = 1; i <= 12; i++) byMonth[String(i).padStart(2, '0')] = 0;
+      for (let i = 0; i < 7; i++) byWeekday[String(i)] = 0;
+      const tagCounts: Record<string, number> = {};
+      const personCounts: Record<string, number> = {};
+      const userCounts: Record<string, number> = {};
+      const locCounts: Record<string, number> = {};
+      const dayCounts: Record<string, number> = {};
+      let geoEvents: TimelineEvent[] = [];
+      list.forEach(e => {
+        const m = String(new Date(e.date).getMonth() + 1).padStart(2, '0');
+        byMonth[m] = (byMonth[m] || 0) + 1;
+        const wd = String(new Date(e.date).getDay());
+        byWeekday[wd] = (byWeekday[wd] || 0) + 1;
+        if (e.tags) e.tags.split(',').map(t => t.trim()).filter(Boolean).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; });
+        if (e.person_id) {
+          const pname = (e.person?.name) || String(e.person_id);
+          personCounts[pname] = (personCounts[pname] || 0) + 1;
+        }
+        if (e.user_id) {
+          const u = users.find(u => u.id === e.user_id);
+          const uname = u ? (u.display_name || u.username) : String(e.user_id);
+          userCounts[uname] = (userCounts[uname] || 0) + 1;
+        }
+        if (e.location) locCounts[e.location] = (locCounts[e.location] || 0) + 1;
+        dayCounts[e.date] = (dayCounts[e.date] || 0) + 1;
+        if (e.latitude && e.longitude) geoEvents.push(e);
+      });
+      const topDay = Object.entries(dayCounts).sort((a, b) => b[1] - a[1])[0]?.[0] || '';
+      const byTagArr = Object.entries(tagCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+      const byPersonArr = Object.entries(personCounts).map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count);
+      const byUserArr = Object.entries(userCounts).map(([display_name, count]) => ({ display_name, count })).sort((a, b) => b.count - a.count);
+      const byLocArr = Object.entries(locCounts).map(([location, count]) => ({ location, count })).sort((a, b) => b.count - a.count);
+      const eventCount = list.length;
+      const monthlyAvg = filterYear !== null ? eventCount / 12 : eventCount / Math.max(1, new Set(list.map(e => e.date.slice(0, 7))).size);
+      const dailyAvg = eventCount / 365;
+      // crude geo spread: avg haversine between geo points if any
+      let geoSpread = 0;
+      if (geoEvents.length > 1) {
+        const toRad = (d: number) => d * Math.PI / 180;
+        const hav = (a: TimelineEvent, b: TimelineEvent) => {
+          const R = 6371;
+          const dLat = toRad((b.latitude || 0) - (a.latitude || 0));
+          const dLon = toRad((b.longitude || 0) - (a.longitude || 0));
+          const aa = Math.sin(dLat / 2) ** 2 + Math.cos(toRad(a.latitude || 0)) * Math.cos(toRad(b.latitude || 0)) * Math.sin(dLon / 2) ** 2;
+          return 2 * R * Math.asin(Math.sqrt(aa));
+        };
+        let sum = 0; let n = 0;
+        for (let i = 0; i < geoEvents.length; i++) for (let j = i + 1; j < geoEvents.length; j++) { sum += hav(geoEvents[i], geoEvents[j]); n++; }
+        geoSpread = n ? sum / n : 0;
+      }
+      dist = {
+        event_count: eventCount,
+        by_month: byMonth,
+        by_weekday: byWeekday,
+        by_tag: byTagArr,
+        by_person: byPersonArr,
+        by_user: byUserArr,
+        by_location: byLocArr,
+        top_day: topDay,
+        monthly_avg: monthlyAvg,
+        daily_avg: dailyAvg,
+        geo_spread: geoSpread,
+      };
+    } else {
+      const y = effectiveStatsYear();
+      const res = await fetch('/api/stats/distribution?year=' + y);
+      if (!res.ok) throw new Error('Failed');
+      dist = await res.json();
+    }
 
     const monthNames_short = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
     const maxMonth = Math.max(...(Object.values(dist.by_month) as number[]), 1);
@@ -517,23 +738,58 @@ async function loadStatsDist(): Promise<void> {
 
     const topDayFormatted = dist.top_day ? new Date(dist.top_day + 'T12:00:00').toLocaleDateString('en-US', { month: 'long', day: 'numeric' }) : 'N/A';
 
-    container.innerHTML =
+    // 7.3 Rhythm: month + weekday side by side
+    const rhythmHTML =
       '<div class="row g-3">' +
-      '<div class="col-12 mb-2"><div class="d-flex gap-3 flex-wrap">' +
-      '<div class="dist-card" style="flex:1;min-width:150px"><h5><i class="fa-solid fa-calendar me-1"></i>Events</h5><div class="fs-4 fw-bold">' + dist.event_count + '</div><div class="text-muted small">' + dist.monthly_avg.toFixed(1) + '/mo · ' + dist.daily_avg.toFixed(2) + '/day</div></div>' +
-      '<div class="dist-card" style="flex:1;min-width:150px"><h5><i class="fa-solid fa-star me-1"></i>Busiest Day</h5><div class="top-day-badge">' + topDayFormatted + '</div></div>' +
-      '<div class="dist-card" style="flex:1;min-width:150px"><h5><i class="fa-solid fa-globe me-1"></i>Geo Spread</h5><div class="fs-5 fw-bold">' + (dist.geo_spread > 0 ? dist.geo_spread.toFixed(0) + ' km' : 'N/A') + '</div><div class="geo-spread">avg distance between locations</div></div>' +
-      '</div></div>' +
-      '<div class="col-12"><div class="dist-card"><h5><i class="fa-solid fa-chart-column me-1"></i>Events by Month</h5><div class="stats-bar-chart">' + monthBars + '</div></div></div>' +
-      '<div class="col-12"><div class="dist-card"><h5><i class="fa-solid fa-calendar-week me-1"></i>Events by Day of Week</h5><div class="weekday-chart">' + wdBars + '</div></div></div>' +
-      (tagHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-tags me-1"></i>Tag Distribution</h5>' + tagHTML + '</div></div>' : '') +
+      '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-chart-column me-1"></i>Events by Month</h5><div class="stats-bar-chart">' + monthBars + '</div></div></div>' +
+      '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-calendar-week me-1"></i>By Day of Week</h5><div class="weekday-chart">' + wdBars + '</div></div></div>' +
+      '</div>';
+    // 7.3 People & Places
+    const peopleHTMLCombined =
+      '<div class="row g-3">' +
+      (tagHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-tags me-1"></i>Tags</h5>' + tagHTML + '</div></div>' : '') +
       (personHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-user-group me-1"></i>People</h5>' + personHTML + '</div></div>' : '') +
       (userHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-users me-1"></i>Family Members</h5>' + userHTML + '</div></div>' : '') +
       (locHTML ? '<div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-map-pin me-1"></i>Top Locations</h5>' + locHTML + '</div></div>' : '') +
+      (!tagHTML && !personHTML && !userHTML && !locHTML ? '<div class="col-12"><p class="text-muted small">No people or places to show for this filter.</p></div>' : '') +
       '</div>';
-  } catch (err) {
-    container.innerHTML = '<div class="text-center text-muted py-5">Failed to load statistics</div>';
+
+    if (rhythmEl) rhythmEl.innerHTML = rhythmHTML;
+    else if (container) (container as HTMLElement).innerHTML = rhythmHTML;
+    if (peopleEl) peopleEl.innerHTML = peopleHTMLCombined;
+    // legacy is now wrapper containing the two sections; only populate directly if old markup (no inner containers)
+    if (legacy && !rhythmEl && !peopleEl) legacy.innerHTML = rhythmHTML + peopleHTMLCombined;
+    else if (!rhythmEl && container && container !== legacy) (container as HTMLElement).innerHTML = rhythmHTML + peopleHTMLCombined;
+  } catch (_err) {
+    const errHTML = '<div class="error-state"><i class="fa-solid fa-triangle-exclamation"></i><p>Failed to load statistics</p><button class="btn btn-sm btn-outline-primary" onclick="loadStatsDist()">Retry</button></div>';
+    if (rhythmEl) rhythmEl.innerHTML = errHTML;
+    if (peopleEl) peopleEl.innerHTML = '';
+    if (legacy && !rhythmEl && !peopleEl) legacy.innerHTML = errHTML;
+    const fallback = document.getElementById('stats-distribution-container');
+    if (fallback && fallback !== rhythmEl && fallback !== legacy && !rhythmEl) fallback.innerHTML = errHTML;
   }
+}
+
+function renderStoryError(msg: string): void {
+  const container = document.getElementById('timeline-container');
+  if (!container) return;
+  container.innerHTML = '<div class="error-state"><i class="fa-solid fa-triangle-exclamation"></i><p>' + escapeHtml(msg) + '</p><button class="btn btn-sm btn-outline-primary" onclick="loadData()">Retry</button></div>';
+  updateResultCount(0);
+  updateLoadMoreVisibility();
+}
+
+function renderSkeletons(count: number = 4): void {
+  const container = document.getElementById('timeline-container');
+  if (!container) return;
+  let html = '';
+  for (let i = 0; i < count; i++) {
+    html += '<article class="story-card story-skeleton" aria-hidden="true"><div class="skeleton-media"></div><div class="story-body"><div class="skeleton-bar" style="height:14px;width:28%;margin-bottom:12px"></div><div class="skeleton-line" style="height:18px;width:62%;margin-bottom:10px"></div><div class="skeleton-line" style="height:12px;width:90%"></div><div class="skeleton-line" style="height:12px;width:75%;margin-top:6px"></div></div></article>';
+  }
+  container.innerHTML = html;
+  const sentinel = document.getElementById('story-sentinel');
+  if (sentinel) { sentinel.style.display = 'none'; sentinel.classList.remove('is-loading'); }
+  const wrap = document.getElementById('load-more-wrap');
+  if (wrap) wrap.style.display = 'none';
 }
 
 async function loadEvents(): Promise<void> {
@@ -547,7 +803,7 @@ async function loadEvents(): Promise<void> {
     } else if (res.ok) {
       events = await res.json() as TimelineEvent[];
     } else {
-      events = [];
+      throw new Error('Failed to load story');
     }
     if (!Array.isArray(events)) events = [];
     allEvents = events;
@@ -555,8 +811,8 @@ async function loadEvents(): Promise<void> {
     renderStory();
     renderCalendar();
     updateStats();
-  } catch (err) {
-    console.error('Failed to load events:', err);
+  } catch (_err) {
+    renderStoryError('Failed to load story');
   }
 }
 
@@ -569,14 +825,43 @@ async function loadUsers(): Promise<void> {
 }
 
 async function toggleFav(id: number): Promise<void> {
-  const csrf = await ensureCSRF();
-  await fetch('/api/events/favorite', {
-    method: 'POST',
-    headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id })
-  });
-  await loadData();
-  loadWrapped();
+  const allIdx = allEvents.findIndex(e => e.id === id);
+  const evIdx = events.findIndex(e => e.id === id);
+  const prevAll = allIdx >= 0 ? allEvents[allIdx].is_favorite : undefined;
+  const prevEv = evIdx >= 0 ? events[evIdx].is_favorite : undefined;
+  const nextVal = !(prevAll ?? prevEv ?? false);
+  if (allIdx >= 0) allEvents[allIdx].is_favorite = nextVal;
+  if (evIdx >= 0) events[evIdx].is_favorite = nextVal;
+  // optimistic DOM patch
+  const card = document.getElementById('event-' + id);
+  if (card) {
+    const star = card.querySelector('.story-fav');
+    if (star) {
+      star.classList.toggle('fa-solid', nextVal);
+      star.classList.toggle('fa-regular', !nextVal);
+      star.setAttribute('title', nextVal ? 'Unfavorite' : 'Favorite');
+    }
+  }
+  try {
+    const csrf = await ensureCSRF();
+    const res = await fetch('/api/events/favorite', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id })
+    });
+    if (!res.ok) throw new Error('fav failed');
+  } catch (_e) {
+    if (allIdx >= 0 && prevAll !== undefined) allEvents[allIdx].is_favorite = prevAll;
+    if (evIdx >= 0 && prevEv !== undefined) events[evIdx].is_favorite = prevEv;
+    if (card) {
+      const star = card.querySelector('.story-fav');
+      if (star) {
+        star.classList.toggle('fa-solid', !!prevAll);
+        star.classList.toggle('fa-regular', !prevAll);
+        star.setAttribute('title', prevAll ? 'Unfavorite' : 'Favorite');
+      }
+    }
+  }
 }
 
 async function loadCollections(): Promise<void> {
@@ -593,8 +878,11 @@ async function loadCollections(): Promise<void> {
 function toggleFavFilter(): void {
   showFavoritesOnly = !showFavoritesOnly;
   const btn = document.getElementById('fav-filter-btn');
-  if (btn) btn.classList.toggle('btn-primary', showFavoritesOnly);
-  if (btn) btn.classList.toggle('btn-outline-primary', !showFavoritesOnly);
+  if (btn) {
+    btn.classList.toggle('btn-primary', showFavoritesOnly);
+    btn.classList.toggle('btn-outline-primary', !showFavoritesOnly);
+    btn.setAttribute('aria-pressed', showFavoritesOnly ? 'true' : 'false');
+  }
   applyAdvancedFilters();
 }
 
@@ -635,24 +923,125 @@ async function ensureCSRF(): Promise<string> {
 }
 
 async function loadData(): Promise<void> {
+  renderSkeletons();
   await Promise.all([loadEvents(), loadContributions(), loadUsers(), loadCollections()]);
   populateYearButtons();
+  // loadEvents already rendered; keep chunk at 1 and ensure observers
   storyChunk = 1;
+  if (events.length > 0) renderStory();
 }
 
 function populateYearButtons(): void {
   const container = document.getElementById('year-buttons');
   if (!container) return;
   const years = new Set<number>();
-  events.forEach(e => {
+  allEvents.forEach(e => {
     const y = parseInt(e.date.slice(0, 4));
     if (!isNaN(y)) years.add(y);
   });
-  years.add(currentYear);
+  // include viewedYear so indicator highlight exists even if no events that year
+  years.add(viewedYear);
   const sorted = Array.from(years).sort((a, b) => b - a);
   container.innerHTML = sorted.map(y =>
-    `<button class="btn ${y === currentYear ? 'btn-primary' : 'btn-outline-primary'}" data-year="${y}" onclick="changeYear(${y})">${y}</button>`
+    `<button class="btn ${y === viewedYear ? 'btn-primary' : 'btn-outline-primary'}" data-year="${y}" onclick="scrollToYear(${y})"${y === viewedYear ? ' aria-current="true"' : ''} aria-label="Scroll to ${y}" aria-controls="timeline-container">${y}</button>`
   ).join('');
+}
+
+// ── Filter chips + live count + load-more helpers ──
+function updateResultCount(count: number): void {
+  const el = document.getElementById('result-count');
+  if (el) el.textContent = count === 0 ? 'No results' : count + ' ' + (count === 1 ? 'result' : 'results');
+  const status = document.getElementById('filter-status');
+  if (status) status.textContent = count + ' results';
+}
+
+function updateLoadMoreVisibility(): void {
+  const wrap = document.getElementById('load-more-wrap');
+  const btn = document.getElementById('load-more-btn');
+  const sentinel = document.getElementById('story-sentinel');
+  if (!wrap || !btn) return;
+  const total = filteredEvents().length;
+  const shown = Math.min(storyChunk * storyChunkSize, total);
+  const hasMore = shown < total;
+  wrap.style.display = hasMore ? 'flex' : 'none';
+  btn.style.display = hasMore ? 'inline-flex' : 'none';
+  if (sentinel) {
+    sentinel.style.display = hasMore ? '' : 'none';
+    if (!hasMore) sentinel.classList.remove('is-loading');
+  }
+}
+
+function removeOneFilter(kind: string, value?: string): void {
+  if (kind === 'search') {
+    const inp = document.getElementById('search-input') as HTMLInputElement | null;
+    if (inp) inp.value = '';
+  } else if (kind === 'tag' && value) {
+    selectedFilterTags = selectedFilterTags.filter(t => t !== value);
+    renderSelectedFilterTags();
+  } else if (kind === 'person') {
+    const sel = document.getElementById('filter-person') as HTMLSelectElement | null;
+    if (sel) sel.value = '';
+  } else if (kind === 'collection') {
+    const sel = document.getElementById('filter-collection') as HTMLSelectElement | null;
+    if (sel) sel.value = '';
+    selectedCollectionId = '';
+  } else if (kind === 'location') {
+    const inp = document.getElementById('filter-location') as HTMLInputElement | null;
+    if (inp) inp.value = '';
+  } else if (kind === 'media' && value) {
+    const el = document.getElementById('filter-media-' + value) as HTMLInputElement | null;
+    if (el) el.checked = false;
+  } else if (kind === 'fav') {
+    showFavoritesOnly = false;
+    const btn = document.getElementById('fav-filter-btn');
+    if (btn) { btn.classList.remove('btn-primary'); btn.classList.add('btn-outline-primary'); }
+  } else if (kind === 'month') {
+    activeFilterMonth = 0;
+    currentMonth = 0;
+    document.querySelectorAll('.month-filter .btn').forEach((btn, i) => {
+      const active = i === 0;
+      btn.classList.toggle('active', active);
+      btn.classList.toggle('btn-dark', active);
+      btn.classList.toggle('btn-outline-dark', !active);
+      btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+    });
+  } else if (kind === 'year' && value) {
+    filterYear = null;
+  }
+  applyAdvancedFilters();
+}
+
+function renderActiveFilterChips(): void {
+  const bar = document.getElementById('active-filter-bar');
+  const chipsEl = document.getElementById('active-filter-chips');
+  if (!bar || !chipsEl) return;
+  const chips: string[] = [];
+  const q = (document.getElementById('search-input') as HTMLInputElement | null)?.value?.trim() || '';
+  if (q) chips.push('<button class="filter-chip" onclick="removeOneFilter(\'search\')">Search: ' + escapeHtml(q) + ' <i class="fa-solid fa-xmark"></i></button>');
+  selectedFilterTags.forEach(t => chips.push('<button class="filter-chip" onclick="removeOneFilter(\'tag\',\'' + escapeHtml(t) + '\')">Tag: ' + escapeHtml(t) + ' <i class="fa-solid fa-xmark"></i></button>'));
+  const personVal = (document.getElementById('filter-person') as HTMLSelectElement | null)?.value || '';
+  if (personVal) {
+    const sel = document.getElementById('filter-person') as HTMLSelectElement;
+    const label = sel.options[sel.selectedIndex]?.text || personVal;
+    chips.push('<button class="filter-chip" onclick="removeOneFilter(\'person\')">Person: ' + escapeHtml(label) + ' <i class="fa-solid fa-xmark"></i></button>');
+  }
+  const collVal = (document.getElementById('filter-collection') as HTMLSelectElement | null)?.value || '';
+  if (collVal) {
+    const sel = document.getElementById('filter-collection') as HTMLSelectElement;
+    const label = sel.options[sel.selectedIndex]?.text || collVal;
+    chips.push('<button class="filter-chip" onclick="removeOneFilter(\'collection\')">Collection: ' + escapeHtml(label) + ' <i class="fa-solid fa-xmark"></i></button>');
+  }
+  const loc = (document.getElementById('filter-location') as HTMLInputElement | null)?.value?.trim() || '';
+  if (loc) chips.push('<button class="filter-chip" onclick="removeOneFilter(\'location\')">Location: ' + escapeHtml(loc) + ' <i class="fa-solid fa-xmark"></i></button>');
+  ['image', 'video', 'audio', 'boardgame'].forEach(m => {
+    const el = document.getElementById('filter-media-' + m) as HTMLInputElement | null;
+    if (el?.checked) chips.push('<button class="filter-chip" onclick="removeOneFilter(\'media\',\'' + m + '\')">' + m + ' <i class="fa-solid fa-xmark"></i></button>');
+  });
+  if (showFavoritesOnly) chips.push('<button class="filter-chip" onclick="removeOneFilter(\'fav\')">Favorites <i class="fa-solid fa-xmark"></i></button>');
+  if (activeFilterMonth !== 0) chips.push('<button class="filter-chip" onclick="removeOneFilter(\'month\')">' + monthNames[activeFilterMonth - 1] + ' <i class="fa-solid fa-xmark"></i></button>');
+  if (filterYear !== null) chips.push('<button class="filter-chip" onclick="removeOneFilter(\'year\',\'' + filterYear + '\')">Year: ' + filterYear + ' <i class="fa-solid fa-xmark"></i></button>');
+  chipsEl.innerHTML = chips.join('');
+  bar.style.display = chips.length ? 'flex' : 'none';
 }
 
 // ── The Story ──
@@ -660,9 +1049,14 @@ function populateYearButtons(): void {
 // and text events (books, quotes, notes) all inline, newest memory first.
 
 function filteredEvents(): TimelineEvent[] {
-  return currentMonth > 0
-    ? events.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
-    : events;
+  let list = events;
+  if (filterYear !== null) {
+    list = list.filter(e => parseInt(e.date.slice(0, 4)) === filterYear);
+  }
+  if (activeFilterMonth !== 0) {
+    list = list.filter(e => new Date(e.date).getMonth() + 1 === activeFilterMonth);
+  }
+  return list;
 }
 
 function renderStory(): void {
@@ -670,16 +1064,14 @@ function renderStory(): void {
   if (!container) return;
   const list = filteredEvents();
 
-  const emptyState = `
-    <div class="story-empty text-center text-muted py-5">
-      <i class="fa-regular fa-hourglass-half fa-3x mb-3"></i>
-      <p class="fw-bold mb-1">Your story starts here</p>
-      <p class="small">Add photos, videos, places, books and quotes in the Admin panel — they will appear here, year after year, in one continuous timeline.</p>
-    </div>
-  `;
-
   if (list.length === 0) {
-    container.innerHTML = emptyState;
+    const hasFilters = selectedFilterTags.length > 0 || showFavoritesOnly || activeFilterMonth !== 0 || filterYear !== null || !!((document.getElementById('search-input') as HTMLInputElement | null)?.value?.trim()) || !!((document.getElementById('filter-person') as HTMLSelectElement | null)?.value) || !!((document.getElementById('filter-location') as HTMLInputElement | null)?.value?.trim()) || !!((document.getElementById('filter-collection') as HTMLSelectElement | null)?.value) || (document.getElementById('filter-media-image') as HTMLInputElement | null)?.checked || (document.getElementById('filter-media-video') as HTMLInputElement | null)?.checked || (document.getElementById('filter-media-audio') as HTMLInputElement | null)?.checked || (document.getElementById('filter-media-boardgame') as HTMLInputElement | null)?.checked;
+    const msg = hasFilters ? 'No moments match these filters.' : 'Your story starts here';
+    const sub = hasFilters ? 'Try adjusting filters or clearing them.' : 'Add photos, videos, places, books and quotes in the Admin panel — they will appear here, year after year, in one continuous timeline.';
+    container.innerHTML = '<div class="empty-state"><i class="fa-regular fa-hourglass-half"></i><p class="empty-title">' + msg + '</p><p>' + sub + '</p><a class="btn btn-sm btn-primary mt-2" href="/admin.html"><i class="fa-solid fa-plus me-1"></i>Add content</a>' + (hasFilters ? ' <button class="btn btn-sm btn-outline-secondary mt-2 ms-2" onclick="clearAllFilters()">Clear filters</button>' : '') + '</div>';
+    updateResultCount(0);
+    renderActiveFilterChips();
+    updateLoadMoreVisibility();
     return;
   }
 
@@ -729,6 +1121,30 @@ function renderStory(): void {
   container.innerHTML = html;
   initStoryObservers();
   initMiniMaps();
+  initMediaOrientation();
+  updateResultCount(list.length);
+  renderActiveFilterChips();
+  updateLoadMoreVisibility();
+}
+
+function weatherIconClass(code: string): string {
+  const m: Record<string, string> = {
+    '01d': 'sun', '01n': 'moon',
+    '02d': 'cloud-sun', '02n': 'cloud-moon',
+    '03d': 'cloud', '03n': 'cloud',
+    '04d': 'cloud', '04n': 'cloud',
+    '09d': 'cloud-showers-heavy', '09n': 'cloud-showers-heavy',
+    '10d': 'cloud-rain', '10n': 'cloud-rain',
+    '11d': 'cloud-bolt', '11n': 'cloud-bolt',
+    '13d': 'snowflake', '13n': 'snowflake',
+    '50d': 'smog', '50n': 'smog',
+  };
+  if (m[code]) return m[code];
+  if (!code) return 'cloud-sun';
+  // fallback: raw code already a FA name? allow known FA names, else default
+  const known = new Set(['sun','moon','cloud','cloud-sun','cloud-moon','cloud-rain','cloud-showers-heavy','cloud-bolt','snowflake','smog','wind','clouds']);
+  if (known.has(code)) return code;
+  return 'cloud-sun';
 }
 
 function storyCardHtml(e: TimelineEvent): string {
@@ -742,7 +1158,7 @@ function storyCardHtml(e: TimelineEvent): string {
   if (e.weather_data) {
     try {
       const w = JSON.parse(e.weather_data) as Weather;
-      weatherHtml = `<span class="weather-badge ms-2"><i class="fa-solid fa-${w.icon}"></i> ${Math.round(w.temperature)}°C ${w.condition}</span>`;
+      weatherHtml = `<span class="weather-badge ms-2"><i class="fa-solid fa-${weatherIconClass(w.icon)}"></i> ${Math.round(w.temperature)}°C ${w.condition}</span>`;
     } catch (_) {}
   }
 
@@ -784,9 +1200,11 @@ function storyCardHtml(e: TimelineEvent): string {
 
   let mapHtml = '';
   if (hasGeo) {
+    const locLabel = escapeHtml(e.location || e.title);
     mapHtml = `
-      <div class="story-minimap" data-lat="${e.latitude}" data-lng="${e.longitude}" data-id="${e.id}">
-        <span class="story-minimap-hint"><i class="fa-solid fa-map-location-dot"></i> Open map</span>
+      <div class="story-minimap-wrap">
+        <div class="story-minimap" data-lat="${e.latitude}" data-lng="${e.longitude}" data-id="${e.id}" aria-hidden="true"></div>
+        <button type="button" class="story-minimap-action" onclick="event.stopPropagation();openMapAt(${e.latitude}, ${e.longitude}, ${e.id})" aria-label="View ${locLabel} on map"><i class="fa-solid fa-map-location-dot"></i> View on map</button>
       </div>
     `;
   }
@@ -800,7 +1218,7 @@ function storyCardHtml(e: TimelineEvent): string {
       <div class="story-body">
         <div class="d-flex justify-content-between align-items-start gap-2">
           <div class="story-meta">
-            <i class="fa-solid fa-calendar-day me-1"></i>${formatDate(e.date)}
+            <i class="fa-solid fa-calendar-day me-1"></i>${formatDate(e.date, shouldShowYear())}
             ${e.start_time ? '<span class="story-meta-time"><i class="fa-regular fa-clock ms-2 me-1"></i>' + e.start_time.substring(0, 5) + '</span>' : ''}
             ${e.end_time ? '–' + e.end_time.substring(0, 5) : ''}
             ${recurringBadge}
@@ -818,38 +1236,91 @@ function storyCardHtml(e: TimelineEvent): string {
 }
 
 let miniMaps: Map<number, any> = new Map();
+let miniMapObserver: IntersectionObserver | null = null;
 
-function initMiniMaps(): void {
-  // Destroy maps whose containers were re-rendered, then (re)create one per geo card.
+function destroyMiniMaps(): void {
+  if (miniMapObserver) { miniMapObserver.disconnect(); miniMapObserver = null; }
   miniMaps.forEach(m => { try { m.remove(); } catch (_) {} });
   miniMaps.clear();
+}
 
-  document.querySelectorAll<HTMLElement>('.story-minimap[data-lat]').forEach(el => {
-    const lat = parseFloat(el.dataset.lat || '0');
-    const lng = parseFloat(el.dataset.lng || '0');
-    const id = parseInt(el.dataset.id || '0');
-    if (!lat && !lng) return;
-    const map = L.map(el, {
-      zoomControl: false,
-      attributionControl: false,
-      scrollWheelZoom: false,
-      dragging: false,
-      touchZoom: false,
-      doubleClickZoom: false,
-      boxZoom: false,
-      keyboard: false
-    }).setView([lat, lng], 10);
-    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
-    L.marker([lat, lng], {
-      icon: L.divIcon({
-        className: 'custom-marker',
-        html: '<i class="fa-solid fa-map-pin" style="color:#7c3aed;font-size:20px;"></i>',
-        iconSize: [20, 20],
-        iconAnchor: [10, 20],
-        popupAnchor: [0, -20]
-      })
-    }).addTo(map);
-    miniMaps.set(id, map);
+function createMiniMap(el: HTMLElement): void {
+  const id = parseInt(el.dataset.id || '0');
+  if (miniMaps.has(id)) return;
+  const lat = parseFloat(el.dataset.lat || '0');
+  const lng = parseFloat(el.dataset.lng || '0');
+  if (!lat && !lng) return;
+  // ponytail: OSM tiles kept for Phase 3; Phase 7 unifies to shared map module / Carto
+  const map = L.map(el, {
+    zoomControl: false,
+    attributionControl: false,
+    scrollWheelZoom: false,
+    dragging: false,
+    touchZoom: false,
+    doubleClickZoom: false,
+    boxZoom: false,
+    keyboard: false
+  }).setView([lat, lng], 10);
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+  L.marker([lat, lng], {
+    icon: L.divIcon({
+      className: 'custom-marker',
+      html: '<i class="fa-solid fa-map-pin" style="color:#7c3aed;font-size:20px;"></i>',
+      iconSize: [20, 20],
+      iconAnchor: [10, 20],
+      popupAnchor: [0, -20]
+    })
+  }).addTo(map);
+  miniMaps.set(id, map);
+}
+
+function initMiniMaps(): void {
+  destroyMiniMaps();
+  const els = document.querySelectorAll<HTMLElement>('.story-minimap[data-lat]');
+  if (!els.length) return;
+  if (!('IntersectionObserver' in window)) {
+    els.forEach(el => createMiniMap(el));
+    return;
+  }
+  miniMapObserver = new IntersectionObserver((entries) => {
+    entries.forEach(en => {
+      if (en.isIntersecting) {
+        createMiniMap(en.target as HTMLElement);
+        miniMapObserver!.unobserve(en.target);
+      }
+    });
+  }, { rootMargin: '200px 0px', threshold: 0.01 });
+  els.forEach(el => miniMapObserver!.observe(el));
+}
+
+function classifyOrientation(img: HTMLImageElement): 'portrait' | 'square' | 'landscape' {
+  const w = img.naturalWidth || (img as any).width || 0;
+  const h = img.naturalHeight || (img as any).height || 0;
+  if (!w || !h) return 'landscape';
+  const r = w / h;
+  if (r < 0.95) return 'portrait';
+  if (r > 1.05) return 'landscape';
+  return 'square';
+}
+
+function orientFrame(img: HTMLImageElement): void {
+  const frame = img.closest('.story-media-frame') as HTMLElement | null;
+  if (!frame) return;
+  const o = classifyOrientation(img);
+  frame.dataset.orientation = o;
+  frame.classList.toggle('is-portrait', o === 'portrait');
+  frame.classList.toggle('is-square', o === 'square');
+  frame.classList.toggle('is-landscape', o === 'landscape');
+}
+
+function initMediaOrientation(): void {
+  document.querySelectorAll<HTMLImageElement>('.story-media-frame img.story-media-el').forEach(img => {
+    if (img.complete && img.naturalWidth) orientFrame(img);
+    else img.addEventListener('load', () => orientFrame(img), { once: true });
+    img.addEventListener('error', () => {
+      const f = img.closest('.story-media-frame') as HTMLElement | null;
+      if (f) f.dataset.orientation = 'landscape';
+    }, { once: true });
   });
 }
 
@@ -871,7 +1342,7 @@ function initStoryObservers(): void {
     yearEls.forEach(el => storyYearObserver!.observe(el));
   }
 
-  // Infinite scroll: when the sentinel becomes visible, render the next chunk.
+  // Infinite scroll: sentinel only animates while loading next chunk (2.9)
   const sentinel = document.getElementById('story-sentinel');
   if (!sentinel) return;
   if (storySentinelObserver) storySentinelObserver.disconnect();
@@ -879,34 +1350,37 @@ function initStoryObservers(): void {
   const shown = Math.min(storyChunk * storyChunkSize, total);
   if (total === 0 || shown >= total) {
     sentinel.style.display = 'none';
+    sentinel.classList.remove('is-loading');
+    updateLoadMoreVisibility();
     return;
   }
   sentinel.style.display = '';
+  sentinel.classList.remove('is-loading');
+  updateLoadMoreVisibility();
   storySentinelObserver = new IntersectionObserver((entries) => {
-    if (entries.some(en => en.isIntersecting)) loadMoreGallery();
+    if (entries.some(en => en.isIntersecting)) {
+      sentinel.classList.add('is-loading');
+      loadMoreGallery();
+    }
   }, { rootMargin: '300px' });
   storySentinelObserver.observe(sentinel);
 }
 
 function setViewedYear(year: number): void {
-  if (year === currentYear) return;
-  currentYear = year;
-  const yearEl = document.getElementById('current-year');
-  if (yearEl) yearEl.textContent = String(year);
-  document.querySelectorAll('.year-selector .btn[data-year]').forEach(b => {
-    const active = b.getAttribute('data-year') === String(year);
-    b.classList.toggle('btn-primary', active);
-    b.classList.toggle('btn-outline-primary', !active);
-  });
-  const icsLink = document.getElementById('ics-download') as HTMLAnchorElement;
-  if (icsLink) icsLink.href = '/api/events/ics?year=' + year;
+  if (year === viewedYear) return;
+  setViewedYearOnly(year);
 }
 
 async function loadMoreGallery(): Promise<void> {
   const total = filteredEvents().length;
-  if (storyChunk * storyChunkSize >= total) return;
+  if (storyChunk * storyChunkSize >= total) {
+    updateLoadMoreVisibility();
+    return;
+  }
   storyChunk++;
   renderStory();
+  const sentinel = document.getElementById('story-sentinel');
+  if (sentinel) setTimeout(() => sentinel.classList.remove('is-loading'), 300);
 }
 
 function renderMarkdown(text: string): string {
@@ -930,33 +1404,50 @@ function getMediaIcon(mediaType: string): string {
   switch (mediaType) {
     case 'video': return 'fa-solid fa-video';
     case 'audio': return 'fa-solid fa-music';
+    case 'boardgame': return 'fa-solid fa-dice';
     default: return 'fa-solid fa-image';
   }
 }
 
-function formatDate(dateStr: string): string {
+function formatDate(dateStr: string, includeYear?: boolean): string {
   const date = new Date(dateStr);
+  if (includeYear) return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
+
+// ponytail: show year when story spans >1 year; Phase 4 will split viewedYear vs filterYear — revisit then
+function shouldShowYear(): boolean {
+  const list = filteredEvents();
+  const years = new Set(list.map(e => e.date.slice(0, 4)));
+  return years.size > 1;
+}
+
+let mapClusterGroup: any = null;
+const MAP_TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+const MAP_TILE_OPTS = {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+} as any;
 
 function ensureMapInstance(): any {
   if (mapInstance) return mapInstance;
   const el = document.getElementById('map-container');
   if (!el) return null;
-  mapInstance = L.map('map-container').setView([20, 0], 2);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>',
-    maxZoom: 18
-  }).addTo(mapInstance);
+  // 7.5 gate scroll/zoom conflict: disable scrollWheelZoom until user focuses map
+  mapInstance = L.map('map-container', { scrollWheelZoom: false } as any).setView([20, 0], 2);
+  L.tileLayer(MAP_TILE_URL, MAP_TILE_OPTS).addTo(mapInstance);
+  // focus enables scroll zoom to avoid page-scroll hijack on mobile
+  mapInstance.on('focus', () => { try { mapInstance.scrollWheelZoom.enable(); } catch (_) {} });
+  mapInstance.on('blur', () => { try { mapInstance.scrollWheelZoom.disable(); } catch (_) {} });
+  // also enable on click for touch devices without focus
+  if (el) el.addEventListener('click', () => { try { mapInstance.scrollWheelZoom.enable(); } catch (_) {} }, { once: false });
   setTimeout(() => mapInstance.invalidateSize(), 100);
+  setTimeout(() => mapInstance.invalidateSize(), 350);
   return mapInstance;
 }
 
 function renderMapInstance(): void {
-  const eventList = Array.isArray(events) ? events : [];
-  const filtered = currentMonth > 0
-    ? eventList.filter(e => new Date(e.date).getMonth() + 1 === currentMonth)
-    : eventList;
+  const filtered = filteredEvents();
   const geoEvents = filtered.filter(e => e.latitude && e.longitude && (e.latitude !== 0 || e.longitude !== 0));
 
   const placeholder = document.getElementById('map-placeholder');
@@ -972,7 +1463,12 @@ function renderMapInstance(): void {
     return;
   }
 
-  mapMarkers.forEach(m => map.removeLayer(m));
+  // clear previous layers including cluster group
+  if (mapClusterGroup) {
+    try { mapInstance.removeLayer(mapClusterGroup); } catch (_) {}
+    mapClusterGroup = null;
+  }
+  mapMarkers.forEach(m => { try { mapInstance.removeLayer(m); } catch (_) {} });
   mapMarkers = [];
 
   const bounds: [number, number][] = [];
@@ -984,13 +1480,14 @@ function renderMapInstance(): void {
     popupAnchor: [0, -24]
   });
 
+  const rawMarkers: any[] = [];
   geoEvents.forEach(e => {
-    const m = L.marker([e.latitude!, e.longitude!], { icon: markerIcon }).addTo(mapInstance);
+    const m = L.marker([e.latitude!, e.longitude!], { icon: markerIcon });
     let weatherHtml = '';
     if (e.weather_data) {
       try {
         const w = JSON.parse(e.weather_data);
-        weatherHtml = `<br><small><i class="fa-solid fa-${w.icon}"></i> ${Math.round(w.temperature)}°C ${w.condition}</small>`;
+        weatherHtml = `<br><small><i class="fa-solid fa-${weatherIconClass(w.icon)}"></i> ${Math.round(w.temperature)}°C ${w.condition}</small>`;
       } catch (_) { }
     }
     m.bindPopup(`
@@ -999,9 +1496,20 @@ function renderMapInstance(): void {
         <p>${formatDate(e.date)} — ${escapeHtml(e.location)}${weatherHtml}</p>
       </div>
     `);
+    (m as any)._eventId = e.id;
+    rawMarkers.push(m);
     mapMarkers.push(m);
     bounds.push([e.latitude!, e.longitude!]);
   });
+  // 7.1 clustering — use markerClusterGroup when available (shared with ts/map.ts)
+  const hasCluster = typeof L !== 'undefined' && typeof (L as any).markerClusterGroup === 'function';
+  if (hasCluster && rawMarkers.length) {
+    mapClusterGroup = (L as any).markerClusterGroup({ chunkedLoading: true, maxClusterRadius: 40 });
+    mapClusterGroup.addLayers(rawMarkers);
+    mapInstance.addLayer(mapClusterGroup);
+  } else {
+    rawMarkers.forEach(m => m.addTo(mapInstance));
+  }
 
   const showPath = (document.getElementById('show-location-path') as HTMLInputElement)?.checked;
   if (mapPathLine) {
@@ -1020,10 +1528,33 @@ function renderMapInstance(): void {
   }
 
   if (bounds.length > 0) {
-    mapInstance.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+    // if openMapAt set a pending focus, honor it instead of fitting all bounds
+    const pending = (mapInstance as any)._pendingMapFocus as { lat: number; lng: number; id?: number } | null;
+    if (pending && typeof pending.lat === 'number' && typeof pending.lng === 'number') {
+      const target = mapMarkers.find((m: any) => (m as any)._eventId === pending.id);
+      mapInstance.setView([pending.lat, pending.lng], 14, { animate: true });
+      if (target) {
+        if (mapClusterGroup && typeof mapClusterGroup.zoomToShowLayer === 'function') {
+          mapClusterGroup.zoomToShowLayer(target, () => target.openPopup());
+        } else target.openPopup();
+      }
+      (mapInstance as any)._pendingMapFocus = null;
+      // highlight story card without scrolling timeline
+      if (pending.id) highlightStoryCard(pending.id);
+    } else {
+      mapInstance.fitBounds(bounds, { padding: [30, 30], maxZoom: 14 });
+    }
   }
 
   setTimeout(() => mapInstance.invalidateSize(), 100);
+  setTimeout(() => mapInstance.invalidateSize(), 350);
+}
+
+function highlightStoryCard(id: number): void {
+  const card = document.getElementById('event-' + id);
+  if (!card) return;
+  card.classList.add('story-card-flash');
+  setTimeout(() => card.classList.remove('story-card-flash'), 1800);
 }
 
 // ── Overlays (Calendar / Map / Stats) ──
@@ -1035,41 +1566,60 @@ function openOverlay(id: string): void {
   document.body.style.overflow = 'hidden';
   if (id === 'map-overlay') {
     renderMapInstance();
-    setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 150);
+    // 7.5 ensure Leaflet knows its container size after overlay becomes visible
+    setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 80);
+    setTimeout(() => { if (mapInstance) mapInstance.invalidateSize(); }, 220);
+    // update hash for deep link (client-side, no Go route)
+    try { if (location.hash !== '#map') history.replaceState(null, '', '#map'); } catch (_) {}
   } else if (id === 'stats-overlay') {
+    const y = effectiveStatsYear();
+    const label = filterYear !== null ? String(filterYear) + (activeFilterMonth ? ' · ' + monthNames[activeFilterMonth - 1] : '') : (filteredEvents().length ? 'Filtered · ' + filteredEvents().length + ' events' : String(y));
     const yearEl = document.getElementById('stats-year');
-    if (yearEl) yearEl.textContent = String(currentYear);
+    if (yearEl) yearEl.textContent = label;
     const cyEl = document.getElementById('contribution-year');
-    if (cyEl) cyEl.textContent = '· ' + currentYear;
+    if (cyEl) cyEl.textContent = '· ' + y;
     loadStatsDist();
     loadContributions();
   } else if (id === 'calendar-overlay') {
     renderCalendarView();
   }
+  // focus trap: move focus into overlay and trap Tab
+  const panel = overlay.querySelector('.overlay-panel') as HTMLElement | null;
+  if (panel) trapFocus(panel);
+  else trapFocus(overlay);
 }
 
 function closeOverlay(id: string): void {
   const overlay = document.getElementById(id);
   if (!overlay) return;
   overlay.style.display = 'none';
+  // release trap before checking body lock
+  if (trapContainer && overlay.contains(trapContainer)) releaseFocus();
   // Keep body scroll lock while any overlay is still open.
   const anyOpen = document.querySelectorAll('.overlay[style*="flex"]').length > 0;
   if (!anyOpen) document.body.style.overflow = '';
+  if (id === 'map-overlay' && window.location.hash === '#map') {
+    try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (_) {}
+  }
 }
 
-function openMapAt(lat: number, lng: number, eventId?: number): void {
-  openOverlay('map-overlay');
+function openMapAt(lat: number, lng: number, _eventId?: number): void {
   const map = ensureMapInstance();
-  if (!map) return;
-  map.setView([lat, lng], 12);
-  // Highlight the matching card in the story so the user can jump back.
-  if (eventId) {
-    const card = document.getElementById('event-' + eventId);
-    if (card) {
-      card.scrollIntoView({ behavior: 'smooth', block: 'center' });
-      card.classList.add('story-card-flash');
-      setTimeout(() => card.classList.remove('story-card-flash'), 1600);
-    }
+  if (map) (map as any)._pendingMapFocus = { lat, lng, id: _eventId };
+  // update URL for shareable deep link (lat/lng/id, no Go route)
+  try {
+    const url = new URL(window.location.href);
+    url.hash = 'map';
+    url.searchParams.set('lat', String(lat));
+    url.searchParams.set('lng', String(lng));
+    if (_eventId) url.searchParams.set('mapId', String(_eventId));
+    history.replaceState(null, '', url.toString());
+  } catch (_) {}
+  openOverlay('map-overlay');
+  // renderMapInstance will consume _pendingMapFocus and open popup + highlight card without scrolling timeline
+  // fallback: if map already rendered, set view directly
+  if (map && !(map as any)._pendingMapFocus) {
+    map.setView([lat, lng], 14);
   }
 }
 
@@ -1121,6 +1671,7 @@ function openLightbox(): void {
   };
   lb.addEventListener('touchstart', lightboxTouchHandler);
   lb.addEventListener('touchend', lightboxTouchHandler);
+  trapFocus(lb);
 }
 
 function closeLightbox(): void {
@@ -1128,13 +1679,16 @@ function closeLightbox(): void {
   if (!lb) return;
   lightboxOpen = false;
   lb.style.display = 'none';
-  document.body.style.overflow = '';
+  // only unlock body if no overlay remains open
+  const anyOverlayOpen = document.querySelectorAll('.overlay[style*="flex"]').length > 0;
+  if (!anyOverlayOpen) document.body.style.overflow = '';
   lightboxZoomed = false;
   if (lightboxKeyHandler) document.removeEventListener('keydown', lightboxKeyHandler);
   if (lightboxTouchHandler) {
     lb.removeEventListener('touchstart', lightboxTouchHandler);
     lb.removeEventListener('touchend', lightboxTouchHandler);
   }
+  if (trapContainer === lb) releaseFocus();
 }
 
 function navigateLightbox(dir: number): void {
@@ -1239,8 +1793,7 @@ let calendarMonth: number = new Date().getMonth() + 1;
 let calendarEventList: TimelineEvent[] = [];
 
 function renderCalendar(): void {
-  const filtered = Array.isArray(events) ? events : [];
-  calendarEventList = filtered;
+  calendarEventList = filteredEvents();
 }
 
 function renderCalendarView(): void {
@@ -1360,49 +1913,6 @@ async function loadMemories(): Promise<void> {
   } catch (_) { }
 }
 
-async function loadWrapped(): Promise<void> {
-  const container = document.getElementById('wrapped-content');
-  if (!container) return;
-  try {
-    const res = await fetch('/api/wrapped?year=' + currentYear);
-    if (!res.ok) { container.innerHTML = '<div class="text-center text-muted py-5">Failed to load wrapped data</div>'; return; }
-    const w = await res.json();
-
-    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const maxMonth = Math.max(...(Object.values(w.by_month) as number[]), 1);
-    const monthBars = monthNames.map((m, i) => {
-      const idx = String(i + 1).padStart(2, '0');
-      const val = w.by_month[idx] || 0;
-      const pct = (val / maxMonth * 100).toFixed(0);
-      return '<div class="d-flex flex-column align-items-center" style="flex:1"><div class="stats-bar-value">' + val + '</div><div class="stats-bar" style="height:' + pct + '%;background:var(--primary);border-radius:4px 4px 0 0" title="' + m + ': ' + val + '"></div><div class="stats-bar-label">' + m + '</div></div>';
-    }).join('');
-
-    container.innerHTML = `
-      <div class="text-center mb-4">
-        <h3 class="fw-bold"><i class="fa-solid fa-gift me-2 text-primary"></i>${w.year} Wrapped</h3>
-        <p class="text-muted">Your year in review</p>
-      </div>
-      <div class="row g-3 mb-4">
-        <div class="col-md-3"><div class="dist-card text-center"><h5>Total Events</h5><div class="fs-2 fw-bold text-primary">${w.total_events}</div></div></div>
-        <div class="col-md-3"><div class="dist-card text-center"><h5>Longest Streak</h5><div class="fs-2 fw-bold text-primary">${w.longest_streak} days</div></div></div>
-        <div class="col-md-3"><div class="dist-card text-center"><h5>Favorites</h5><div class="fs-2 fw-bold text-warning">${w.favorite_count}</div></div></div>
-        <div class="col-md-3"><div class="dist-card text-center"><h5>Media Items</h5><div class="fs-2 fw-bold text-primary">${w.total_media}</div></div></div>
-      </div>
-      <div class="row g-3 mb-4">
-        <div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-star me-2 text-warning"></i>Busiest Month</h5><div class="fs-4 fw-bold">${w.busiest_month || 'N/A'}</div><div class="text-muted">${w.busiest_month_count || 0} events</div></div></div>
-        <div class="col-md-6"><div class="dist-card"><h5><i class="fa-solid fa-pen me-2"></i>Most Detailed Event</h5><div class="fw-bold">${w.top_event ? escapeHtml(w.top_event) : 'N/A'}</div>${w.top_event_date ? '<div class="text-muted small">' + w.top_event_date + '</div>' : ''}</div></div>
-      </div>
-      ${w.most_tags_title ? '<div class="row g-3 mb-4"><div class="col-12"><div class="dist-card"><h5><i class="fa-solid fa-tags me-2"></i>Most Tagged Event</h5><div class="fw-bold">' + escapeHtml(w.most_tags_title) + '</div><div class="text-muted">' + w.most_tags_count + ' tags</div></div></div></div>' : ''}
-      <div class="dist-card">
-        <h5><i class="fa-solid fa-chart-column me-2"></i>Events by Month</h5>
-        <div class="stats-bar-chart" style="display:flex;align-items:flex-end;gap:6px;height:150px;padding-top:8px">${monthBars}</div>
-      </div>
-    `;
-  } catch (e) {
-    container.innerHTML = '<div class="text-center text-muted py-5">Failed to load wrapped data</div>';
-  }
-}
-
 function loadAnalytics(): void {
   fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg) {
     if (cfg.umami_url && cfg.umami_site && cfg.umami_enabled) {
@@ -1416,8 +1926,43 @@ function loadAnalytics(): void {
   }).catch(function () { });
 }
 
+function restoreFiltersFromURL(): void {
+  const params = new URLSearchParams(window.location.search);
+  const y = params.get('year');
+  const m = params.get('month');
+  if (y && /^\d{4}$/.test(y)) {
+    const yi = parseInt(y, 10);
+    if (!isNaN(yi)) filterYear = yi;
+  } else filterYear = null;
+  if (m && /^\d+$/.test(m)) {
+    const mi = parseInt(m, 10);
+    if (mi >= 0 && mi <= 12) { activeFilterMonth = mi; currentMonth = mi; }
+  } else { activeFilterMonth = 0; currentMonth = 0; }
+  // reflect month pills
+  document.querySelectorAll('.month-filter .btn').forEach((btn, i) => {
+    const active = i === activeFilterMonth;
+    btn.classList.toggle('active', active);
+    btn.classList.toggle('btn-dark', active);
+    btn.classList.toggle('btn-outline-dark', !active);
+    btn.setAttribute('aria-pressed', active ? 'true' : 'false');
+  });
+}
+
+function initToolbarKeyboard(): void {
+  document.querySelectorAll<HTMLElement>('.toolbar-scroll[tabindex="0"]').forEach(el => {
+    el.addEventListener('keydown', (e: KeyboardEvent) => {
+      if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        const delta = e.key === 'ArrowLeft' ? -80 : 80;
+        el.scrollBy({ left: delta, behavior: 'smooth' });
+      }
+    });
+  });
+}
+
 function initApp(): void {
   initTheme();
+  initToolbarKeyboard();
   loadAnalytics();
 
   const params = new URLSearchParams(window.location.search);
@@ -1426,6 +1971,7 @@ function initApp(): void {
     const input = document.getElementById('search-input') as HTMLInputElement | null;
     if (input) input.value = q;
   }
+  restoreFiltersFromURL();
 
   loadData();
   loadMemories();
@@ -1447,6 +1993,23 @@ function initApp(): void {
   }).catch(() => {
     const versionEl = document.getElementById('version-display');
     if (versionEl) versionEl.textContent = 'v1.0.0';
+  });
+
+  // 7.2 deep link: /#map or ?lat=&lng= opens canonical map overlay with focus (no Go route)
+  const hash = window.location.hash || '';
+  const lp = new URLSearchParams(window.location.search);
+  const dLat = parseFloat(lp.get('lat') || '');
+  const dLng = parseFloat(lp.get('lng') || '');
+  const dId = lp.get('mapId') || lp.get('id') || '';
+  if (hash === '#map' || (!isNaN(dLat) && !isNaN(dLng))) {
+    // wait a tick for data; openMapAt will set pending focus if data not yet there
+    setTimeout(() => {
+      if (!isNaN(dLat) && !isNaN(dLng)) openMapAt(dLat, dLng, dId ? parseInt(dId, 10) : undefined);
+      else openOverlay('map-overlay');
+    }, 600);
+  }
+  window.addEventListener('hashchange', () => {
+    if (window.location.hash === '#map') openOverlay('map-overlay');
   });
 }
 
@@ -1470,10 +2033,13 @@ async function loadPersonsForFilter(): Promise<void> {
 document.addEventListener('DOMContentLoaded', initApp);
 
 (window as any).changeYear = changeYear;
+(window as any).scrollToYear = scrollToYear;
 (window as any).searchEvents = searchEvents;
 (window as any).filterMonth = filterMonth;
 (window as any).showMedia = showMedia;
 (window as any).loadMoreGallery = loadMoreGallery;
+(window as any).removeOneFilter = removeOneFilter;
+(window as any).loadData = loadData;
 (window as any).calendarPrevMonth = calendarPrevMonth;
 (window as any).calendarNextMonth = calendarNextMonth;
 (window as any).calendarToday = calendarToday;
@@ -1494,7 +2060,6 @@ document.addEventListener('DOMContentLoaded', initApp);
 (window as any).toggleFav = toggleFav;
 (window as any).toggleFavFilter = toggleFavFilter;
 (window as any).filterByCollection = filterByCollection;
-(window as any).loadWrapped = loadWrapped;
 (window as any).openOverlay = openOverlay;
 (window as any).closeOverlay = closeOverlay;
 (window as any).openMapAt = openMapAt;

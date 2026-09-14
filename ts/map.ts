@@ -6,13 +6,16 @@ let clusterGroup: any = null;
 let markerList: any[] = [];
 let visibleEvents: any[] = [];
 let mapEventsData: any[] = [];
+// Canonical basemap — must stay in sync with ts/index.ts overlay (single implementation requirement)
+export const MAP_TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
+export const MAP_TILE_OPTS: any = {
+  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+  maxZoom: 19
+};
 
 function initMap(): void {
   mapInstance = L.map('map').setView([40.7128, -74.0060], 5);
-  L.tileLayer('https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', {
-    attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-    maxZoom: 19
-  }).addTo(mapInstance);
+  L.tileLayer(MAP_TILE_URL, MAP_TILE_OPTS).addTo(mapInstance);
   const filterInput = document.getElementById('location-filter') as HTMLInputElement;
   if (filterInput) {
     filterInput.addEventListener('input', () => {
@@ -91,6 +94,31 @@ function renderMarkers(): void {
   mapInstance.addLayer(clusterGroup);
 
   if (bounds.length > 0) mapInstance.fitBounds(bounds, { padding: [50, 50], maxZoom: 12 });
+  // Deep-link focus from ?lat=&lng=&zoom= or ?id= (canonical map share target)
+  applyMapDeepLink();
+}
+
+function applyMapDeepLink(): void {
+  try {
+    const params = new URLSearchParams(window.location.search);
+    const lat = parseFloat(params.get('lat') || '');
+    const lng = parseFloat(params.get('lng') || '');
+    const id = params.get('id');
+    const zoom = parseInt(params.get('zoom') || '14', 10);
+    if (!isNaN(lat) && !isNaN(lng)) {
+      mapInstance.setView([lat, lng], isNaN(zoom) ? 14 : zoom, { animate: true });
+      // if an event id is also given, try to open its popup
+      if (id) {
+        const idx = visibleEvents.findIndex((ev: any) => String(ev.id ?? ev.properties?.id ?? '') === id || String((ev as any).id) === id);
+        if (idx >= 0) setTimeout(() => focusEvent(idx), 350);
+      }
+      return;
+    }
+    if (id) {
+      const idx = visibleEvents.findIndex((ev: any) => String(ev.id ?? ev.properties?.id ?? '') === id);
+      if (idx >= 0) setTimeout(() => focusEvent(idx), 350);
+    }
+  } catch (_) {}
 }
 
 function renderEventList(): void {

@@ -302,7 +302,7 @@ func importBGGPlay(db *sql.DB, p bggPlayXML) (bool, error) {
 		// also tag with slug? keep simple boardgame
 	}
 
-	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, tags, source, source_ref) VALUES (?, ?, ?, ?, ?, 'bgg', ?)`,
+	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, tags, media_type, source, source_ref) VALUES (?, ?, ?, ?, ?, 'boardgame', 'bgg', ?)`,
 		title, description, eventDate, location, tags, sourceRef)
 	if err != nil {
 		// Unique constraint violation means race — treat as skipped
@@ -312,112 +312,6 @@ func importBGGPlay(db *sql.DB, p bggPlayXML) (bool, error) {
 		return false, err
 	}
 	return true, nil
-}
-
-// getBGGEvents returns BGG-sourced events grouped for corner view (used by API).
-func getBGGEvents(c *gin.Context) {
-	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, COALESCE(e.media_url,''), COALESCE(e.thumbnail,''), COALESCE(e.media_caption,''), COALESCE(e.tags,''), COALESCE(e.source,''), COALESCE(e.source_ref,''), e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude FROM timeline_events e WHERE e.source='bgg' AND (e.deleted_at IS NULL OR e.deleted_at='') ORDER BY e.event_date DESC`)
-	if err != nil {
-		serverError(c, err)
-		return
-	}
-	defer rows.Close()
-	events := []models.TimelineEvent{}
-	for rows.Next() {
-		var ev models.TimelineEvent
-		var mediaURL, thumb, caption, tags, source, sourceRef sql.NullString
-		var favInt int
-		var personID sql.NullInt64
-		var lat, lng sql.NullFloat64
-		var createdAt sql.NullString
-		var mediaType sql.NullString
-		if err := rows.Scan(&ev.ID, &ev.Title, &ev.Description, &ev.Date, &ev.Location, &mediaType, &mediaURL, &thumb, &caption, &tags, &source, &sourceRef, &favInt, &createdAt, &personID, &lat, &lng); err != nil {
-			continue
-		}
-		if mediaType.Valid {
-			ev.MediaType = mediaType.String
-		}
-		if mediaURL.Valid {
-			ev.MediaURL = mediaURL.String
-		}
-		if thumb.Valid {
-			ev.Thumbnail = thumb.String
-		}
-		if caption.Valid {
-			ev.MediaCaption = caption.String
-		}
-		if tags.Valid {
-			ev.Tags = tags.String
-		}
-		if source.Valid {
-			ev.Source = source.String
-		}
-		if sourceRef.Valid {
-			ev.SourceRef = sourceRef.String
-		}
-		if createdAt.Valid {
-			ev.CreatedAt = createdAt.String
-		}
-		if personID.Valid {
-			v := int(personID.Int64)
-			ev.PersonID = &v
-		}
-		if lat.Valid {
-			v := lat.Float64
-			ev.Latitude = &v
-		}
-		if lng.Valid {
-			v := lng.Float64
-			ev.Longitude = &v
-		}
-		ev.IsFavorite = favInt == 1
-		events = append(events, ev)
-	}
-	c.JSON(http.StatusOK, gin.H{"events": events})
-}
-
-// getBGGStats returns per-year counts and per-game tally for corner.
-func getBGGStats(c *gin.Context) {
-	type gameCount struct {
-		Game  string `json:"game"`
-		Count int    `json:"count"`
-	}
-	type yearCount struct {
-		Year  string `json:"year"`
-		Count int    `json:"count"`
-	}
-	rows, err := db.Query(`SELECT event_date, title FROM timeline_events WHERE source='bgg' AND (deleted_at IS NULL OR deleted_at='')`)
-	if err != nil {
-		serverError(c, err)
-		return
-	}
-	defer rows.Close()
-	byYear := map[string]int{}
-	byGame := map[string]int{}
-	for rows.Next() {
-		var date, title string
-		rows.Scan(&date, &title) //nolint
-		year := ""
-		if len(date) >= 4 {
-			year = date[:4]
-		}
-		if year != "" {
-			byYear[year]++
-		}
-		game := strings.TrimPrefix(title, "Played ")
-		if game != "" {
-			byGame[game]++
-		}
-	}
-	years := []yearCount{}
-	for y, cnt := range byYear {
-		years = append(years, yearCount{Year: y, Count: cnt})
-	}
-	games := []gameCount{}
-	for g, cnt := range byGame {
-		games = append(games, gameCount{Game: g, Count: cnt})
-	}
-	c.JSON(http.StatusOK, gin.H{"by_year": byYear, "by_game": byGame, "years": years, "games": games})
 }
 
 // seedBGGForTest inserts a canned BGG event for E2E. Guarded to E2E/test environments.
@@ -451,7 +345,7 @@ func seedBGGForTest(c *gin.Context) {
 		ref = fmt.Sprintf("bgg-play-e2e-%d", time.Now().UnixNano())
 	}
 	location := body.Location
-	res, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, tags, source, source_ref) VALUES (?, ?, ?, ?, 'boardgame', 'bgg', ?)`,
+	res, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, tags, media_type, source, source_ref) VALUES (?, ?, ?, ?, 'boardgame', 'boardgame', 'bgg', ?)`,
 		title, "Players: E2E Tester\nSeeded for BGG corner E2E", date, location, ref)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

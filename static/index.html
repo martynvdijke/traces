@@ -7,6 +7,8 @@
     <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.3.1/css/all.min.css">
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css" />
+    <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
@@ -18,34 +20,6 @@
       (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
     </script>
     <style>
-        .map-popup { font-family: 'DM Sans', sans-serif; }
-        .map-popup h6 { margin: 0 0 4px 0; font-weight: 700; }
-        .map-popup p { margin: 0; font-size: 0.85rem; }
-        .legend-squares { display: flex; gap: 3px; }
-        .calendar-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 2px; }
-        .calendar-header { text-align: center; font-weight: 700; padding: 0.5rem; font-size: 0.8rem; color: var(--text-muted); }
-        .calendar-day { min-height: 80px; padding: 4px; border-radius: 8px; background: var(--bg); border: 1px solid var(--border); cursor: pointer; transition: all 0.2s; }
-        .calendar-day:hover { border-color: var(--primary); box-shadow: 0 0 0 2px var(--primary-glow); }
-        .calendar-day.other-month { opacity: 0.4; }
-        .calendar-day.today { border-color: var(--primary); background: var(--primary-glow); }
-        .calendar-day .day-num { font-weight: 700; font-size: 0.85rem; font-family: var(--font-mono); }
-        .calendar-day .event-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: var(--primary); margin: 1px; }
-        .calendar-day .event-dots { display: flex; flex-wrap: wrap; gap: 2px; margin-top: 2px; }
-        .calendar-nav { display: flex; align-items: center; gap: 1rem; margin-bottom: 1rem; }
-        .calendar-nav h3 { margin: 0; font-family: var(--font-mono); }
-        .calendar-event-list { max-height: 300px; overflow-y: auto; }
-        .calendar-event-item { padding: 0.5rem; border-bottom: 1px solid var(--border); font-size: 0.85rem; cursor: pointer; transition: background 0.2s; }
-        .calendar-event-item:hover { background: var(--primary-glow); }
-        .calendar-event-item:last-child { border-bottom: none; }
-        .weather-badge { display: inline-flex; align-items: center; gap: 0.3rem; font-size: 0.75rem; color: var(--text-muted); padding: 0.15rem 0.4rem; border-radius: 4px; background: var(--primary-glow); }
-        .md-content h1, .md-content h2, .md-content h3 { margin-top: 0.5rem; margin-bottom: 0.25rem; }
-        .md-content p { margin-bottom: 0.25rem; }
-        .md-content ul, .md-content ol { padding-left: 1.25rem; margin-bottom: 0.25rem; }
-        .md-content code { background: var(--border); padding: 0.1rem 0.3rem; border-radius: 3px; font-size: 0.8rem; }
-        .md-content pre code { display: block; padding: 0.5rem; overflow-x: auto; }
-        .md-content blockquote { border-left: 3px solid var(--primary); padding-left: 0.5rem; color: var(--text-muted); }
-        .md-content a { color: var(--primary); }
-        .user-badge { display: inline-flex; align-items: center; gap: 0.3rem; padding: 0.15rem 0.5rem; border-radius: 10px; font-size: 0.7rem; color: white; }
         .memories-section { margin-top: 1rem; }
         .memories-item { padding: 0.75rem; border-left: 3px solid var(--primary); margin-bottom: 0.5rem; background: var(--bg); border-radius: 0 var(--radius-sm) var(--radius-sm) 0; }
         .global-search-wrapper { position: relative; }
@@ -53,33 +27,29 @@
         .global-search-item { padding: 0.5rem 0.75rem; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 0.82rem; }
         .global-search-item:last-child { border-bottom: none; }
         .global-search-item:hover, .global-search-item.active { background: var(--primary-glow); }
-        .global-search-item .search-year { font-size: 0.7rem; color: var(--text-muted); }
-        .global-search-no-results { padding: 1rem; text-align: center; color: var(--text-muted); font-size: 0.85rem; }
+        .global-search-item .search-year { font-size: var(--text-xs); color: var(--text-muted); }
+        .global-search-no-results { padding: 1rem; text-align: center; color: var(--text-muted); font-size: var(--text-sm); }
         .filter-tags { position: relative; }
         .selected-filter-tags { display: flex; flex-wrap: wrap; gap: 4px; }
-        .filter-tag-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--primary-glow); color: var(--primary); border-radius: 12px; font-size: 0.72rem; cursor: pointer; }
+        .filter-tag-badge { display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; background: var(--primary-glow); color: var(--primary); border-radius: 12px; font-size: var(--text-xs); cursor: pointer; }
         .filter-tag-badge i { font-size: 0.65rem; }
         .stats-bar-chart { display: flex; align-items: flex-end; gap: 6px; height: 150px; padding-top: 8px; }
         .stats-bar { flex: 1; background: var(--primary); border-radius: 4px 4px 0 0; min-width: 8px; position: relative; transition: height 0.3s; }
         .stats-bar:hover { opacity: 0.8; }
         .stats-bar-label { text-align: center; font-size: 0.65rem; color: var(--text-muted); margin-top: 4px; }
-        .stats-bar-value { text-align: center; font-size: 0.7rem; font-weight: 700; }
+        .stats-bar-value { text-align: center; font-size: var(--text-xs); font-weight: 700; }
         .tag-cloud { display: flex; flex-wrap: wrap; gap: 6px; }
-        .tag-cloud-item { padding: 3px 10px; border-radius: 12px; background: var(--primary-glow); color: var(--primary); font-size: 0.75rem; }
+        .tag-cloud-item { padding: 3px 10px; border-radius: 12px; background: var(--primary-glow); color: var(--primary); font-size: var(--text-sm); }
         .weekday-chart { display: flex; gap: 6px; align-items: flex-end; height: 100px; }
         .weekday-bar { flex: 1; background: var(--primary); border-radius: 4px 4px 0 0; position: relative; transition: height 0.3s; }
         .weekday-bar-label { text-align: center; font-size: 0.65rem; color: var(--text-muted); margin-top: 2px; }
         .dist-card { background: var(--bg); border: 1px solid var(--border); border-radius: 12px; padding: 1rem; margin-bottom: 1rem; }
-        .dist-card h5 { font-size: 0.9rem; margin-bottom: 0.75rem; font-weight: 700; }
-        .geo-spread { font-size: 0.8rem; color: var(--text-muted); }
-        .top-day-badge { display: inline-block; padding: 4px 10px; background: var(--primary-glow); border-radius: 8px; font-weight: 700; font-size: 0.85rem; }
-        @media (max-width: 768px) {
-            .calendar-day { min-height: 60px; font-size: 0.75rem; }
-        }
+        .dist-card h5 { font-size: var(--text-md); margin-bottom: 0.75rem; font-weight: 700; }
+        .geo-spread { font-size: var(--text-sm); color: var(--text-muted); }
+        .top-day-badge { display: inline-block; padding: 4px 10px; background: var(--primary-glow); border-radius: 8px; font-weight: 700; font-size: var(--text-sm); }
     </style>
 </head>
 <body>
-    <div class="vintage-overlay"></div>
 
     <header class="py-3 py-md-4">
         <div class="container">
@@ -90,20 +60,26 @@
                     <div>TRACES<span class="d-none d-md-inline">Your Year in Review</span></div>
                 </div>
                 <div class="racing-stripes"></div>
-                <nav class="d-flex flex-column flex-md-row align-items-center gap-2 gap-md-3 w-100">
+                <nav class="d-flex flex-column flex-md-row align-items-center gap-2 gap-md-3 w-100" aria-label="Site">
                     <div class="search-box d-flex order-1 order-md-0">
                         <div class="global-search-wrapper">
-                            <input type="text" placeholder="Search all years..." id="search-input" class="form-control form-control-sm" autocomplete="off" oninput="globalSearchInput()" onkeydown="globalSearchKeydown(event)" onfocus="globalSearchFocus()">
-                            <div class="global-search-dropdown" id="global-search-dropdown" style="display:none"></div>
+                            <label for="search-input" class="visually-hidden">Search memories</label>
+                            <input type="text" placeholder="Search memories..." id="search-input" class="form-control form-control-sm" autocomplete="off" aria-label="Search memories" role="combobox" aria-expanded="false" aria-controls="global-search-dropdown" aria-autocomplete="list" oninput="globalSearchInput()" onkeydown="globalSearchKeydown(event)" onfocus="globalSearchFocus()">
+                            <div class="global-search-dropdown" id="global-search-dropdown" style="display:none" role="listbox" aria-label="Search results"></div>
                         </div>
-                        <button class="btn btn-sm btn-outline-secondary" onclick="searchEvents()">
-                            <i class="fa-solid fa-search" aria-hidden="true"></i>
-                        </button>
                     </div>
-                    <ul class="mb-0 d-flex flex-wrap gap-2 gap-md-3 list-unstyled justify-content-center">
+                    <div class="header-primary-nav d-flex align-items-center gap-1 order-2" role="navigation" aria-label="Primary">
+                        <button type="button" class="header-nav-btn is-active" id="timeline-tab" onclick="window.scrollTo({top:0, behavior:'smooth'})" aria-current="page"><i class="fa-solid fa-timeline me-1" aria-hidden="true"></i>Timeline</button>
+                        <button type="button" class="header-nav-btn" id="calendar-tab" onclick="openOverlay('calendar-overlay')" aria-haspopup="dialog"><i class="fa-regular fa-calendar-days me-1" aria-hidden="true"></i>Calendar</button>
+                        <button type="button" class="header-nav-btn" id="map-tab" onclick="openOverlay('map-overlay')" aria-haspopup="dialog"><i class="fa-solid fa-map-location-dot me-1" aria-hidden="true"></i>Map</button>
+                        <button type="button" class="header-nav-btn" id="stats-tab" onclick="openOverlay('stats-overlay')" aria-haspopup="dialog"><i class="fa-solid fa-chart-simple me-1" aria-hidden="true"></i>Stats</button>
+                        <button type="button" class="header-nav-btn" id="fav-filter-btn" title="Show favorites only" aria-pressed="false" onclick="toggleFavFilter()"><i class="fa-regular fa-star me-1" aria-hidden="true"></i>Favorites</button>
+                        <button type="button" class="header-nav-btn" id="filters-toggle" title="Advanced Filters" aria-expanded="false" aria-controls="advanced-filters" onclick="toggleFilters()"><i class="fa-solid fa-sliders me-1" aria-hidden="true"></i>Filters</button>
+                    </div>
+                    <ul class="mb-0 d-flex flex-wrap gap-2 gap-md-3 list-unstyled justify-content-center order-3">
                         <li><a href="/admin.html" class="text-uppercase small"><i class="fa-solid fa-lock me-1" aria-hidden="true"></i><span class="d-none d-lg-inline">Admin</span></a></li>
                     </ul>
-                    <button id="theme-toggle" class="theme-toggle" aria-label="Toggle Theme">
+                    <button id="theme-toggle" class="theme-toggle order-4" aria-label="Toggle theme" aria-pressed="false">
                         <i class="fa-solid fa-moon" aria-hidden="true"></i>
                     </button>
                 </nav>
@@ -113,83 +89,83 @@
 
     <main class="container my-4">
 
-        <!-- ── Story toolbar: year chips, month filter, quick actions ── -->
-        <section class="year-selector story-toolbar mb-4">
+        <!-- ── Story toolbar: viewing indicator + year chips + month pills only (Phase 4) ── -->
+        <section class="year-selector story-toolbar mb-4" aria-label="Story filters">
             <div class="story-toolbar-row">
-                <div class="story-now d-flex align-items-center gap-2">
+                <div class="story-now d-flex align-items-center gap-2" role="status" aria-live="polite" aria-atomic="true">
                     <i class="fa-solid fa-clock-rotate-left text-primary" aria-hidden="true"></i>
                     <span class="story-now-label text-uppercase small">Viewing</span>
                     <span class="story-now-year" id="current-year">2026</span>
                 </div>
-                <div class="d-flex gap-2 flex-wrap align-items-center justify-content-end" id="year-buttons">
+                <div class="toolbar-scroll" id="year-buttons-wrap" role="toolbar" aria-label="Year navigation" tabindex="0">
+                    <div class="d-flex gap-2 align-items-center flex-nowrap" id="year-buttons"></div>
                 </div>
             </div>
-            <div class="story-toolbar-row mt-3">
-                <div class="month-filter d-flex gap-1 flex-wrap">
-                    <button class="btn btn-sm btn-dark active" onclick="filterMonth(0)">All Year</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(1)">Jan</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(2)">Feb</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(3)">Mar</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(4)">Apr</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(5)">May</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(6)">Jun</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(7)">Jul</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(8)">Aug</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(9)">Sep</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(10)">Oct</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(11)">Nov</button>
-                    <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(12)">Dec</button>
+            <div class="story-toolbar-row story-toolbar-row--scroll mt-3">
+                <div class="toolbar-scroll month-scroll" role="toolbar" aria-label="Month filter" tabindex="0">
+                    <div class="month-filter d-flex gap-1 flex-nowrap" id="month-filter">
+                        <button class="btn btn-sm btn-dark active" onclick="filterMonth(0)" aria-pressed="true" aria-controls="timeline-container">All Year</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(1)" aria-pressed="false" aria-controls="timeline-container">Jan</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(2)" aria-pressed="false" aria-controls="timeline-container">Feb</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(3)" aria-pressed="false" aria-controls="timeline-container">Mar</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(4)" aria-pressed="false" aria-controls="timeline-container">Apr</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(5)" aria-pressed="false" aria-controls="timeline-container">May</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(6)" aria-pressed="false" aria-controls="timeline-container">Jun</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(7)" aria-pressed="false" aria-controls="timeline-container">Jul</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(8)" aria-pressed="false" aria-controls="timeline-container">Aug</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(9)" aria-pressed="false" aria-controls="timeline-container">Sep</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(10)" aria-pressed="false" aria-controls="timeline-container">Oct</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(11)" aria-pressed="false" aria-controls="timeline-container">Nov</button>
+                        <button class="btn btn-sm btn-outline-dark" onclick="filterMonth(12)" aria-pressed="false" aria-controls="timeline-container">Dec</button>
+                    </div>
                 </div>
-                <div class="d-flex gap-2 flex-wrap align-items-center">
-                    <a class="btn btn-sm btn-outline-secondary" id="ics-download" href="/api/events/ics?year=2026" title="Download Calendar (iCal)" download><i class="fa-solid fa-calendar-plus" aria-hidden="true"></i></a>
-                    <button class="btn btn-sm btn-outline-primary" id="fav-filter-btn" onclick="toggleFavFilter()" title="Favorites only"><i class="fa-regular fa-star" aria-hidden="true"></i></button>
-                    <button class="btn btn-sm btn-outline-secondary" onclick="toggleFilters()" title="Advanced Filters"><i class="fa-solid fa-filter me-1" aria-hidden="true"></i><span class="d-none d-sm-inline">Filters</span></button>
-                    <button class="btn btn-sm btn-outline-secondary" id="calendar-tab" onclick="openOverlay('calendar-overlay')"><i class="fa-regular fa-calendar-days me-1" aria-hidden="true"></i>Calendar</button>
-                    <button class="btn btn-sm btn-outline-secondary" id="map-tab" onclick="openOverlay('map-overlay')"><i class="fa-solid fa-map-location-dot me-1" aria-hidden="true"></i>Map</button>
-                    <button class="btn btn-sm btn-outline-secondary" id="stats-tab" onclick="openOverlay('stats-overlay')"><i class="fa-solid fa-chart-simple me-1" aria-hidden="true"></i>Stats</button>
-                </div>
+            </div>
+            <!-- kept for JS compat but hidden from toolbar layout -->
+            <div class="d-none">
+                <a id="ics-download" href="/api/events/ics?year=2026" download hidden></a>
             </div>
         </section>
 
-        <section class="advanced-filters mb-4" id="advanced-filters" style="display:none">
+        <section class="advanced-filters mb-4" id="advanced-filters" style="display:none" aria-label="Advanced filters">
             <div class="card">
                 <div class="card-body">
                     <div class="row g-3">
                         <div class="col-md-3">
-                            <label class="form-label small fw-bold">Tags</label>
+                            <label for="filter-tag-input" class="form-label small fw-bold">Tags</label>
                             <div class="filter-tags" id="filter-tags-container">
-                                <input type="text" class="form-control form-control-sm" id="filter-tag-input" placeholder="Type tag..." oninput="filterTagInput()" autocomplete="off">
+                                <input type="text" class="form-control form-control-sm" id="filter-tag-input" placeholder="Type tag..." oninput="filterTagInput()" autocomplete="off" aria-label="Filter by tags">
                                 <div class="selected-filter-tags mt-1" id="selected-filter-tags"></div>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label small fw-bold">Person</label>
-                            <select class="form-select form-select-sm" id="filter-person" onchange="applyAdvancedFilters()">
+                            <label for="filter-person" class="form-label small fw-bold">Person</label>
+                            <select class="form-select form-select-sm" id="filter-person" onchange="applyAdvancedFilters()" aria-label="Filter by person">
                                 <option value="">Any person</option>
                             </select>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label small fw-bold">Collection</label>
-                            <select class="form-select form-select-sm" id="filter-collection" onchange="filterByCollection()">
+                            <label for="filter-collection" class="form-label small fw-bold">Collection</label>
+                            <select class="form-select form-select-sm" id="filter-collection" onchange="filterByCollection()" aria-label="Filter by collection">
                                 <option value="">All Collections</option>
                             </select>
                         </div>
                         <div class="col-md-3">
                             <label class="form-label small fw-bold">Media Type</label>
-                            <div class="d-flex gap-2 mt-1">
-                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="image" onchange="applyAdvancedFilters()" id="filter-media-image"> Image</label>
-                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="video" onchange="applyAdvancedFilters()" id="filter-media-video"> Video</label>
-                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="audio" onchange="applyAdvancedFilters()" id="filter-media-audio"> Audio</label>
+                            <div class="d-flex gap-2 mt-1" role="group" aria-label="Media type filter">
+                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="image" onchange="applyAdvancedFilters()" id="filter-media-image" aria-label="Filter image"> Image</label>
+                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="video" onchange="applyAdvancedFilters()" id="filter-media-video" aria-label="Filter video"> Video</label>
+                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="audio" onchange="applyAdvancedFilters()" id="filter-media-audio" aria-label="Filter audio"> Audio</label>
+                                <label class="form-check-label small"><input type="checkbox" class="form-check-input" value="boardgame" onchange="applyAdvancedFilters()" id="filter-media-boardgame" aria-label="Filter board games"> Board Games</label>
                             </div>
                         </div>
                         <div class="col-md-3">
-                            <label class="form-label small fw-bold">Location</label>
-                            <input type="text" class="form-control form-control-sm" id="filter-location" placeholder="Filter by location..." oninput="filterLocationDebounce()">
+                            <label for="filter-location" class="form-label small fw-bold">Location</label>
+                            <input type="text" class="form-control form-control-sm" id="filter-location" placeholder="Filter by location..." oninput="filterLocationDebounce()" aria-label="Filter by location">
                         </div>
                     </div>
                     <div class="mt-2">
                         <button class="btn btn-sm btn-outline-secondary" onclick="clearAllFilters()">Clear Filters</button>
-                        <span class="text-muted small ms-2" id="filter-status"></span>
+                        <span class="text-muted small ms-2" id="filter-status" role="status" aria-live="polite"></span>
                     </div>
                 </div>
             </div>
@@ -197,10 +173,20 @@
 
         <div id="memories-section" class="memories-section mb-4" style="display:none"></div>
 
+        <div id="active-filter-bar" class="active-filter-bar" style="display:none">
+            <div id="active-filter-chips" class="active-filter-chips"></div>
+            <button type="button" class="btn btn-sm btn-outline-secondary" id="clear-all-filters" onclick="clearAllFilters()">Clear all</button>
+        </div>
+        <div id="result-count" class="result-count" aria-live="polite" aria-atomic="true"></div>
+
         <!-- ── The story: one continuous roll of photos, videos, maps, books & quotes ── -->
         <section id="timeline" class="story-section mb-4">
             <div class="story" id="timeline-container"></div>
-            <div id="story-sentinel" class="story-sentinel"></div>
+            <div id="story-sentinel" class="story-sentinel" aria-hidden="true"></div>
+            <div class="load-more-wrap" id="load-more-wrap" style="display:none">
+                <button type="button" class="btn btn-outline-primary load-more-btn" id="load-more-btn" onclick="loadMoreGallery()">Load more</button>
+            </div>
+            <noscript><p class="text-center text-muted small mt-3"><a href="/api/events/full">View all events</a> — enable JavaScript for full story browsing.</p></noscript>
         </section>
     </main>
 
@@ -264,7 +250,9 @@
                 <h2><i class="fa-solid fa-chart-simple me-2 text-primary" aria-hidden="true"></i>Stats <span class="text-muted" id="stats-year"></span></h2>
                 <button class="overlay-close" onclick="closeOverlay('stats-overlay')" aria-label="Close stats"><i class="fa-solid fa-xmark"></i></button>
             </div>
-            <section id="contributions">
+            <!-- 7.3 At a Glance -->
+            <section class="stats-group" id="contributions" aria-labelledby="stats-at-glance-title">
+                <h3 id="stats-at-glance-title" class="stats-group-title"><i class="fa-solid fa-border-all me-2" aria-hidden="true"></i>At a Glance</h3>
                 <div class="row align-items-stretch g-4">
                     <div class="col-lg-8">
                         <div class="contribution-card">
@@ -315,12 +303,18 @@
                     </div>
                 </div>
             </section>
-            <section class="stats-section mt-4">
-                <h4 class="mb-3"><i class="fa-solid fa-chart-column me-2" aria-hidden="true"></i>Event Distributions</h4>
-                <div id="stats-distribution-container">
-                    <div class="text-center text-muted py-5">Loading statistics...</div>
-                </div>
-            </section>
+            <!-- 7.3 Rhythm -->
+            <div id="stats-distribution-container">
+                <section class="stats-section" aria-labelledby="stats-rhythm-title">
+                    <h3 id="stats-rhythm-title" class="stats-group-title"><i class="fa-solid fa-wave-square me-2" aria-hidden="true"></i>Rhythm</h3>
+                    <p class="text-muted small mb-3">When moments happen across months and weekdays.</p>
+                    <div id="stats-rhythm-container"></div>
+                </section>
+                <section class="stats-section mt-4" aria-labelledby="stats-people-places-title">
+                    <h3 id="stats-people-places-title" class="stats-group-title"><i class="fa-solid fa-users me-2" aria-hidden="true"></i>People &amp; Places</h3>
+                    <div id="stats-people-places-container"></div>
+                </section>
+            </div>
         </div>
     </div>
 
@@ -353,6 +347,7 @@
 
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://unpkg.com/leaflet.markercluster@1.5.3/dist/leaflet.markercluster.js"></script>
     <script type="module" src="/static/js/index.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>

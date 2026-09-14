@@ -366,8 +366,6 @@ func main() {
 			auth.POST("/bgg/config", saveBGGConfig)
 			auth.POST("/bgg/test", testBGG)
 			auth.POST("/bgg/sync", syncBGGHandler)
-			auth.GET("/bgg/events", getBGGEvents)
-			auth.GET("/bgg/stats", getBGGStats)
 			auth.POST("/bgg/seed", seedBGGForTest)
 			auth.GET("/umami/config", getUmamiConfig)
 			auth.POST("/umami/config", saveUmamiConfig)
@@ -983,12 +981,12 @@ func getPublicEvents(c *gin.Context) {
 		}
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL) AND e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
 		args = idArgs
 	} else if publicMode {
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL)`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
 		if year != "" {
 			query += " AND strftime('%Y', e.event_date) = ?"
 			args = append(args, year)
@@ -1001,7 +999,7 @@ func getPublicEvents(c *gin.Context) {
 	} else {
 		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL) AND e.is_public = 1`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.is_public = 1`
 		if year != "" {
 			query += " AND strftime('%Y', e.event_date) = ?"
 			args = append(args, year)
@@ -1037,7 +1035,7 @@ func getContributions(c *gin.Context) {
 		year = fmt.Sprintf("%d", time.Now().Year())
 	}
 
-	rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date) = ?`, year)
+	rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date) = ?`, year)
 	if err != nil {
 		serverError(c, err)
 		return
@@ -1991,7 +1989,7 @@ func exportEvents(c *gin.Context) {
 
 	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL)`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
 	args := []any{}
 
 	if year != "" {
@@ -2044,7 +2042,7 @@ func getEventsICS(c *gin.Context) {
 
 	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time
 		FROM timeline_events e
-		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL) AND strftime('%Y', e.event_date) = ?
+		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND strftime('%Y', e.event_date) = ?
 		ORDER BY e.event_date ASC`
 	rows, err := db.Query(sqlStr, year)
 	if err != nil {
@@ -2362,7 +2360,7 @@ func getCollectionEvents(c *gin.Context) {
 		FROM timeline_events e
 		LEFT JOIN persons p ON e.person_id = p.id
 		INNER JOIN collection_events ce ON ce.event_id = e.id
-		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL) AND ce.collection_id = ?
+		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND ce.collection_id = ?
 		ORDER BY e.event_date ASC`
 
 	rows, err := db.Query(query, id)
@@ -2605,16 +2603,16 @@ func getWrapped(c *gin.Context) {
 	}
 
 	var total int
-	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date)=?", year).Scan(&total)
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?", year).Scan(&total)
 
 	var topEventTitle string
 	var topEventDate string
 	db.QueryRow(`SELECT title, event_date FROM timeline_events 
-		WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date)=? 
+		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? 
 		ORDER BY (LENGTH(description) - LENGTH(REPLACE(description, ' ', '')) + 1) DESC LIMIT 1`, year).Scan(&topEventTitle, &topEventDate)
 
 	var longestStreak int
-	streakRows, _ := db.Query("SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date)=? GROUP BY event_date ORDER BY event_date ASC", year)
+	streakRows, _ := db.Query("SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? GROUP BY event_date ORDER BY event_date ASC", year)
 	var prevDate time.Time
 	currentStreak := 0
 	if streakRows != nil {
@@ -2648,7 +2646,7 @@ func getWrapped(c *gin.Context) {
 
 	var mostTagsTitle, mostTags string
 	db.QueryRow(`SELECT title, tags FROM timeline_events 
-		WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date)=? AND tags != '' 
+		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND tags != '' 
 		ORDER BY (LENGTH(tags) - LENGTH(REPLACE(tags, ',', '')) + 1) DESC LIMIT 1`, year).Scan(&mostTagsTitle, &mostTags)
 
 	tagCount := 0
@@ -2657,7 +2655,7 @@ func getWrapped(c *gin.Context) {
 	}
 
 	var favCount int
-	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date)=? AND is_favorite=1", year).Scan(&favCount)
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND is_favorite=1", year).Scan(&favCount)
 
 	var topMonth string
 	var topMonthCount int
@@ -2667,14 +2665,14 @@ func getWrapped(c *gin.Context) {
 		WHEN 7 THEN 'July' WHEN 8 THEN 'August' WHEN 9 THEN 'September'
 		WHEN 10 THEN 'October' WHEN 11 THEN 'November' WHEN 12 THEN 'December' END,
 		COUNT(*) as cnt FROM timeline_events
-		WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date)=?
+		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?
 		GROUP BY strftime('%m', event_date) ORDER BY cnt DESC LIMIT 1`, year).Scan(&topMonth, &topMonthCount)
 
 	var totalMedia int
-	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date)=? AND media_url != ''", year).Scan(&totalMedia)
+	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND media_url != ''", year).Scan(&totalMedia)
 
 	monthlyRows, _ := db.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events
-		WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND strftime('%Y', event_date)=? GROUP BY strftime('%m', event_date)`, year)
+		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? GROUP BY strftime('%m', event_date)`, year)
 	byMonth := make(map[string]int)
 	if monthlyRows != nil {
 		for monthlyRows.Next() {
@@ -2818,7 +2816,7 @@ func getShareLink(c *gin.Context) {
 // @Router /tags [get]
 func getTags(c *gin.Context) {
 	year := c.Query("year")
-	query := "SELECT tags FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND tags != ''"
+	query := "SELECT tags FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND tags != ''"
 	args := []any{}
 
 	if year != "" {
@@ -3158,7 +3156,7 @@ func deletePerson(c *gin.Context) {
 func getMapData(c *gin.Context) {
 	year := c.Query("year")
 	query := `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, latitude, longitude 
-		FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND (source = '' OR source IS NULL) AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0 AND longitude != 0`
+		FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0 AND longitude != 0`
 	args := []any{}
 
 	if year != "" {
@@ -3674,7 +3672,7 @@ func getMemories(c *gin.Context) {
 		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
 			FROM timeline_events e
-			WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL)
+			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
 			AND e.event_date != ''
 			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
 			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
@@ -3683,7 +3681,7 @@ func getMemories(c *gin.Context) {
 		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
 			FROM timeline_events e
-			WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL)
+			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
 			AND e.event_date != ''
 			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
 			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)
@@ -3804,7 +3802,7 @@ func getTRMNLSummary(c *gin.Context) {
 	if !publicMode {
 		visibility = " AND e.is_public = 1"
 	}
-	filter := "(e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL) AND e.event_date != '' AND strftime('%m', e.event_date) = strftime('%m', 'now')" + visibility
+	filter := "(e.deleted_at IS NULL OR e.deleted_at = '') AND e.event_date != '' AND strftime('%m', e.event_date) = strftime('%m', 'now')" + visibility
 
 	// Top events: favorites first, then newest, capped at 8.
 	rows, err := db.Query(`SELECT e.id, e.title, e.event_date, CAST(strftime('%Y', e.event_date) AS INTEGER), COALESCE(e.location, ''), COALESCE(e.media_type, ''), COALESCE(e.media_url, ''), COALESCE(e.thumbnail, ''), COALESCE(e.tags, ''), COALESCE(e.is_favorite, 0), COALESCE(p.name, '')
@@ -4148,7 +4146,7 @@ func sendMemoriesEmailHandler(c *gin.Context) {
 		rows, err = db.Query(`SELECT e.title, e.event_date,
 			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
 			FROM timeline_events e
-			WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL)
+			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
 			AND e.event_date != ''
 			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
 			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
@@ -4157,7 +4155,7 @@ func sendMemoriesEmailHandler(c *gin.Context) {
 		rows, err = db.Query(`SELECT e.title, e.event_date,
 			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
 			FROM timeline_events e
-			WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL)
+			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
 			AND e.event_date != ''
 			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
 			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)
@@ -4250,7 +4248,7 @@ func getCalendar(c *gin.Context) {
 	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id
-		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL) AND e.event_date BETWEEN ? AND ?
+		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.event_date BETWEEN ? AND ?
 		ORDER BY e.event_date ASC, e.id ASC`, startDate, lastDay.Format("2006-01-02"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
@@ -4695,7 +4693,7 @@ func getUserEvents(c *gin.Context) {
 
 	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND (e.source = '' OR e.source IS NULL) AND e.user_id = ? ORDER BY e.event_date ASC`, id)
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.user_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
 		serverError(c, err)
 		return
@@ -5505,6 +5503,7 @@ func runMigration(fromVersion int) {
 		)`)
 		_, _ = db.Exec(`INSERT OR IGNORE INTO bgg_settings (id, username, enabled, last_sync) VALUES (1, '', 0, '')`)
 		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_events_bgg_ref ON timeline_events(source_ref) WHERE source='bgg'`)
+		_, _ = db.Exec(`UPDATE timeline_events SET media_type='boardgame' WHERE source='bgg' AND (media_type IS NULL OR media_type='')`)
 	case 21:
 		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN oidc_sub TEXT DEFAULT ''`)
 		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN auth_method TEXT DEFAULT ''`)

@@ -142,8 +142,8 @@ func TestImportBGGPlayMapsCorrectly(t *testing.T) {
 		t.Fatalf("import failed: %v ok=%v", err, ok)
 	}
 
-	var title, tags, source, sourceRef, eventDate string
-	if err := database.QueryRow(`SELECT title, tags, source, source_ref, event_date FROM timeline_events WHERE source_ref='bgg-play-123'`).Scan(&title, &tags, &source, &sourceRef, &eventDate); err != nil {
+	var title, tags, source, sourceRef, eventDate, mediaType string
+	if err := database.QueryRow(`SELECT title, tags, source, source_ref, event_date, media_type FROM timeline_events WHERE source_ref='bgg-play-123'`).Scan(&title, &tags, &source, &sourceRef, &eventDate, &mediaType); err != nil {
 		t.Fatal(err)
 	}
 	if title != "Played Ticket to Ride" {
@@ -161,9 +161,12 @@ func TestImportBGGPlayMapsCorrectly(t *testing.T) {
 	if eventDate != "2026-06-15" {
 		t.Errorf("event_date = %q, want 2026-06-15", eventDate)
 	}
+	if mediaType != "boardgame" {
+		t.Errorf("media_type = %q, want boardgame", mediaType)
+	}
 }
 
-func TestBGGPlaysExcludedFromPublicFeed(t *testing.T) {
+func TestBGGPlaysIncludedInPublicFeed(t *testing.T) {
 	database := setupBGGTestDB(t)
 
 	// Normal event
@@ -176,10 +179,10 @@ func TestBGGPlaysExcludedFromPublicFeed(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// BuildEventQuery should exclude BGG events
+	// BuildEventQuery should now include BGG events
 	q, args := BuildEventQuery(EventFilters{})
-	if !strings.Contains(q, "source") {
-		t.Fatalf("BuildEventQuery should contain BGG exclusion, got %q", q)
+	if strings.Contains(q, "source = ''") {
+		t.Fatalf("BuildEventQuery should not contain BGG exclusion, got %q", q)
 	}
 	rows, err := database.Query(q, args...)
 	if err != nil {
@@ -208,51 +211,88 @@ func TestBGGPlaysExcludedFromPublicFeed(t *testing.T) {
 		count++
 		titles = append(titles, title.String)
 	}
-	if count != 1 {
-		t.Fatalf("expected 1 event from BuildEventQuery (BGG excluded), got %d titles=%v", count, titles)
+	if count != 2 {
+		t.Fatalf("expected 2 events from BuildEventQuery (BGG included), got %d titles=%v", count, titles)
 	}
-	if titles[0] != "Normal Event" {
-		t.Errorf("got title %q, want Normal Event", titles[0])
+	foundNormal, foundBGG := false, false
+	for _, tt := range titles {
+		if tt == "Normal Event" {
+			foundNormal = true
+		}
+		if tt == "Played Catan" {
+			foundBGG = true
+		}
+	}
+	if !foundNormal || !foundBGG {
+		t.Errorf("expected both Normal Event and Played Catan in feed, got %v", titles)
 	}
 
-	// Corner query: direct BGG query should return the BGG event
-	rows2, err := database.Query(`SELECT id FROM timeline_events WHERE source='bgg' AND (deleted_at IS NULL OR deleted_at='')`)
-	if err != nil {
+	// Verify BGG row has media_type=boardgame
+	var mediaType string
+	if err := database.QueryRow(`SELECT media_type FROM timeline_events WHERE source='bgg'`).Scan(&mediaType); err != nil {
 		t.Fatal(err)
 	}
-	defer rows2.Close()
-	var bggCount int
-	for rows2.Next() {
-		bggCount++
-	}
-	if bggCount != 1 {
-		t.Errorf("expected 1 BGG event via corner query, got %d", bggCount)
+	if mediaType != "boardgame" {
+		t.Errorf("BGG media_type = %q, want boardgame", mediaType)
 	}
 
-	// Also verify getBGGEvents endpoint returns BGG event
+	// Verify via HTTP: /api/events and /api/events/full now include BGG play
 	gin.SetMode(gin.TestMode)
 	router := gin.New()
-	router.GET("/api/bgg/events", getBGGEvents)
-	w := httptest.NewRecorder()
-	req := httptest.NewRequest(http.MethodGet, "/api/bgg/events", nil)
-	router.ServeHTTP(w, req)
-	if w.Code != http.StatusOK {
-		t.Fatalf("getBGGEvents status = %d, want 200 body=%s", w.Code, w.Body.String())
-	}
-	var resp struct {
-		Events []struct {
-			Title string `json:"title"`
-		} `json:"events"`
-	}
-	if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
-		t.Fatal(err)
-	}
-	if len(resp.Events) != 1 || resp.Events[0].Title != "Played Catan" {
-		t.Errorf("getBGGEvents returned %v, want 1x Played Catan", resp.Events)
+	router.GET("/api/events", func(c *gin.Context) {
+		// mimic real handler: use BuildEventQuery then ScanEvents
+		q2, args2 := BuildEventQuery(EventFilters{})
+		rows2, err := database.Query(q2, args2...)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows2.Close()
+		events := ScanEvents(rows2)
+		c.JSON(http.StatusOK, events)
+	})
+	router.GET("/api/events/full", func(c *gin.Context) {
+		q2, args2 := BuildEventQuery(EventFilters{})
+		rows2, err := database.Query(q2, args2...)
+		if err != nil {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
+			return
+		}
+		defer rows2.Close()
+		events := ScanEvents(rows2)
+		c.JSON(http.StatusOK, events)
+	})
+	for _, path := range []string{"/api/events", "/api/events/full"} {
+		w := httptest.NewRecorder()
+		req := httptest.NewRequest(http.MethodGet, path, nil)
+		router.ServeHTTP(w, req)
+		if w.Code != http.StatusOK {
+			t.Fatalf("%s status = %d, want 200 body=%s", path, w.Code, w.Body.String())
+		}
+		var resp []struct {
+			Title     string `json:"title"`
+			MediaType string `json:"media_type"`
+			Source    string `json:"source"`
+		}
+		if err := json.Unmarshal(w.Body.Bytes(), &resp); err != nil {
+			t.Fatal(err)
+		}
+		found := false
+		for _, ev := range resp {
+			if ev.Title == "Played Catan" {
+				found = true
+				if ev.MediaType != "boardgame" {
+					t.Errorf("%s: Played Catan media_type = %q, want boardgame", path, ev.MediaType)
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s should contain Played Catan, got %v", path, resp)
+		}
 	}
 }
 
-func TestBGGExcludedFromStats(t *testing.T) {
+func TestBGGIncludedInStats(t *testing.T) {
 	database := setupBGGTestDB(t)
 
 	// Normal event in 2026
@@ -266,7 +306,10 @@ func TestBGGExcludedFromStats(t *testing.T) {
 	}
 
 	stats := QueryYearStats(database, "2026")
-	if stats.Total != 1 {
-		t.Errorf("QueryYearStats Total = %d, want 1 (BGG excluded)", stats.Total)
+	if stats.Total != 2 {
+		t.Errorf("QueryYearStats Total = %d, want 2 (BGG included)", stats.Total)
+	}
+	if stats.ByMedia["boardgame"] < 1 {
+		t.Errorf("ByMedia[boardgame] = %d, want >=1 stats=%v", stats.ByMedia["boardgame"], stats.ByMedia)
 	}
 }

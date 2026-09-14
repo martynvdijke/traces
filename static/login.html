@@ -10,30 +10,28 @@
     <script>
       (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
     </script>
+    <link rel="stylesheet" href="/static/style.css">
+    <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet">
     <style>
         :root {
             --primary: #7c3aed;
-            --card-bg: #ffffff;
-            --card-text: #0f172a;
-            --input-bg: #ffffff;
-            --input-border: #e2e8f0;
-            --input-text: #0f172a;
-            --muted: #64748b;
-            --body-start: #667eea;
-            --body-end: #764ba2;
+            --card-bg: var(--bg);
+            --card-text: var(--text);
+            --input-bg: var(--bg);
+            --input-border: var(--border);
+            --input-text: var(--text);
+            --muted: var(--text-muted);
         }
         [data-theme="dark"] {
-            --card-bg: #1e293b;
-            --card-text: #e2e8f0;
-            --input-bg: #1e293b;
-            --input-border: #334155;
-            --input-text: #e2e8f0;
-            --muted: #94a3b8;
-            --body-start: #1e1b4b;
-            --body-end: #4c1d95;
+            --card-bg: var(--bg-card);
+            --card-text: var(--text);
+            --input-bg: var(--bg-card);
+            --input-border: var(--border);
+            --input-text: var(--text);
+            --muted: var(--text-muted);
         }
         body {
-            background: linear-gradient(135deg, var(--body-start) 0%, var(--body-end) 100%);
+            background: var(--gradient-hero);
             min-height: 100vh;
             display: flex;
             align-items: center;

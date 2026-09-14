@@ -1,5 +1,8 @@
 import { defineConfig, devices } from '@playwright/test';
 
+const PORT = process.env.E2E_PORT ?? '6270';
+const BASE_URL = `http://localhost:${PORT}`;
+
 export default defineConfig({
   testDir: './tests',
   fullyParallel: false,
@@ -9,7 +12,7 @@ export default defineConfig({
   workers: 1,
   reporter: 'html',
   use: {
-    baseURL: 'http://localhost:6270',
+    baseURL: BASE_URL,
     trace: 'on-first-retry',
   },
   projects: [
@@ -28,7 +31,8 @@ export default defineConfig({
   ],
   webServer: {
     command: './traces-server',
-    url: 'http://localhost:6270',
+    url: BASE_URL,
     reuseExistingServer: !process.env.CI,
+    env: { PORT },
   },
 });

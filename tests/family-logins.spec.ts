@@ -131,7 +131,7 @@ test.describe('Family Logins', () => {
 
   test('second login sees shared admin UI with attribution', async ({ page }) => {
     await page.context().addCookies([
-      { name: 'session', value: familyCookie, url: 'http://localhost:6270' }
+      { name: 'session', value: familyCookie, url: `http://localhost:${process.env.E2E_PORT || '6270'}` }
     ]);
     await page.goto('/admin.html');
     await expect(page.locator('#persons-tab')).toBeVisible();
