@@ -16,6 +16,8 @@ import (
 
 	"github.com/chai2010/webp"
 	"github.com/nfnt/resize"
+
+	"traces/internal/models"
 )
 
 // Media variant dimensions (max edge in px). The full-size variant is capped
@@ -181,7 +183,7 @@ func reverseGeocode(lat, lng float64) string {
 	if err != nil {
 		return ""
 	}
-	req.Header.Set("User-Agent", "traces/"+currentVersion)
+	req.Header.Set("User-Agent", "traces/"+models.CurrentVersion)
 
 	client := &http.Client{Timeout: 2 * time.Second}
 	resp, err := client.Do(req)

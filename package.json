@@ -4,7 +4,7 @@
   "description": "A Go-based timeline application for tracking events throughout the year with multimedia support.",
   "main": "index.js",
   "scripts": {
-    "test": "go test ./...",
+    "test": "go test -tags sqlite_fts5 ./...",
     "test:e2e": "playwright test",
     "build:ts": "tsc",
     "typecheck": "tsc --noEmit"
