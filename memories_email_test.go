@@ -39,10 +39,13 @@ func TestMemoriesQuery(t *testing.T) {
 		longitude REAL
 	)`)
 
-	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Last year event', ?)`, time.Now().AddDate(-1, 0, 0).Format("2006-01-02"))
-	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Two years ago', ?)`, time.Now().AddDate(-2, 0, 0).Format("2006-01-02"))
-	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Old event out of range', ?)`, time.Now().AddDate(-1, -1, 0).Format("2006-01-02"))
-	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Recent event same year', ?)`, time.Now().Format("2006-01-02"))
+	// Use UTC to match SQLite's strftime('now') (UTC); local time can be a
+	// different calendar day, which made this assertion flaky near midnight.
+	now := time.Now().UTC()
+	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Last year event', ?)`, now.AddDate(-1, 0, 0).Format("2006-01-02"))
+	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Two years ago', ?)`, now.AddDate(-2, 0, 0).Format("2006-01-02"))
+	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Old event out of range', ?)`, now.AddDate(-1, -1, 0).Format("2006-01-02"))
+	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Recent event same year', ?)`, now.Format("2006-01-02"))
 
 	rows, err := db.Query(`SELECT e.title, e.event_date,
 		CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
