@@ -200,6 +200,7 @@ func TestHTMXEndpoints(t *testing.T) {
 	})
 	basePath = tmpDir
 
+	setupTestMediaSvc(t)
 	newTestDB(t)
 
 	database.Migrate(db)
@@ -215,27 +216,10 @@ func TestHTMXEndpoints(t *testing.T) {
 
 	r := gin.New()
 
-	auth := r.Group("/api/admin")
-	auth.Use(authMiddlewareGin(), csrfMiddleware())
-	{
-		auth.GET("/events", htmxListEvents)
-		auth.POST("/events", htmxSaveEvent)
-		auth.DELETE("/events/:id", htmxDeleteEvent)
-		auth.GET("/events/:id/edit", htmxEditEventForm)
-		auth.GET("/persons", htmxListPersons)
-		auth.POST("/persons", htmxSavePerson)
-		auth.DELETE("/persons/:id", htmxDeletePerson)
-		auth.GET("/tags", htmxListTags)
-		auth.GET("/collections", htmxListCollections)
-		auth.POST("/collections", htmxSaveCollection)
-		auth.GET("/templates", htmxListTemplates)
-		auth.POST("/templates", htmxSaveTemplate)
-		auth.GET("/users", htmxListUsers)
-		auth.POST("/users", htmxSaveUser)
-		auth.GET("/trash", htmxListTrash)
-		auth.POST("/trash/:id/restore", htmxRestoreEvent)
-		auth.POST("/trash/empty", htmxEmptyTrash)
-	}
+	ensureEventsSvc(t)
+	adminHTMX := r.Group("/api/admin")
+	adminHTMX.Use(authMiddlewareGin(), csrfMiddleware())
+	eventsSvc.RegisterHTMXRoutes(adminHTMX)
 
 	sessionID := "htmx-test-session"
 	csrfToken := "htmx-test-csrf-token"

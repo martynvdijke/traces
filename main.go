@@ -368,7 +368,9 @@ func main() {
 		}
 	}
 
-	registerHTMXRoutes(r)
+	adminHTMX := r.Group("/api/admin")
+	adminHTMX.Use(authMiddlewareGin(), csrfMiddleware())
+	eventsSvc.RegisterHTMXRoutes(adminHTMX)
 
 	r.GET("/sw.js", serveServiceWorker)
 

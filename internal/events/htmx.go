@@ -1,4 +1,4 @@
-package main
+package events
 
 import (
 	"bytes"
@@ -19,48 +19,44 @@ import (
 	"traces/internal/models"
 )
 
-func registerHTMXRoutes(r *gin.Engine) {
-	admin := r.Group("/api/admin")
-	admin.Use(authMiddlewareGin(), csrfMiddleware())
-	{
-		admin.GET("/events", htmxListEvents)
-		admin.GET("/events/search", htmxSearchEvents)
-		admin.POST("/events", htmxSaveEvent)
-		admin.DELETE("/events/:id", htmxDeleteEvent)
-		admin.GET("/events/:id/edit", htmxEditEventForm)
+func (s *Service) RegisterHTMXRoutes(group *gin.RouterGroup) {
+	group.GET("/events", s.htmxListEvents)
+	group.GET("/events/search", s.htmxSearchEvents)
+	group.POST("/events", s.htmxSaveEvent)
+	group.DELETE("/events/:id", s.htmxDeleteEvent)
+	group.GET("/events/:id/edit", s.htmxEditEventForm)
 
-		admin.GET("/persons", htmxListPersons)
-		admin.POST("/persons", htmxSavePerson)
-		admin.DELETE("/persons/:id", htmxDeletePerson)
-		admin.GET("/persons/:id/events", htmxPersonEvents)
+	group.GET("/persons", s.htmxListPersons)
+	group.POST("/persons", s.htmxSavePerson)
+	group.DELETE("/persons/:id", s.htmxDeletePerson)
+	group.GET("/persons/:id/events", s.htmxPersonEvents)
 
-		admin.GET("/tags", htmxListTags)
-		admin.DELETE("/tags/:name", htmxDeleteTag)
-		admin.GET("/tags/:name/rename", htmxRenameTag)
+	group.GET("/tags", s.htmxListTags)
+	group.DELETE("/tags/:name", s.htmxDeleteTag)
+	group.GET("/tags/:name/rename", s.htmxRenameTag)
 
-		admin.GET("/collections", htmxListCollections)
-		admin.POST("/collections", htmxSaveCollection)
-		admin.DELETE("/collections/:id", htmxDeleteCollection)
-		admin.GET("/collections/:id/edit", htmxEditCollectionForm)
+	group.GET("/collections", s.htmxListCollections)
+	group.POST("/collections", s.htmxSaveCollection)
+	group.DELETE("/collections/:id", s.htmxDeleteCollection)
+	group.GET("/collections/:id/edit", s.htmxEditCollectionForm)
 
-		admin.GET("/templates", htmxListTemplates)
-		admin.POST("/templates", htmxSaveTemplate)
-		admin.DELETE("/templates/:id", htmxDeleteTemplate)
-		admin.GET("/templates/:id/edit", htmxEditTemplateForm)
+	group.GET("/templates", s.htmxListTemplates)
+	group.POST("/templates", s.htmxSaveTemplate)
+	group.DELETE("/templates/:id", s.htmxDeleteTemplate)
+	group.GET("/templates/:id/edit", s.htmxEditTemplateForm)
 
-		admin.GET("/users", htmxListUsers)
-		admin.POST("/users", htmxSaveUser)
-		admin.DELETE("/users/:id", htmxDeleteUser)
-		admin.GET("/users/:id/edit", htmxEditUserForm)
+	group.GET("/users", s.htmxListUsers)
+	group.POST("/users", s.htmxSaveUser)
+	group.DELETE("/users/:id", s.htmxDeleteUser)
+	group.GET("/users/:id/edit", s.htmxEditUserForm)
 
-		admin.GET("/trash", htmxListTrash)
-		admin.POST("/trash/:id/restore", htmxRestoreEvent)
-		admin.DELETE("/trash/:id", htmxPermanentDelete)
-		admin.POST("/trash/empty", htmxEmptyTrash)
-	}
+	group.GET("/trash", s.htmxListTrash)
+	group.POST("/trash/:id/restore", s.htmxRestoreEvent)
+	group.DELETE("/trash/:id", s.htmxPermanentDelete)
+	group.POST("/trash/empty", s.htmxEmptyTrash)
 }
 
-func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string) ([]httpx.EventRow, error) {
+func (s *Service) getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string) ([]httpx.EventRow, error) {
 	query := `SELECT e.id, e.title, e.event_date, e.location, e.media_type, COALESCE(e.media_url,''), e.is_favorite, e.person_id, COALESCE(e.tags,''), e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
 		p.name, p.color
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
@@ -109,7 +105,7 @@ func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string
 		}
 	}
 
-	rows, err := db.Query(query, args...)
+	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		return nil, err
 	}
@@ -159,32 +155,33 @@ func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string
 	return events, nil
 }
 
-func htmxListEvents(c *gin.Context) {
+func (s *Service) htmxListEvents(c *gin.Context) {
 	year := c.Query("year")
-	events, err := getEventsQuery(year, "", "", "", "", "", "100", "")
+	events, err := s.getEventsQuery(year, "", "", "", "", "", "100", "")
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	htmxRenderer.Render(c.Writer, "event-list", events)
+	s.Renderer.Render(c.Writer, "event-list", events)
 }
 
-func htmxSearchEvents(c *gin.Context) {
+func (s *Service) htmxSearchEvents(c *gin.Context) {
 	q := c.Query("q")
 	personID := c.Query("person_id")
 	mediaType := c.Query("media")
 	tag := c.Query("tag")
 	year := c.Query("year")
 
-	events, err := getEventsQuery(year, "", q, personID, mediaType, tag, "100", "")
+	events, err := s.getEventsQuery(year, "", q, personID, mediaType, tag, "100", "")
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	htmxRenderer.Render(c.Writer, "event-list", events)
+
+	s.Renderer.Render(c.Writer, "event-list", events)
 }
 
-func htmxReadForm(c *gin.Context) map[string]string {
+func (s *Service) htmxReadForm(c *gin.Context) map[string]string {
 	data := make(map[string]string)
 	body, err := c.GetRawData()
 	if err != nil {
@@ -213,8 +210,8 @@ func htmxReadForm(c *gin.Context) map[string]string {
 	return data
 }
 
-func htmxSaveEvent(c *gin.Context) {
-	data := htmxReadForm(c)
+func (s *Service) htmxSaveEvent(c *gin.Context) {
+	data := s.htmxReadForm(c)
 
 	idStr := data["id"]
 	title := strings.TrimSpace(data["title"])
@@ -246,9 +243,9 @@ func htmxSaveEvent(c *gin.Context) {
 
 	var personID int
 	if personName != "" {
-		db.QueryRow("SELECT id FROM persons WHERE name = ?", personName).Scan(&personID)
+		s.DB.QueryRow("SELECT id FROM persons WHERE name = ?", personName).Scan(&personID)
 		if personID == 0 {
-			result, err := db.Exec("INSERT INTO persons (name, color) VALUES (?, ?)", personName, models.DefaultColor)
+			result, err := s.DB.Exec("INSERT INTO persons (name, color) VALUES (?, ?)", personName, models.DefaultColor)
 			if err == nil {
 				lid, _ := result.LastInsertId()
 				personID = int(lid)
@@ -257,7 +254,7 @@ func htmxSaveEvent(c *gin.Context) {
 	}
 
 	if id == 0 {
-		_, err := db.Exec(`INSERT INTO timeline_events 
+		_, err := s.DB.Exec(`INSERT INTO timeline_events 
 			(title, description, event_date, location, media_type, tags, recurring, event_start_time, event_end_time, person_id) 
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, personID)
@@ -266,7 +263,7 @@ func htmxSaveEvent(c *gin.Context) {
 			return
 		}
 	} else {
-		_, err := db.Exec(`UPDATE timeline_events SET 
+		_, err := s.DB.Exec(`UPDATE timeline_events SET 
 			title=?, description=?, event_date=?, location=?, media_type=?, tags=?, recurring=?, event_start_time=?, event_end_time=?, person_id=?
 			WHERE id=?`,
 			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, personID, id)
@@ -281,23 +278,23 @@ func htmxSaveEvent(c *gin.Context) {
 		lng, err2 := strconv.ParseFloat(lngStr, 64)
 		if err1 == nil && err2 == nil {
 			if id == 0 {
-				db.Exec("UPDATE timeline_events SET latitude=?, longitude=? WHERE id=(SELECT MAX(id) FROM timeline_events)", lat, lng)
+				s.DB.Exec("UPDATE timeline_events SET latitude=?, longitude=? WHERE id=(SELECT MAX(id) FROM timeline_events)", lat, lng)
 			} else {
-				db.Exec("UPDATE timeline_events SET latitude=?, longitude=? WHERE id=?", lat, lng, id)
+				s.DB.Exec("UPDATE timeline_events SET latitude=?, longitude=? WHERE id=?", lat, lng, id)
 			}
 		}
 	}
 
-	events, err := getEventsQuery("", "", "", "", "", "", "100", "")
+	events, err := s.getEventsQuery("", "", "", "", "", "", "100", "")
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 	c.Header("HX-Trigger", "reloadEvents")
-	htmxRenderer.Render(c.Writer, "event-list", events)
+	s.Renderer.Render(c.Writer, "event-list", events)
 }
 
-func htmxDeleteEvent(c *gin.Context) {
+func (s *Service) htmxDeleteEvent(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -305,17 +302,17 @@ func htmxDeleteEvent(c *gin.Context) {
 		return
 	}
 
-	db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=?", id)
+	s.DB.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=?", id)
 
-	events, err := getEventsQuery("", "", "", "", "", "", "100", "")
+	events, err := s.getEventsQuery("", "", "", "", "", "", "100", "")
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	htmxRenderer.Render(c.Writer, "event-list", events)
+	s.Renderer.Render(c.Writer, "event-list", events)
 }
 
-func htmxEditEventForm(c *gin.Context) {
+func (s *Service) htmxEditEventForm(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -328,7 +325,7 @@ func htmxEditEventForm(c *gin.Context) {
 	var personName, personColor sql.NullString
 	var lat, lng sql.NullFloat64
 	var desc, startTime, endTime, recurring sql.NullString
-	err = db.QueryRow(`SELECT e.id, e.title, e.event_date, e.location, e.media_type, e.media_url, e.is_favorite, e.person_id, e.tags, e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
+	err = s.DB.QueryRow(`SELECT e.id, e.title, e.event_date, e.location, e.media_type, e.media_url, e.is_favorite, e.person_id, e.tags, e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
 		p.name, p.color
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.id=?`, id).Scan(
 		&e.ID, &e.Title, &e.Date, &e.Location, &e.MediaType, &e.MediaURL, &e.IsFavorite, &personID, &e.Tags, &desc, &startTime, &endTime, &recurring, &lat, &lng, &personName, &personColor)
@@ -366,10 +363,10 @@ func htmxEditEventForm(c *gin.Context) {
 		e.Longitude = lng.Float64
 	}
 
-	htmxRenderer.Render(c.Writer, "event-form", e)
+	s.Renderer.Render(c.Writer, "event-form", e)
 }
 
-func htmxListPersons(c *gin.Context) {
+func (s *Service) htmxListPersons(c *gin.Context) {
 	q := c.Query("q")
 	query := `SELECT p.id, p.name, COALESCE(p.avatar_url,''), COALESCE(p.bio,''), COALESCE(p.birth_date,''), COALESCE(p.color,'#7c3aed'),
 		(SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count
@@ -381,7 +378,7 @@ func htmxListPersons(c *gin.Context) {
 	}
 	query += " ORDER BY p.name ASC"
 
-	rows, err := db.Query(query, args...)
+	rows, err := s.DB.Query(query, args...)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
@@ -396,11 +393,11 @@ func htmxListPersons(c *gin.Context) {
 		}
 	}
 
-	htmxRenderer.Render(c.Writer, "person-list", persons)
+	s.Renderer.Render(c.Writer, "person-list", persons)
 }
 
-func htmxSavePerson(c *gin.Context) {
-	data := htmxReadForm(c)
+func (s *Service) htmxSavePerson(c *gin.Context) {
+	data := s.htmxReadForm(c)
 	id := httpx.ParseIntOrZero(data["id"])
 	name := data["name"]
 	bio := data["bio"]
@@ -411,15 +408,15 @@ func htmxSavePerson(c *gin.Context) {
 	}
 
 	if id == 0 {
-		db.Exec("INSERT INTO persons (name, bio, birth_date, color) VALUES (?, ?, ?, ?)", name, bio, birthDate, color)
+		s.DB.Exec("INSERT INTO persons (name, bio, birth_date, color) VALUES (?, ?, ?, ?)", name, bio, birthDate, color)
 	} else {
-		db.Exec("UPDATE persons SET name=?, bio=?, birth_date=?, color=? WHERE id=?", name, bio, birthDate, color, id)
+		s.DB.Exec("UPDATE persons SET name=?, bio=?, birth_date=?, color=? WHERE id=?", name, bio, birthDate, color, id)
 	}
 
-	htmxListPersons(c)
+	s.htmxListPersons(c)
 }
 
-func htmxDeletePerson(c *gin.Context) {
+func (s *Service) htmxDeletePerson(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -427,30 +424,30 @@ func htmxDeletePerson(c *gin.Context) {
 		return
 	}
 
-	db.Exec("UPDATE timeline_events SET person_id = NULL WHERE person_id = ?", id)
-	db.Exec("DELETE FROM persons WHERE id=?", id)
+	s.DB.Exec("UPDATE timeline_events SET person_id = NULL WHERE person_id = ?", id)
+	s.DB.Exec("DELETE FROM persons WHERE id=?", id)
 
-	htmxListPersons(c)
+	s.htmxListPersons(c)
 }
 
-func htmxPersonEvents(c *gin.Context) {
+func (s *Service) htmxPersonEvents(c *gin.Context) {
 	idStr := c.Param("id")
 	if _, err := strconv.Atoi(idStr); err != nil {
 		c.Status(http.StatusBadRequest)
 		return
 	}
 
-	events, err := getEventsQuery("", "", "", idStr, "", "", "100", "")
+	events, err := s.getEventsQuery("", "", "", idStr, "", "", "100", "")
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
 
-	htmxRenderer.Render(c.Writer, "event-list", events)
+	s.Renderer.Render(c.Writer, "event-list", events)
 }
 
-func htmxListTags(c *gin.Context) {
-	rows, err := db.Query(`SELECT name, COUNT(*) as cnt FROM (
+func (s *Service) htmxListTags(c *gin.Context) {
+	rows, err := s.DB.Query(`SELECT name, COUNT(*) as cnt FROM (
 		SELECT TRIM(value) as name FROM timeline_events, json_each('["' || REPLACE(tags, ',', '","') || '"]') WHERE tags != '' AND tags IS NOT NULL AND (deleted_at IS NULL OR deleted_at = '')
 	) GROUP BY name ORDER BY cnt DESC, name ASC`)
 	if err != nil {
@@ -467,31 +464,31 @@ func htmxListTags(c *gin.Context) {
 		}
 	}
 
-	htmxRenderer.Render(c.Writer, "tag-table", tags)
+	s.Renderer.Render(c.Writer, "tag-table", tags)
 }
 
-func htmxDeleteTag(c *gin.Context) {
+func (s *Service) htmxDeleteTag(c *gin.Context) {
 	name := c.Param("name")
-	db.Exec(`UPDATE timeline_events SET tags = TRIM(REPLACE(REPLACE(',' || tags || ',', ',' || ? || ',', ','), ',', ' ')) WHERE tags LIKE ?`, name, "%"+name+"%")
-	db.Exec(`UPDATE timeline_events SET tags = TRIM(REPLACE(tags, ',', '')) WHERE tags LIKE ?`, name)
+	s.DB.Exec(`UPDATE timeline_events SET tags = TRIM(REPLACE(REPLACE(',' || tags || ',', ',' || ? || ',', ','), ',', ' ')) WHERE tags LIKE ?`, name, "%"+name+"%")
+	s.DB.Exec(`UPDATE timeline_events SET tags = TRIM(REPLACE(tags, ',', '')) WHERE tags LIKE ?`, name)
 
-	htmxListTags(c)
+	s.htmxListTags(c)
 }
 
-func htmxRenameTag(c *gin.Context) {
+func (s *Service) htmxRenameTag(c *gin.Context) {
 	oldName := c.Param("name")
 	newName := c.Query("new_name")
 	if newName == "" {
 		newName = oldName
 	}
 
-	db.Exec(`UPDATE timeline_events SET tags = REPLACE(tags, ?, ?) WHERE tags LIKE ?`, oldName, newName, "%"+oldName+"%")
+	s.DB.Exec(`UPDATE timeline_events SET tags = REPLACE(tags, ?, ?) WHERE tags LIKE ?`, oldName, newName, "%"+oldName+"%")
 
-	htmxListTags(c)
+	s.htmxListTags(c)
 }
 
-func htmxListCollections(c *gin.Context) {
-	rows, err := db.Query(`SELECT c.id, c.name, COALESCE(c.description,''), COALESCE(c.color,'#7c3aed'),
+func (s *Service) htmxListCollections(c *gin.Context) {
+	rows, err := s.DB.Query(`SELECT c.id, c.name, COALESCE(c.description,''), COALESCE(c.color,'#7c3aed'),
 		(SELECT COUNT(*) FROM collection_events WHERE collection_id = c.id) as event_count
 		FROM collections c ORDER BY c.name ASC`)
 	if err != nil {
@@ -508,11 +505,11 @@ func htmxListCollections(c *gin.Context) {
 		}
 	}
 
-	htmxRenderer.Render(c.Writer, "collection-list-htmx", collections)
+	s.Renderer.Render(c.Writer, "collection-list-htmx", collections)
 }
 
-func htmxSaveCollection(c *gin.Context) {
-	data := htmxReadForm(c)
+func (s *Service) htmxSaveCollection(c *gin.Context) {
+	data := s.htmxReadForm(c)
 	id := httpx.ParseIntOrZero(data["id"])
 	name := data["name"]
 	description := data["description"]
@@ -522,15 +519,15 @@ func htmxSaveCollection(c *gin.Context) {
 	}
 
 	if id == 0 {
-		db.Exec("INSERT INTO collections (name, description, color) VALUES (?, ?, ?)", name, description, color)
+		s.DB.Exec("INSERT INTO collections (name, description, color) VALUES (?, ?, ?)", name, description, color)
 	} else {
-		db.Exec("UPDATE collections SET name=?, description=?, color=? WHERE id=?", name, description, color, id)
+		s.DB.Exec("UPDATE collections SET name=?, description=?, color=? WHERE id=?", name, description, color, id)
 	}
 
-	htmxListCollections(c)
+	s.htmxListCollections(c)
 }
 
-func htmxDeleteCollection(c *gin.Context) {
+func (s *Service) htmxDeleteCollection(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -538,13 +535,13 @@ func htmxDeleteCollection(c *gin.Context) {
 		return
 	}
 
-	db.Exec("DELETE FROM collection_events WHERE collection_id = ?", id)
-	db.Exec("DELETE FROM collections WHERE id=?", id)
+	s.DB.Exec("DELETE FROM collection_events WHERE collection_id = ?", id)
+	s.DB.Exec("DELETE FROM collections WHERE id=?", id)
 
-	htmxListCollections(c)
+	s.htmxListCollections(c)
 }
 
-func htmxEditCollectionForm(c *gin.Context) {
+func (s *Service) htmxEditCollectionForm(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -553,23 +550,23 @@ func htmxEditCollectionForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		htmxRenderer.Render(c.Writer, "collection-form", httpx.CollectionRow{Color: models.DefaultColor})
+		s.Renderer.Render(c.Writer, "collection-form", httpx.CollectionRow{Color: models.DefaultColor})
 		return
 	}
 
 	var col httpx.CollectionRow
-	err = db.QueryRow("SELECT id, name, COALESCE(description,''), COALESCE(color,'#7c3aed'), 0 FROM collections WHERE id=?", id).Scan(
+	err = s.DB.QueryRow("SELECT id, name, COALESCE(description,''), COALESCE(color,'#7c3aed'), 0 FROM collections WHERE id=?", id).Scan(
 		&col.ID, &col.Name, &col.Description, &col.Color, &col.EventCount)
 	if err != nil {
 		c.String(http.StatusNotFound, "Collection not found")
 		return
 	}
 
-	htmxRenderer.Render(c.Writer, "collection-form", col)
+	s.Renderer.Render(c.Writer, "collection-form", col)
 }
 
-func htmxListTemplates(c *gin.Context) {
-	rows, err := db.Query(`SELECT t.id, t.title, COALESCE(t.tags,''), COALESCE(t.location,''), COALESCE(p.name,'')
+func (s *Service) htmxListTemplates(c *gin.Context) {
+	rows, err := s.DB.Query(`SELECT t.id, t.title, COALESCE(t.tags,''), COALESCE(t.location,''), COALESCE(p.name,'')
 		FROM event_templates t LEFT JOIN persons p ON t.person_id = p.id ORDER BY t.title ASC`)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
@@ -585,26 +582,26 @@ func htmxListTemplates(c *gin.Context) {
 		}
 	}
 
-	htmxRenderer.Render(c.Writer, "template-list-htmx", templates)
+	s.Renderer.Render(c.Writer, "template-list-htmx", templates)
 }
 
-func htmxSaveTemplate(c *gin.Context) {
-	data := htmxReadForm(c)
+func (s *Service) htmxSaveTemplate(c *gin.Context) {
+	data := s.htmxReadForm(c)
 	id := httpx.ParseIntOrZero(data["id"])
 	title := data["title"]
 	tags := data["tags"]
 	location := data["location"]
 
 	if id == 0 {
-		db.Exec("INSERT INTO event_templates (title, tags, location) VALUES (?, ?, ?)", title, tags, location)
+		s.DB.Exec("INSERT INTO event_templates (title, tags, location) VALUES (?, ?, ?)", title, tags, location)
 	} else {
-		db.Exec("UPDATE event_templates SET title=?, tags=?, location=? WHERE id=?", title, tags, location, id)
+		s.DB.Exec("UPDATE event_templates SET title=?, tags=?, location=? WHERE id=?", title, tags, location, id)
 	}
 
-	htmxListTemplates(c)
+	s.htmxListTemplates(c)
 }
 
-func htmxDeleteTemplate(c *gin.Context) {
+func (s *Service) htmxDeleteTemplate(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -612,12 +609,12 @@ func htmxDeleteTemplate(c *gin.Context) {
 		return
 	}
 
-	db.Exec("DELETE FROM event_templates WHERE id=?", id)
+	s.DB.Exec("DELETE FROM event_templates WHERE id=?", id)
 
-	htmxListTemplates(c)
+	s.htmxListTemplates(c)
 }
 
-func htmxEditTemplateForm(c *gin.Context) {
+func (s *Service) htmxEditTemplateForm(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -626,23 +623,23 @@ func htmxEditTemplateForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		htmxRenderer.Render(c.Writer, "template-form", httpx.TemplateRow{})
+		s.Renderer.Render(c.Writer, "template-form", httpx.TemplateRow{})
 		return
 	}
 
 	var t httpx.TemplateRow
-	err = db.QueryRow("SELECT id, title, COALESCE(tags,''), COALESCE(location,''), '' FROM event_templates WHERE id=?", id).Scan(
+	err = s.DB.QueryRow("SELECT id, title, COALESCE(tags,''), COALESCE(location,''), '' FROM event_templates WHERE id=?", id).Scan(
 		&t.ID, &t.Title, &t.Tags, &t.Location, &t.PersonName)
 	if err != nil {
 		c.String(http.StatusNotFound, "Template not found")
 		return
 	}
 
-	htmxRenderer.Render(c.Writer, "template-form", t)
+	s.Renderer.Render(c.Writer, "template-form", t)
 }
 
-func htmxListUsers(c *gin.Context) {
-	rows, err := db.Query(`SELECT u.id, u.username, COALESCE(u.display_name,''), COALESCE(u.email,''), COALESCE(u.color,'#7c3aed'),
+func (s *Service) htmxListUsers(c *gin.Context) {
+	rows, err := s.DB.Query(`SELECT u.id, u.username, COALESCE(u.display_name,''), COALESCE(u.email,''), COALESCE(u.color,'#7c3aed'),
 		(SELECT COUNT(*) FROM timeline_events WHERE user_id = u.id) as event_count
 		FROM users u ORDER BY u.display_name ASC`)
 	if err != nil {
@@ -662,11 +659,11 @@ func htmxListUsers(c *gin.Context) {
 		}
 	}
 
-	htmxRenderer.Render(c.Writer, "user-list-htmx", users)
+	s.Renderer.Render(c.Writer, "user-list-htmx", users)
 }
 
-func htmxSaveUser(c *gin.Context) {
-	data := htmxReadForm(c)
+func (s *Service) htmxSaveUser(c *gin.Context) {
+	data := s.htmxReadForm(c)
 	id := httpx.ParseIntOrZero(data["id"])
 	username := data["username"]
 	displayName := data["display_name"]
@@ -677,15 +674,15 @@ func htmxSaveUser(c *gin.Context) {
 	}
 
 	if id == 0 {
-		db.Exec("INSERT INTO users (username, display_name, email, color) VALUES (?, ?, ?, ?)", username, displayName, email, color)
+		s.DB.Exec("INSERT INTO users (username, display_name, email, color) VALUES (?, ?, ?, ?)", username, displayName, email, color)
 	} else {
-		db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=? WHERE id=?", username, displayName, email, color, id)
+		s.DB.Exec("UPDATE users SET username=?, display_name=?, email=?, color=? WHERE id=?", username, displayName, email, color, id)
 	}
 
-	htmxListUsers(c)
+	s.htmxListUsers(c)
 }
 
-func htmxDeleteUser(c *gin.Context) {
+func (s *Service) htmxDeleteUser(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -693,13 +690,13 @@ func htmxDeleteUser(c *gin.Context) {
 		return
 	}
 
-	db.Exec("UPDATE timeline_events SET user_id = 0 WHERE user_id = ?", id)
-	db.Exec("DELETE FROM users WHERE id=?", id)
+	s.DB.Exec("UPDATE timeline_events SET user_id = 0 WHERE user_id = ?", id)
+	s.DB.Exec("DELETE FROM users WHERE id=?", id)
 
-	htmxListUsers(c)
+	s.htmxListUsers(c)
 }
 
-func htmxEditUserForm(c *gin.Context) {
+func (s *Service) htmxEditUserForm(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -708,23 +705,23 @@ func htmxEditUserForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		htmxRenderer.Render(c.Writer, "user-form", httpx.UserRow{Color: models.DefaultColor})
+		s.Renderer.Render(c.Writer, "user-form", httpx.UserRow{Color: models.DefaultColor})
 		return
 	}
 
 	var u httpx.UserRow
-	err = db.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(email,''), COALESCE(color,'#7c3aed'), 0 FROM users WHERE id=?", id).Scan(
+	err = s.DB.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(email,''), COALESCE(color,'#7c3aed'), 0 FROM users WHERE id=?", id).Scan(
 		&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Color, &u.EventCount)
 	if err != nil {
 		c.String(http.StatusNotFound, "User not found")
 		return
 	}
 
-	htmxRenderer.Render(c.Writer, "user-form", u)
+	s.Renderer.Render(c.Writer, "user-form", u)
 }
 
-func htmxListTrash(c *gin.Context) {
-	rows, err := db.Query(`SELECT id, title, event_date, COALESCE(deleted_at,'') FROM timeline_events WHERE deleted_at IS NOT NULL AND deleted_at != '' ORDER BY deleted_at DESC`)
+func (s *Service) htmxListTrash(c *gin.Context) {
+	rows, err := s.DB.Query(`SELECT id, title, event_date, COALESCE(deleted_at,'') FROM timeline_events WHERE deleted_at IS NOT NULL AND deleted_at != '' ORDER BY deleted_at DESC`)
 	if err != nil {
 		c.Status(http.StatusInternalServerError)
 		return
@@ -739,10 +736,10 @@ func htmxListTrash(c *gin.Context) {
 		}
 	}
 
-	htmxRenderer.Render(c.Writer, "trash-list-htmx", trash)
+	s.Renderer.Render(c.Writer, "trash-list-htmx", trash)
 }
 
-func htmxRestoreEvent(c *gin.Context) {
+func (s *Service) htmxRestoreEvent(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -750,11 +747,11 @@ func htmxRestoreEvent(c *gin.Context) {
 		return
 	}
 
-	db.Exec("UPDATE timeline_events SET deleted_at=NULL WHERE id=?", id)
-	htmxListTrash(c)
+	s.DB.Exec("UPDATE timeline_events SET deleted_at=NULL WHERE id=?", id)
+	s.htmxListTrash(c)
 }
 
-func htmxPermanentDelete(c *gin.Context) {
+func (s *Service) htmxPermanentDelete(c *gin.Context) {
 	idStr := c.Param("id")
 	id, err := strconv.Atoi(idStr)
 	if err != nil {
@@ -763,22 +760,22 @@ func htmxPermanentDelete(c *gin.Context) {
 	}
 
 	var mediaURL string
-	db.QueryRow("SELECT media_url FROM timeline_events WHERE id=?", id).Scan(&mediaURL)
+	s.DB.QueryRow("SELECT media_url FROM timeline_events WHERE id=?", id).Scan(&mediaURL)
 
-	db.Exec("DELETE FROM timeline_events WHERE id=?", id)
+	s.DB.Exec("DELETE FROM timeline_events WHERE id=?", id)
 
 	if mediaURL != "" {
-		fullPath := filepath.Join(basePath, "media", mediaURL)
+		fullPath := filepath.Join(s.Media.MediaPath(), mediaURL)
 		go func() {
 			os.Remove(fullPath)
 			os.Remove(fullPath + ".thumb.jpg")
 		}()
 	}
 
-	htmxListTrash(c)
+	s.htmxListTrash(c)
 }
 
-func htmxEmptyTrash(c *gin.Context) {
-	db.Exec("DELETE FROM timeline_events WHERE deleted_at IS NOT NULL AND deleted_at != ''")
-	htmxListTrash(c)
+func (s *Service) htmxEmptyTrash(c *gin.Context) {
+	s.DB.Exec("DELETE FROM timeline_events WHERE deleted_at IS NOT NULL AND deleted_at != ''")
+	s.htmxListTrash(c)
 }
