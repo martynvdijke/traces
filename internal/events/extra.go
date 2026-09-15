@@ -1,9 +1,7 @@
 package events
 
 import (
-	"crypto/rand"
 	"database/sql"
-	"encoding/hex"
 	"encoding/json"
 	"fmt"
 	"maps"
@@ -17,17 +15,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"go.opentelemetry.io/otel/attribute"
 
+	"traces/internal/auth"
 	"traces/internal/httpx"
 	"traces/internal/models"
 )
-
-func generateSessionID() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
-}
 
 func UniqueStrings(s []string) []string {
 	seen := make(map[string]bool)
@@ -456,7 +447,7 @@ func (s *Service) CreateShareLink(c *gin.Context) {
 		input.Days = 7
 	}
 
-	token, err := generateSessionID()
+	token, err := auth.GenerateSessionID()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate token"})
 		return

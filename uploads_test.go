@@ -56,17 +56,16 @@ func TestHandleUploadHashing(t *testing.T) {
 func TestHandleUploadCSRFFlow(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	origSessionStore := sessionStore
-	origCSRFTokens := csrfTokens
+	origAuthSess := authSessions
+	origAuthSvc2 := authSvc
 	t.Cleanup(func() {
-		sessionStore = origSessionStore
-		csrfTokens = origCSRFTokens
+		authSessions = origAuthSess
+		authSvc = origAuthSvc2
 	})
 
 	newTestDB(t)
 
-	sessionStore = make(map[string]sessionInfo)
-	csrfTokens = make(map[string]string)
+	authSessions.Clear()
 	setupTestMediaSvc(t)
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS admin_users (
@@ -103,11 +102,11 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 
 	api := router.Group("/api")
 	{
-		api.POST("/login", handleLogin)
-		api.GET("/csrf-token", getCSRFToken)
+		api.POST("/login", authSvc.HandleLogin)
+		api.GET("/csrf-token", authSvc.GetCSRFToken)
 
 		auth := api.Group("")
-		auth.Use(authMiddlewareGin(), csrfMiddleware())
+		auth.Use(authSvc.AuthMiddlewareGin(), authSvc.CSRFMiddleware())
 		{
 			auth.POST("/upload", ensureEventsSvc(t).HandleUpload)
 		}
@@ -149,7 +148,7 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 		if csrfResp["token"] == "" {
 			t.Fatal("empty csrf token")
 		}
-		csrfTokens[sessionCookie] = csrfResp["token"]
+		authSessions.SetCSRF(sessionCookie, csrfResp["token"])
 	})
 
 	t.Run("upload_image", func(t *testing.T) {
@@ -167,7 +166,8 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/upload", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req.AddCookie(&http.Cookie{Name: "session", Value: sessionCookie})
-		req.Header.Set("X-CSRF-Token", csrfTokens[sessionCookie])
+		csTok, _ := authSessions.GetCSRF(sessionCookie)
+		req.Header.Set("X-CSRF-Token", csTok)
 		router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -199,7 +199,8 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/upload", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req.AddCookie(&http.Cookie{Name: "session", Value: sessionCookie})
-		req.Header.Set("X-CSRF-Token", csrfTokens[sessionCookie])
+		csTok, _ := authSessions.GetCSRF(sessionCookie)
+		req.Header.Set("X-CSRF-Token", csTok)
 		router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -234,7 +235,8 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/upload", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req.AddCookie(&http.Cookie{Name: "session", Value: sessionCookie})
-		req.Header.Set("X-CSRF-Token", csrfTokens[sessionCookie])
+		csTok, _ := authSessions.GetCSRF(sessionCookie)
+		req.Header.Set("X-CSRF-Token", csTok)
 		router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
@@ -300,7 +302,8 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 		req := httptest.NewRequest("POST", "/api/upload", body)
 		req.Header.Set("Content-Type", writer.FormDataContentType())
 		req.AddCookie(&http.Cookie{Name: "session", Value: sessionCookie})
-		req.Header.Set("X-CSRF-Token", csrfTokens[sessionCookie])
+		csTok, _ := authSessions.GetCSRF(sessionCookie)
+		req.Header.Set("X-CSRF-Token", csTok)
 		router.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {

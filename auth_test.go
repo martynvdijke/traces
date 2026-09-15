@@ -12,23 +12,14 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 
+	authpkg "traces/internal/auth"
 	"traces/internal/models"
 )
 
 func TestHandleLogin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	origSessionStore := sessionStore
-	origCSRFTokens := csrfTokens
-	t.Cleanup(func() {
-		sessionStore = origSessionStore
-		csrfTokens = origCSRFTokens
-	})
-
 	newTestDB(t)
-
-	sessionStore = make(map[string]sessionInfo)
-	csrfTokens = make(map[string]string)
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS admin_users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -49,11 +40,10 @@ func TestHandleLogin(t *testing.T) {
 	db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", "bcrypt_user", string(bcryptHash))
 
 	router := gin.New()
-	router.POST("/api/login", handleLogin)
+	router.POST("/api/login", authSvc.HandleLogin)
 
 	t.Run("bcrypt_login_success", func(t *testing.T) {
-		sessionStore = make(map[string]sessionInfo)
-		csrfTokens = make(map[string]string)
+		authSessions.Clear()
 
 		w := httptest.NewRecorder()
 		body := `{"username":"bcrypt_user","password":"bcrypt_password"}`
@@ -72,8 +62,7 @@ func TestHandleLogin(t *testing.T) {
 	})
 
 	t.Run("bcrypt_login_wrong_password", func(t *testing.T) {
-		sessionStore = make(map[string]sessionInfo)
-		csrfTokens = make(map[string]string)
+		authSessions.Clear()
 
 		w := httptest.NewRecorder()
 		body := `{"username":"bcrypt_user","password":"wrong_password"}`
@@ -108,17 +97,20 @@ func TestHandleLogin(t *testing.T) {
 		)`)
 
 		origDB2 := db
+		origAuthForSetup := authSvc
+		origSessForSetup := authSessions
 		db = db2
-		t.Cleanup(func() { db = origDB2 })
+		authSessions = authpkg.NewSessionStore()
+		authSvc = authpkg.New(authpkg.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
+		t.Cleanup(func() { db = origDB2; authSvc = origAuthForSetup; authSessions = origSessForSetup })
 
-		sessionStore = make(map[string]sessionInfo)
-		csrfTokens = make(map[string]string)
-
+		r2 := gin.New()
+		r2.POST("/api/login", authSvc.HandleLogin)
 		w := httptest.NewRecorder()
 		body := `{"username":"setup_admin","password":"new_password","setup":true}`
 		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		router.ServeHTTP(w, req)
+		r2.ServeHTTP(w, req)
 
 		if w.Code != http.StatusOK {
 			t.Errorf("setup status = %d, want %d; body=%s", w.Code, http.StatusOK, w.Body.String())
@@ -134,8 +126,7 @@ func TestHandleLogin(t *testing.T) {
 	})
 
 	t.Run("setup_rejected_when_users_exist", func(t *testing.T) {
-		sessionStore = make(map[string]sessionInfo)
-		csrfTokens = make(map[string]string)
+		authSessions.Clear()
 
 		w := httptest.NewRecorder()
 		body := `{"username":"another_admin","password":"password123","setup":true}`
@@ -168,17 +159,20 @@ func TestHandleLogin(t *testing.T) {
 		)`)
 
 		origDB3 := db
+		origAuthForSetup3 := authSvc
+		origSessForSetup3 := authSessions
 		db = db2
-		t.Cleanup(func() { db = origDB3 })
+		authSessions = authpkg.NewSessionStore()
+		authSvc = authpkg.New(authpkg.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
+		t.Cleanup(func() { db = origDB3; authSvc = origAuthForSetup3; authSessions = origSessForSetup3 })
 
-		sessionStore = make(map[string]sessionInfo)
-		csrfTokens = make(map[string]string)
-
+		r2 := gin.New()
+		r2.POST("/api/login", authSvc.HandleLogin)
 		w := httptest.NewRecorder()
 		body := `{"username":"shortpwd","password":"1234567","setup":true}`
 		req := httptest.NewRequest("POST", "/api/login", strings.NewReader(body))
 		req.Header.Set("Content-Type", "application/json")
-		router.ServeHTTP(w, req)
+		r2.ServeHTTP(w, req)
 
 		if w.Code != http.StatusBadRequest {
 			t.Errorf("short password status = %d, want %d; body=%s", w.Code, http.StatusBadRequest, w.Body.String())

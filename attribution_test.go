@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"testing"
 	"time"
+	authpkg "traces/internal/auth"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
@@ -17,17 +18,7 @@ func setupAttributionTest(t *testing.T) *sql.DB {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	origSessionStore := sessionStore
-	origCSRFTokens := csrfTokens
-	t.Cleanup(func() {
-		sessionStore = origSessionStore
-		csrfTokens = origCSRFTokens
-	})
-
 	newTestDB(t)
-
-	sessionStore = make(map[string]sessionInfo)
-	csrfTokens = make(map[string]string)
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -81,14 +72,14 @@ func TestSaveEventAttribution(t *testing.T) {
 	aliceID, _ := res.LastInsertId()
 
 	router := gin.New()
-	router.Use(authMiddlewareGin())
+	router.Use(authSvc.AuthMiddlewareGin())
 	ensureEventsSvc(t)
 	router.POST("/api/events", eventsSvc.SaveEvent)
 
 	familyCookie := "family-cookie"
-	sessionStore[familyCookie] = sessionInfo{userID: aliceID, expiresAt: time.Now().Add(time.Hour).Unix()}
+	authSessions.Set(familyCookie, authpkg.SessionInfo{UserID: aliceID, ExpiresAt: time.Now().Add(time.Hour).Unix()})
 	adminCookie := "admin-cookie"
-	sessionStore[adminCookie] = sessionInfo{userID: 0, expiresAt: time.Now().Add(time.Hour).Unix()}
+	authSessions.Set(adminCookie, authpkg.SessionInfo{UserID: 0, ExpiresAt: time.Now().Add(time.Hour).Unix()})
 
 	t.Run("family_member_event_stamped", func(t *testing.T) {
 		w := doJSON(router, "POST", "/api/events", `{"title":"Beach day","date":"2026-07-01"}`, "session="+familyCookie)

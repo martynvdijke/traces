@@ -21,32 +21,11 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 	"go.opentelemetry.io/otel/attribute"
 
+	"traces/internal/auth"
 	"traces/internal/httpx"
 	"traces/internal/media"
 	"traces/internal/models"
 )
-
-const (
-	ctxKeyUserID    = "current_user_id"
-	ctxKeyUserName  = "current_user_name"
-	ctxKeyUserColor = "current_user_color"
-)
-
-type currentUser struct {
-	ID    int64
-	Name  string
-	Color string
-}
-
-func getCurrentUser(c *gin.Context) currentUser {
-	id, _ := c.Get(ctxKeyUserID)
-	uid, _ := id.(int64)
-	name, _ := c.Get(ctxKeyUserName)
-	uname, _ := name.(string)
-	color, _ := c.Get(ctxKeyUserColor)
-	ucolor, _ := color.(string)
-	return currentUser{ID: uid, Name: uname, Color: ucolor}
-}
 
 func (s *Service) GetEvents(c *gin.Context) {
 	ctx, span := httpx.StartSpan(s.tracer(), c, "getEvents")
@@ -215,7 +194,7 @@ func (s *Service) SaveEvent(c *gin.Context) {
 	if e.Date == "" {
 		e.Date = time.Now().Format("2006-01-02")
 	}
-	if cu := getCurrentUser(c); cu.ID != 0 {
+	if cu := auth.GetCurrentUser(c); cu.ID != 0 {
 		e.UserID = int(cu.ID)
 	}
 	span.SetAttributes(

@@ -26,10 +26,7 @@ package main
 
 import (
 	"context"
-	"crypto/rand"
-	"crypto/sha256"
 	"database/sql"
-	"encoding/hex"
 	"errors"
 	"fmt"
 	"image"
@@ -43,7 +40,6 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
-	"sync"
 	"syscall"
 	"time"
 
@@ -51,10 +47,10 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/trace"
-	"golang.org/x/crypto/bcrypt"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"traces/internal/auth"
 	"traces/internal/database"
 	"traces/internal/events"
 	"traces/internal/httpx"
@@ -74,19 +70,8 @@ var (
 	publicMode bool = false
 )
 
-// sessionInfo carries the identity and expiry of an authenticated session.
-// userID 0 means the admin (legacy behaviour); any other value is a users.id
-// from a family login.
-type sessionInfo struct {
-	userID    int64
-	expiresAt int64
-}
-
 var (
 	db                 *sql.DB
-	sessionStore       = make(map[string]sessionInfo)
-	csrfTokens         = make(map[string]string)
-	sessionMu          sync.RWMutex
 	basePath           = "/app"
 	dbPath             = "/db/traces.db"
 	mediaPath          = "/app/media"
@@ -102,6 +87,8 @@ var (
 	htmxRenderer       *httpx.Renderer
 	integrationsSvc    *integrations.Service
 	eventsSvc          *events.Service
+	authSvc            *auth.Service
+	authSessions       *auth.SessionStore
 )
 
 func currentTracer() trace.Tracer {
@@ -218,7 +205,9 @@ func main() {
 		}
 	}
 
-	initOIDCFromEnv()
+	authSessions = auth.NewSessionStore()
+	authSvc = auth.New(auth.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
+	authSvc.InitOIDCFromEnv()
 
 	r := gin.Default()
 	r.MaxMultipartMemory = 32 << 20
@@ -261,11 +250,11 @@ func main() {
 			c.JSON(http.StatusOK, gin.H{"version": models.CurrentVersion})
 		})
 		api.GET("/check-setup", handleCheckSetup)
-		api.POST("/login", handleLogin)
-		api.POST("/logout", handleLogout)
-		api.GET("/auth/oidc/login", handleOIDCLogin)
-		api.GET("/auth/oidc/callback", handleOIDCCallback)
-		api.GET("/auth/oidc/logout", handleOIDCLogout)
+		api.POST("/login", authSvc.HandleLogin)
+		api.POST("/logout", authSvc.HandleLogout)
+		api.GET("/auth/oidc/login", authSvc.HandleOIDCLogin)
+		api.GET("/auth/oidc/callback", authSvc.HandleOIDCCallback)
+		api.GET("/auth/oidc/logout", authSvc.HandleOIDCLogout)
 		api.GET("/public", eventsSvc.GetPublicEvents)
 		api.GET("/share", eventsSvc.GetShareLink)
 		api.GET("/config", getPublicConfig)
@@ -276,7 +265,7 @@ func main() {
 		api.GET("/sw.js", serveServiceWorker)
 
 		auth := api.Group("")
-		auth.Use(authMiddlewareGin(), csrfMiddleware())
+		auth.Use(authSvc.AuthMiddlewareGin(), authSvc.CSRFMiddleware())
 		{
 			auth.GET("/events", eventsSvc.GetEvents)
 			auth.GET("/events/full", eventsSvc.GetEventsFull)
@@ -295,7 +284,7 @@ func main() {
 			auth.GET("/persons", eventsSvc.GetPersons)
 			auth.GET("/autocomplete", eventsSvc.GetAutocomplete)
 			auth.GET("/calendar", eventsSvc.GetCalendar)
-			auth.GET("/users", getUsers)
+			auth.GET("/users", authSvc.GetUsers)
 			auth.POST("/events", eventsSvc.SaveEvent)
 			auth.DELETE("/events", eventsSvc.DeleteEvent)
 			auth.POST("/upload", eventsSvc.HandleUpload)
@@ -317,9 +306,9 @@ func main() {
 			auth.POST("/email/test", integrationsSvc.TestEmail)
 			auth.POST("/weather/fetch", eventsSvc.FetchWeather)
 			auth.POST("/auto-tag", integrationsSvc.AutoTagEvent)
-			auth.POST("/users", saveUser)
-			auth.DELETE("/users", deleteUser)
-			auth.GET("/users/:id/events", getUserEvents)
+			auth.POST("/users", authSvc.SaveUser)
+			auth.DELETE("/users", authSvc.DeleteUser)
+			auth.GET("/users/:id/events", authSvc.GetUserEvents)
 			auth.POST("/events/recurring/generate", eventsSvc.GenerateRecurringEvents)
 			auth.GET("/ollama/config", integrationsSvc.GetOllamaConfig)
 			auth.POST("/ollama/config", integrationsSvc.SaveOllamaConfig)
@@ -357,7 +346,7 @@ func main() {
 			auth.DELETE("/templates", eventsSvc.DeleteTemplate)
 			auth.POST("/templates/apply", eventsSvc.ApplyTemplate)
 			auth.GET("/wrapped", eventsSvc.GetWrapped)
-			auth.GET("/csrf-token", getCSRFToken)
+			auth.GET("/csrf-token", authSvc.GetCSRFToken)
 			// Log endpoints
 			auth.GET("/logs", logService.HandleGetLogs)
 			auth.GET("/logs/count", logService.HandleGetLogCount)
@@ -369,7 +358,7 @@ func main() {
 	}
 
 	adminHTMX := r.Group("/api/admin")
-	adminHTMX.Use(authMiddlewareGin(), csrfMiddleware())
+	adminHTMX.Use(authSvc.AuthMiddlewareGin(), authSvc.CSRFMiddleware())
 	eventsSvc.RegisterHTMXRoutes(adminHTMX)
 
 	r.GET("/sw.js", serveServiceWorker)
@@ -377,10 +366,7 @@ func main() {
 	r.GET("/admin.html", func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
 		if err == nil {
-			sessionMu.RLock()
-			sess, ok := sessionStore[cookie]
-			sessionMu.RUnlock()
-			if ok && time.Now().Unix() <= sess.expiresAt {
+			if sess, ok := authSessions.Get(cookie); ok && time.Now().Unix() <= sess.ExpiresAt {
 				c.File(filepath.Join(basePath, "static/admin.html"))
 				return
 			}
@@ -391,10 +377,7 @@ func main() {
 	r.GET("/login.html", func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
 		if err == nil {
-			sessionMu.RLock()
-			sess, ok := sessionStore[cookie]
-			sessionMu.RUnlock()
-			if ok && time.Now().Unix() <= sess.expiresAt {
+			if sess, ok := authSessions.Get(cookie); ok && time.Now().Unix() <= sess.ExpiresAt {
 				c.Redirect(http.StatusFound, "/admin.html")
 				return
 			}
@@ -437,15 +420,7 @@ func main() {
 	go func() {
 		for {
 			time.Sleep(10 * time.Minute)
-			sessionMu.Lock()
-			now := time.Now().Unix()
-			for k, v := range sessionStore {
-				if now > v.expiresAt {
-					delete(sessionStore, k)
-					delete(csrfTokens, k)
-				}
-			}
-			sessionMu.Unlock()
+			authSessions.CleanupExpired(time.Now().Unix())
 		}
 	}()
 
@@ -508,123 +483,6 @@ func main() {
 	shutdownTelemetry()
 }
 
-// currentUser is the resolved identity of the logged-in account.
-// ID 0 is the admin; any other value is a users.id from a family login.
-type currentUser struct {
-	ID    int64
-	Name  string
-	Color string
-}
-
-const (
-	ctxKeyUserID    = "current_user_id"
-	ctxKeyUserName  = "current_user_name"
-	ctxKeyUserColor = "current_user_color"
-)
-
-// getCurrentUser returns the identity resolved by authMiddlewareGin.
-// Falls back to the admin identity when middleware did not run (tests).
-func getCurrentUser(c *gin.Context) currentUser {
-	id, _ := c.Get(ctxKeyUserID)
-	uid, _ := id.(int64)
-	name, _ := c.Get(ctxKeyUserName)
-	uname, _ := name.(string)
-	color, _ := c.Get(ctxKeyUserColor)
-	ucolor, _ := color.(string)
-	return currentUser{ID: uid, Name: uname, Color: ucolor}
-}
-
-// resolveSessionUser maps a session's userID to a display identity.
-// userID 0 (or an unknown/deleted user) resolves to the admin identity,
-// preserving legacy behaviour for expiry-only sessions.
-func resolveSessionUser(userID int64) currentUser {
-	if userID != 0 {
-		var name, color string
-		err := db.QueryRow("SELECT COALESCE(NULLIF(display_name,''), username), COALESCE(color, ?) FROM users WHERE id = ?", models.DefaultColor, userID).Scan(&name, &color)
-		if err == nil {
-			return currentUser{ID: userID, Name: name, Color: color}
-		}
-	}
-	return currentUser{ID: 0, Name: "Admin", Color: models.DefaultColor}
-}
-
-func authMiddlewareGin() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		cookie, err := c.Cookie("session")
-		if err != nil {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
-			return
-		}
-		sessionMu.RLock()
-		sess, ok := sessionStore[cookie]
-		sessionMu.RUnlock()
-		if !ok {
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
-			return
-		}
-		if time.Now().Unix() > sess.expiresAt {
-			sessionMu.Lock()
-			delete(sessionStore, cookie)
-			delete(csrfTokens, cookie)
-			sessionMu.Unlock()
-			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Session expired"})
-			return
-		}
-		cu := resolveSessionUser(sess.userID)
-		c.Set(ctxKeyUserID, cu.ID)
-		c.Set(ctxKeyUserName, cu.Name)
-		c.Set(ctxKeyUserColor, cu.Color)
-		c.Set("session_id", cookie)
-		c.Next()
-	}
-}
-
-func csrfMiddleware() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		if c.Request.Method == "GET" || c.Request.Method == "HEAD" {
-			c.Next()
-			return
-		}
-		token := c.GetHeader("X-CSRF-Token")
-		if token == "" {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "CSRF token required"})
-			return
-		}
-		cookie, _ := c.Cookie("session")
-		sessionMu.RLock()
-		stored, ok := csrfTokens[cookie]
-		sessionMu.RUnlock()
-		if !ok || token != stored {
-			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Invalid CSRF token"})
-			return
-		}
-		c.Next()
-	}
-}
-
-// @Summary Get CSRF token
-// @Description Returns a new CSRF token for the current session
-// @Tags Authentication
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Failure 401 {object} map[string]string
-// @Router /csrf-token [get]
-func getCSRFToken(c *gin.Context) {
-	cookie, _ := c.Cookie("session")
-	if cookie == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Not authenticated"})
-		return
-	}
-	sessionMu.Lock()
-	token, ok := csrfTokens[cookie]
-	if !ok {
-		token = fmt.Sprintf("%x", sha256.Sum256([]byte(cookie+"-csrf")))
-		csrfTokens[cookie] = token
-	}
-	sessionMu.Unlock()
-	c.JSON(http.StatusOK, gin.H{"token": token})
-}
-
 // @Summary Get public config
 // @Description Returns public configuration (umami analytics settings)
 // @Tags Info
@@ -633,11 +491,15 @@ func getCSRFToken(c *gin.Context) {
 // @Router /config [get]
 func getPublicConfig(c *gin.Context) {
 	uURL, uSite, uEnabled := integrationsSvc.UmamiSettings()
+	oidcEnabled := false
+	if authSvc != nil {
+		oidcEnabled = authSvc.OIDCReady()
+	}
 	c.JSON(http.StatusOK, gin.H{
 		"umami_url":     uURL,
 		"umami_site":    uSite,
 		"umami_enabled": uEnabled,
-		"oidc_enabled":  oidcReady(),
+		"oidc_enabled":  oidcEnabled,
 	})
 }
 
@@ -666,311 +528,6 @@ func handleHealth(c *gin.Context) {
 	})
 }
 
-// @Summary Login admin user
-// @Description Authenticate admin user or perform initial setup
-// @Tags Authentication
-// @Accept json
-// @Produce json
-// @Param credentials body object true "Login credentials" SchemaProperties({username:{type:string}, password:{type:string}, setup:{type:boolean}})
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Failure 401 {object} map[string]string
-// @Router /login [post]
-func handleLogin(c *gin.Context) {
-	var input struct {
-		Username string `json:"username"`
-		Password string `json:"password"`
-		Setup    bool   `json:"setup"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
-
-	if input.Setup && count > 0 {
-		c.JSON(http.StatusForbidden, gin.H{"error": "Setup already completed"})
-		return
-	}
-
-	if count == 0 {
-		if len(input.Password) < 8 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Password must be at least 8 characters"})
-			return
-		}
-		hashed, err := bcrypt.GenerateFromPassword([]byte(input.Password), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-			return
-		}
-		_, dbErr := db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", input.Username, string(hashed))
-		if dbErr != nil {
-			log.Printf("Error creating admin user: %v", dbErr)
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create user"})
-			return
-		}
-
-		db.Exec("INSERT OR IGNORE INTO users (id, username, display_name, email, color) VALUES (1, ?, ?, '', ?)", input.Username, input.Username, models.DefaultColor)
-
-		sessionID, err := generateSessionID()
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate session"})
-			return
-		}
-		sessionMu.Lock()
-		sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
-		csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
-		sessionMu.Unlock()
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "session",
-			Value:    sessionID,
-			Path:     "/",
-			MaxAge:   86400,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
-		c.JSON(http.StatusOK, gin.H{"status": "ok"})
-		return
-	}
-
-	// Admin credentials are checked first; family accounts (users rows with a
-	// bcrypt password hash) are accepted through the same login flow.
-	var adminID int
-	var adminHash string
-	err := db.QueryRow("SELECT id, password FROM admin_users WHERE username = ?", input.Username).Scan(&adminID, &adminHash)
-	if err == nil {
-		if bcryptErr := bcrypt.CompareHashAndPassword([]byte(adminHash), []byte(input.Password)); bcryptErr != nil {
-			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-			return
-		}
-		createSession(c, 0)
-		return
-	}
-
-	var familyID int64
-	var familyHash string
-	famErr := db.QueryRow("SELECT id, COALESCE(password_hash, '') FROM users WHERE username = ?", input.Username).Scan(&familyID, &familyHash)
-	if famErr != nil || familyHash == "" {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-		return
-	}
-	if bcryptErr := bcrypt.CompareHashAndPassword([]byte(familyHash), []byte(input.Password)); bcryptErr != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
-		return
-	}
-
-	createSession(c, familyID)
-}
-
-// createSession mints an identity-stamped session, sets the cookie and CSRF token.
-func createSession(c *gin.Context, userID int64) {
-	sessionID, err := generateSessionID()
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to generate session"})
-		return
-	}
-	sessionMu.Lock()
-	sessionStore[sessionID] = sessionInfo{userID: userID, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
-	csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
-	sessionMu.Unlock()
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session",
-		Value:    sessionID,
-		Path:     "/",
-		MaxAge:   86400,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-// @Summary Logout admin user
-// @Description Destroy admin session
-// @Tags Authentication
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Router /logout [post]
-func handleLogout(c *gin.Context) {
-	cookie, err := c.Cookie("session")
-	if err == nil {
-		sessionMu.Lock()
-		delete(sessionStore, cookie)
-		sessionMu.Unlock()
-	}
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-// @Summary List users
-// @Description Returns all registered users
-// @Tags Users
-// @Produce json
-// @Success 200 {array} object "users"
-// @Router /users [get]
-func getUsers(c *gin.Context) {
-	rows, err := db.Query(`SELECT id, username, display_name, email, color, avatar_url, created_at,
-		(SELECT COUNT(*) FROM timeline_events WHERE user_id = users.id) as event_count
-		FROM users ORDER BY display_name ASC`)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	defer rows.Close()
-
-	users := make([]models.User, 0)
-	for rows.Next() {
-		var u models.User
-		err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Color, &u.AvatarURL, &u.CreatedAt, &u.EventCount)
-		if err != nil {
-			continue
-		}
-		users = append(users, u)
-	}
-
-	c.JSON(http.StatusOK, users)
-}
-
-// @Summary Create or update user
-// @Description Creates a new user or updates an existing one. Providing a password creates or replaces the family member's login credentials (bcrypt-hashed).
-// @Tags Users
-// @Accept json
-// @Produce json
-// @Param user body object true "User data" SchemaProperties(id:{type:integer}, username:{type:string}, display_name:{type:string}, email:{type:string}, color:{type:string}, avatar_url:{type:string}, password:{type:string})
-// @Success 200 {object} object "saved user"
-// @Failure 400 {object} map[string]string
-// @Router /users [post]
-func saveUser(c *gin.Context) {
-	var u models.User
-	if err := c.ShouldBindJSON(&u); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	var passwordHash string
-	if u.Password != "" {
-		hashed, err := bcrypt.GenerateFromPassword([]byte(u.Password), bcrypt.DefaultCost)
-		if err != nil {
-			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to hash password"})
-			return
-		}
-		passwordHash = string(hashed)
-	}
-
-	if u.ID == 0 {
-		// Family usernames must not shadow the admin login.
-		var adminCount int
-		db.QueryRow("SELECT COUNT(*) FROM admin_users WHERE username = ?", u.Username).Scan(&adminCount)
-		if adminCount > 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already taken"})
-			return
-		}
-		var userCount int
-		db.QueryRow("SELECT COUNT(*) FROM users WHERE username = ?", u.Username).Scan(&userCount)
-		if userCount > 0 {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "Username already taken"})
-			return
-		}
-
-		result, err := db.Exec("INSERT INTO users (username, display_name, email, color, avatar_url, password_hash) VALUES (?, ?, ?, ?, ?, ?)",
-			u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, passwordHash)
-		if err != nil {
-			httpx.ServerError(c, err)
-			return
-		}
-		id, _ := result.LastInsertId()
-		u.ID = int(id)
-	} else {
-		if passwordHash != "" {
-			_, err := db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=?, avatar_url=?, password_hash=? WHERE id=?",
-				u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, passwordHash, u.ID)
-			if err != nil {
-				httpx.ServerError(c, err)
-				return
-			}
-		} else {
-			_, err := db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=?, avatar_url=? WHERE id=?",
-				u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, u.ID)
-			if err != nil {
-				httpx.ServerError(c, err)
-				return
-			}
-		}
-	}
-
-	u.Password = ""
-	c.JSON(http.StatusOK, u)
-}
-
-// @Summary Delete user
-// @Description Deletes a user by ID
-// @Tags Users
-// @Produce json
-// @Param id query int true "User ID"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Router /users [delete]
-func deleteUser(c *gin.Context) {
-	idStr := c.Query("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	db.Exec("UPDATE timeline_events SET user_id = 0 WHERE user_id = ?", id)
-	_, err = db.Exec("DELETE FROM users WHERE id=?", id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
-		return
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-// @Summary Get events for a user
-// @Description Returns all events associated with a specific user
-// @Tags Users
-// @Produce json
-// @Param id path int true "User ID"
-// @Success 200 {array} object "timeline events"
-// @Failure 400 {object} map[string]string
-// @Router /users/{id}/events [get]
-func getUserEvents(c *gin.Context) {
-	idStr := c.Param("id")
-	id, err := strconv.Atoi(idStr)
-	if err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
-		return
-	}
-
-	rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
-		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.user_id = ? ORDER BY e.event_date ASC`, id)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	defer rows.Close()
-
-	events := events.ScanEventsWithPerson(rows)
-	c.JSON(http.StatusOK, events)
-}
-
-// @Summary Generate recurring events
-// @Description Generates events from recurring event templates
-// @Tags Events
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Router /events/recurring/generate [post]
 func backupDatabase() {
 	name := fmt.Sprintf("traces-backup-%s.db", time.Now().Format("2006-01-02-150405"))
 	dst := filepath.Join(backupPath, name)
@@ -1170,12 +727,4 @@ self.addEventListener('fetch', e => {
 		fetch(e.request).catch(() => caches.match(e.request))
 	);
 });`)
-}
-
-func generateSessionID() (string, error) {
-	b := make([]byte, 32)
-	if _, err := rand.Read(b); err != nil {
-		return "", err
-	}
-	return hex.EncodeToString(b), nil
 }

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	authpkg "traces/internal/auth"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
@@ -21,12 +22,12 @@ func setupFamilyAuthTest(t *testing.T) *sql.DB {
 	gin.SetMode(gin.TestMode)
 
 	origDB := db
-	origSessionStore := sessionStore
-	origCSRFTokens := csrfTokens
+	origAuthSvc := authSvc
+	origAuthSessions := authSessions
 	t.Cleanup(func() {
 		db = origDB
-		sessionStore = origSessionStore
-		csrfTokens = origCSRFTokens
+		authSvc = origAuthSvc
+		authSessions = origAuthSessions
 	})
 
 	var err error
@@ -36,8 +37,8 @@ func setupFamilyAuthTest(t *testing.T) *sql.DB {
 	}
 	t.Cleanup(func() { db.Close() })
 
-	sessionStore = make(map[string]sessionInfo)
-	csrfTokens = make(map[string]string)
+	authSessions = authpkg.NewSessionStore()
+	authSvc = authpkg.New(authpkg.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS admin_users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -84,9 +85,9 @@ func TestFamilyLogin(t *testing.T) {
 	database.Exec("INSERT INTO users (username, display_name, color) VALUES (?, ?, ?)", "bob", "Bob", "#3b82f6")
 
 	router := gin.New()
-	router.POST("/api/login", handleLogin)
+	router.POST("/api/login", authSvc.HandleLogin)
 
-	countSessions := func() int { return len(sessionStore) }
+	countSessions := func() int { return authSessions.Count() }
 
 	t.Run("family_login_success", func(t *testing.T) {
 		before := countSessions()
@@ -98,8 +99,8 @@ func TestFamilyLogin(t *testing.T) {
 			t.Fatal("no session created")
 		}
 		found := false
-		for _, sess := range sessionStore {
-			if sess.userID == aliceID {
+		for _, sess := range authSessions.All() {
+			if sess.UserID == aliceID {
 				found = true
 			}
 		}
@@ -142,8 +143,8 @@ func TestFamilyLogin(t *testing.T) {
 			t.Fatalf("status = %d, want 200; body=%s", w.Code, w.Body.String())
 		}
 		found := false
-		for _, sess := range sessionStore {
-			if sess.userID == 0 {
+		for _, sess := range authSessions.All() {
+			if sess.UserID == 0 {
 				found = true
 			}
 		}
@@ -159,13 +160,13 @@ func TestLegacySessionAuthenticatesAsAdmin(t *testing.T) {
 	// Expiry-only style entry: userID 0 carries no identity and must resolve
 	// to the admin identity, as legacy sessions did.
 	router := gin.New()
-	router.Use(authMiddlewareGin())
+	router.Use(authSvc.AuthMiddlewareGin())
 	router.GET("/probe", func(c *gin.Context) {
-		cu := getCurrentUser(c)
+		cu := authpkg.GetCurrentUser(c)
 		c.JSON(http.StatusOK, gin.H{"id": cu.ID, "name": cu.Name})
 	})
 	cookie := "legacy-cookie"
-	sessionStore[cookie] = sessionInfo{userID: 0, expiresAt: time.Now().Add(time.Hour).Unix()}
+	authSessions.Set(cookie, authpkg.SessionInfo{UserID: 0, ExpiresAt: time.Now().Add(time.Hour).Unix()})
 
 	w := doJSON(router, "GET", "/probe", "", "session="+cookie)
 	if w.Code != http.StatusOK {
@@ -188,13 +189,13 @@ func TestFamilySessionResolvesToUser(t *testing.T) {
 	aliceID, _ := res.LastInsertId()
 
 	router := gin.New()
-	router.Use(authMiddlewareGin())
+	router.Use(authSvc.AuthMiddlewareGin())
 	router.GET("/probe", func(c *gin.Context) {
-		cu := getCurrentUser(c)
+		cu := authpkg.GetCurrentUser(c)
 		c.JSON(http.StatusOK, gin.H{"id": cu.ID, "name": cu.Name, "color": cu.Color})
 	})
 	cookie := "family-cookie"
-	sessionStore[cookie] = sessionInfo{userID: aliceID, expiresAt: time.Now().Add(time.Hour).Unix()}
+	authSessions.Set(cookie, authpkg.SessionInfo{UserID: aliceID, ExpiresAt: time.Now().Add(time.Hour).Unix()})
 
 	w := doJSON(router, "GET", "/probe", "", "session="+cookie)
 	if w.Code != http.StatusOK {
@@ -217,7 +218,7 @@ func TestSaveUserAccount(t *testing.T) {
 	database.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", "admin", mustHash(t, "admin_password"))
 
 	router := gin.New()
-	router.POST("/api/users", saveUser)
+	router.POST("/api/users", authSvc.SaveUser)
 
 	t.Run("create_with_password_hashes_bcrypt", func(t *testing.T) {
 		w := doJSON(router, "POST", "/api/users", `{"username":"carol","display_name":"Carol","color":"#10b981","password":"carol_password"}`)

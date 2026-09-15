@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
+	authpkg "traces/internal/auth"
 	"traces/internal/events"
 	"traces/internal/integrations"
 	"traces/internal/media"
@@ -26,7 +27,11 @@ func setupTestRouter() *gin.Engine {
 	r.POST("/api/login", func(c *gin.Context) {
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 	})
-	r.POST("/api/logout", handleLogout)
+	if authSvc != nil {
+		r.POST("/api/logout", authSvc.HandleLogout)
+	} else {
+		r.POST("/api/logout", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+	}
 	r.GET("/api/health", handleHealth)
 
 	return r
@@ -48,6 +53,8 @@ func newTestDB(t *testing.T) *sql.DB {
 	origDB := db
 	origSvc := integrationsSvc
 	origEvents := eventsSvc
+	origAuthSvc := authSvc
+	origAuthSessions := authSessions
 	newDB, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -55,10 +62,14 @@ func newTestDB(t *testing.T) *sql.DB {
 	db = newDB
 	integrationsSvc = integrations.New(newDB, logService, nil)
 	eventsSvc = events.New(events.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc, Media: mediaSvc, PublicMode: func() bool { return publicMode }, Tracer: currentTracer})
+	authSessions = authpkg.NewSessionStore()
+	authSvc = authpkg.New(authpkg.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
 	t.Cleanup(func() {
 		db = origDB
 		integrationsSvc = origSvc
 		eventsSvc = origEvents
+		authSvc = origAuthSvc
+		authSessions = origAuthSessions
 		newDB.Close()
 	})
 	return newDB

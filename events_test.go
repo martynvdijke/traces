@@ -10,6 +10,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	authpkg "traces/internal/auth"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
@@ -580,17 +581,16 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	origSessionStore := sessionStore
-	origCSRFTokens := csrfTokens
+	origAuthSess := authSessions
+	origAuthSvc2 := authSvc
 	t.Cleanup(func() {
-		sessionStore = origSessionStore
-		csrfTokens = origCSRFTokens
+		authSessions = origAuthSess
+		authSvc = origAuthSvc2
 	})
 
 	newTestDB(t)
 
-	sessionStore = make(map[string]sessionInfo)
-	csrfTokens = make(map[string]string)
+	authSessions.Clear()
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -630,14 +630,14 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 	)`)
 
 	sessionID := "test-roundtrip-session"
-	sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
-	csrfTokens[sessionID] = fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
+	authSessions.Set(sessionID, authpkg.SessionInfo{UserID: 0, ExpiresAt: time.Now().Add(24 * time.Hour).Unix()})
+	authSessions.SetCSRF(sessionID, fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf"))))
 
 	router := gin.New()
 	auth := router.Group("")
 	auth.Use(func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
-		if err != nil || sessionStore[cookie].expiresAt == 0 {
+		if sess, ok := authSessions.Get(cookie); err != nil || !ok || sess.ExpiresAt == 0 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}

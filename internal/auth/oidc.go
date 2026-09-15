@@ -1,10 +1,4 @@
-package main
-
-// OIDC login via Authelia (native relying party).
-//
-// Disabled unless OIDC_ENABLED=true with issuer/client config present.
-// Sessions reuse the existing `session` cookie + CSRF store, so no
-// AuthMiddleware change is needed and password login keeps working as fallback.
+package auth
 
 import (
 	"context"
@@ -16,7 +10,6 @@ import (
 	"net/http"
 	"os"
 	"strings"
-	"sync"
 	"time"
 
 	"github.com/coreos/go-oidc/v3/oidc"
@@ -36,15 +29,9 @@ type oidcConfig struct {
 	Scopes       []string
 }
 
-var (
-	oidcCfg      oidcConfig
-	oidcMu       sync.Mutex
-	oidcProvider *oidc.Provider
-	oidcVerifier *oidc.IDTokenVerifier
-	oidcOAuth2   *oauth2.Config
-)
+// OIDCConfig is exported for tests.
+type OIDCConfig = oidcConfig
 
-// oidcClaims is the subset of ID token claims Traces cares about.
 type oidcClaims struct {
 	Email             string   `json:"email"`
 	EmailVerified     bool     `json:"email_verified"`
@@ -53,25 +40,21 @@ type oidcClaims struct {
 	Groups            []string `json:"groups"`
 }
 
-// initOIDCFromEnv loads OIDC config from the environment. The client secret
-// comes from OIDC_CLIENT_SECRET_FILE (Docker secret) or OIDC_CLIENT_SECRET;
-// it is never read from git-tracked files.
-func initOIDCFromEnv() {
-	oidcCfg.Enabled = os.Getenv("OIDC_ENABLED") == "true"
-	oidcCfg.IssuerURL = strings.TrimRight(os.Getenv("OIDC_ISSUER_URL"), "/")
-	oidcCfg.ClientID = os.Getenv("OIDC_CLIENT_ID")
-	oidcCfg.ClientSecret = oidcClientSecret()
-	oidcCfg.RedirectURL = os.Getenv("OIDC_REDIRECT_URL")
-	oidcCfg.Scopes = strings.Fields(os.Getenv("OIDC_SCOPES"))
-	if len(oidcCfg.Scopes) == 0 {
-		oidcCfg.Scopes = []string{"openid", "email", "profile", "groups"}
+func (s *Service) InitOIDCFromEnv() {
+	s.oidcCfg.Enabled = os.Getenv("OIDC_ENABLED") == "true"
+	s.oidcCfg.IssuerURL = strings.TrimRight(os.Getenv("OIDC_ISSUER_URL"), "/")
+	s.oidcCfg.ClientID = os.Getenv("OIDC_CLIENT_ID")
+	s.oidcCfg.ClientSecret = oidcClientSecret()
+	s.oidcCfg.RedirectURL = os.Getenv("OIDC_REDIRECT_URL")
+	s.oidcCfg.Scopes = strings.Fields(os.Getenv("OIDC_SCOPES"))
+	if len(s.oidcCfg.Scopes) == 0 {
+		s.oidcCfg.Scopes = []string{"openid", "email", "profile", "groups"}
 	}
-	if oidcCfg.Enabled && !oidcReady() {
+	if s.oidcCfg.Enabled && !s.OIDCReady() {
 		log.Printf("[OIDC] OIDC_ENABLED=true but issuer/client_id/secret/redirect_url incomplete — OIDC login disabled")
 	}
 }
 
-// oidcClientSecret resolves the secret from file first, env second.
 func oidcClientSecret() string {
 	if path := os.Getenv("OIDC_CLIENT_SECRET_FILE"); path != "" {
 		if b, err := os.ReadFile(path); err == nil {
@@ -83,43 +66,39 @@ func oidcClientSecret() string {
 	return os.Getenv("OIDC_CLIENT_SECRET")
 }
 
-// oidcReady reports whether OIDC login can be offered (env-complete).
-// Provider discovery happens lazily on first login.
-func oidcReady() bool {
-	return oidcCfg.Enabled && oidcCfg.IssuerURL != "" && oidcCfg.ClientID != "" &&
-		oidcCfg.ClientSecret != "" && oidcCfg.RedirectURL != ""
+func (s *Service) OIDCReady() bool {
+	return s.oidcCfg.Enabled && s.oidcCfg.IssuerURL != "" && s.oidcCfg.ClientID != "" &&
+		s.oidcCfg.ClientSecret != "" && s.oidcCfg.RedirectURL != ""
 }
 
-// ensureOIDCProvider discovers endpoints via the issuer and caches the result.
-func ensureOIDCProvider(ctx context.Context) error {
-	oidcMu.Lock()
-	defer oidcMu.Unlock()
-	if oidcProvider != nil {
+func (s *Service) ensureOIDCProvider(ctx context.Context) error {
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
+	if s.oidcProvider != nil {
 		return nil
 	}
-	provider, err := oidc.NewProvider(ctx, oidcCfg.IssuerURL)
+	provider, err := oidc.NewProvider(ctx, s.oidcCfg.IssuerURL)
 	if err != nil {
 		return err
 	}
-	oidcProvider = provider
-	oidcVerifier = provider.Verifier(&oidc.Config{ClientID: oidcCfg.ClientID})
-	oidcOAuth2 = &oauth2.Config{
-		ClientID:     oidcCfg.ClientID,
-		ClientSecret: oidcCfg.ClientSecret,
-		RedirectURL:  oidcCfg.RedirectURL,
+	s.oidcProvider = provider
+	s.oidcVerifier = provider.Verifier(&oidc.Config{ClientID: s.oidcCfg.ClientID})
+	s.oidcOAuth2 = &oauth2.Config{
+		ClientID:     s.oidcCfg.ClientID,
+		ClientSecret: s.oidcCfg.ClientSecret,
+		RedirectURL:  s.oidcCfg.RedirectURL,
 		Endpoint:     provider.Endpoint(),
-		Scopes:       oidcCfg.Scopes,
+		Scopes:       s.oidcCfg.Scopes,
 	}
 	return nil
 }
 
-// oidcResetProvider drops cached discovery state (tests).
-func oidcResetProvider() {
-	oidcMu.Lock()
-	defer oidcMu.Unlock()
-	oidcProvider = nil
-	oidcVerifier = nil
-	oidcOAuth2 = nil
+func (s *Service) OIDCResetProvider() {
+	s.oidcMu.Lock()
+	defer s.oidcMu.Unlock()
+	s.oidcProvider = nil
+	s.oidcVerifier = nil
+	s.oidcOAuth2 = nil
 }
 
 func oidcRandomURLSafe(n int) (string, error) {
@@ -130,7 +109,6 @@ func oidcRandomURLSafe(n int) (string, error) {
 	return base64.RawURLEncoding.EncodeToString(b), nil
 }
 
-// oidcPKCEChallenge derives the S256 code challenge for a verifier.
 func oidcPKCEChallenge(verifier string) string {
 	sum := sha256.Sum256([]byte(verifier))
 	return base64.RawURLEncoding.EncodeToString(sum[:])
@@ -153,17 +131,13 @@ func clearOIDCTempCookies(c *gin.Context) {
 	}
 }
 
-// @Summary OIDC login
-// @Description Redirect to Authelia for OIDC Authorization Code + PKCE login
-// @Tags Authentication
-// @Router /auth/oidc/login [get]
-func handleOIDCLogin(c *gin.Context) {
-	if !oidcReady() {
+func (s *Service) HandleOIDCLogin(c *gin.Context) {
+	if !s.OIDCReady() {
 		c.JSON(http.StatusNotFound, gin.H{"error": "OIDC login is not enabled"})
 		return
 	}
-	if err := ensureOIDCProvider(c.Request.Context()); err != nil {
-		log.Printf("[OIDC] Discovery failed for %s: %v", oidcCfg.IssuerURL, err)
+	if err := s.ensureOIDCProvider(c.Request.Context()); err != nil {
+		log.Printf("[OIDC] Discovery failed for %s: %v", s.oidcCfg.IssuerURL, err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Identity provider unavailable"})
 		return
 	}
@@ -186,19 +160,15 @@ func handleOIDCLogin(c *gin.Context) {
 	setOIDCTempCookie(c, "oidc_nonce", nonce)
 	setOIDCTempCookie(c, "oidc_verifier", verifier)
 
-	oidcMu.Lock()
-	cfg := oidcOAuth2
-	oidcMu.Unlock()
+	s.oidcMu.Lock()
+	cfg := s.oidcOAuth2
+	s.oidcMu.Unlock()
 	authURL := cfg.AuthCodeURL(state, oidc.Nonce(nonce), oauth2.S256ChallengeOption(verifier))
 	c.Redirect(http.StatusFound, authURL)
 }
 
-// @Summary OIDC callback
-// @Description Handle Authelia code exchange, verify ID token, create session
-// @Tags Authentication
-// @Router /auth/oidc/callback [get]
-func handleOIDCCallback(c *gin.Context) {
-	if !oidcReady() {
+func (s *Service) HandleOIDCCallback(c *gin.Context) {
+	if !s.OIDCReady() {
 		c.JSON(http.StatusNotFound, gin.H{"error": "OIDC login is not enabled"})
 		return
 	}
@@ -215,17 +185,17 @@ func handleOIDCCallback(c *gin.Context) {
 		return
 	}
 	nonce, _ := c.Cookie("oidc_nonce")
-	if err := ensureOIDCProvider(c.Request.Context()); err != nil {
+	if err := s.ensureOIDCProvider(c.Request.Context()); err != nil {
 		clearOIDCTempCookies(c)
-		log.Printf("[OIDC] Discovery failed for %s: %v", oidcCfg.IssuerURL, err)
+		log.Printf("[OIDC] Discovery failed for %s: %v", s.oidcCfg.IssuerURL, err)
 		c.JSON(http.StatusBadGateway, gin.H{"error": "Identity provider unavailable"})
 		return
 	}
 
-	oidcMu.Lock()
-	cfg := oidcOAuth2
-	verifierCfg := oidcVerifier
-	oidcMu.Unlock()
+	s.oidcMu.Lock()
+	cfg := s.oidcOAuth2
+	verifierCfg := s.oidcVerifier
+	s.oidcMu.Unlock()
 
 	ctx := c.Request.Context()
 	token, err := cfg.Exchange(ctx, c.Query("code"), oauth2.VerifierOption(verifier))
@@ -267,23 +237,20 @@ func handleOIDCCallback(c *gin.Context) {
 	if name == "" {
 		name = claims.PreferredUsername
 	}
-	userID, err := oidcLinkOrProvision(idToken.Subject, email, name, claims.Groups)
+	userID, err := s.oidcLinkOrProvision(idToken.Subject, email, name, claims.Groups)
 	if err != nil {
 		clearOIDCTempCookies(c)
 		httpx.ServerError(c, err)
 		return
 	}
 	clearOIDCTempCookies(c)
-	// Same session cookie shape as password login — AuthMiddleware accepts it as-is.
-	sessionID, err := generateSessionID()
+	sessionID, err := GenerateSessionID()
 	if err != nil {
 		httpx.ServerError(c, err)
 		return
 	}
-	sessionMu.Lock()
-	sessionStore[sessionID] = sessionInfo{userID: userID, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
-	csrfTokens[sessionID] = oidcCSRFToken(sessionID)
-	sessionMu.Unlock()
+	s.sessions.Set(sessionID, SessionInfo{UserID: userID, ExpiresAt: time.Now().Add(24 * time.Hour).Unix()})
+	s.sessions.SetCSRF(sessionID, oidcCSRFToken(sessionID))
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "session",
 		Value:    sessionID,
@@ -299,20 +266,13 @@ func oidcCSRFToken(sessionID string) string {
 	return fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf")))
 }
 
-// @Summary OIDC logout
-// @Description Clear local session and redirect to Authelia logout
-// @Tags Authentication
-// @Router /auth/oidc/logout [get]
-func handleOIDCLogout(c *gin.Context) {
-	if !oidcReady() {
+func (s *Service) HandleOIDCLogout(c *gin.Context) {
+	if !s.OIDCReady() {
 		c.JSON(http.StatusNotFound, gin.H{"error": "OIDC login is not enabled"})
 		return
 	}
 	if cookie, err := c.Cookie("session"); err == nil {
-		sessionMu.Lock()
-		delete(sessionStore, cookie)
-		delete(csrfTokens, cookie)
-		sessionMu.Unlock()
+		s.sessions.DeleteWithCSRF(cookie)
 	}
 	http.SetCookie(c.Writer, &http.Cookie{
 		Name:     "session",
@@ -322,10 +282,9 @@ func handleOIDCLogout(c *gin.Context) {
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
 	})
-	c.Redirect(http.StatusFound, oidcCfg.IssuerURL+"/logout")
+	c.Redirect(http.StatusFound, s.oidcCfg.IssuerURL+"/logout")
 }
 
-// oidcIsAdmin maps the IdP groups claim to the admin flag.
 func oidcIsAdmin(groups []string) bool {
 	for _, g := range groups {
 		if g == "admins" {
@@ -335,10 +294,9 @@ func oidcIsAdmin(groups []string) bool {
 	return false
 }
 
-// oidcLinkOrProvision links an OIDC subject to a users row by verified email
-// (the family-logins email key), auto-provisioning on first login, and syncs
-// the admin flag from the groups claim on every login.
-func oidcLinkOrProvision(sub, email, name string, groups []string) (int64, error) {
+func (s *Service) OIDCIsAdmin(groups []string) bool { return oidcIsAdmin(groups) }
+
+func (s *Service) oidcLinkOrProvision(sub, email, name string, groups []string) (int64, error) {
 	if sub == "" || email == "" {
 		return 0, errOIDCIdentity
 	}
@@ -347,20 +305,20 @@ func oidcLinkOrProvision(sub, email, name string, groups []string) (int64, error
 		isAdmin = 1
 	}
 	var id int64
-	if err := db.QueryRow("SELECT id FROM users WHERE oidc_sub = ?", sub).Scan(&id); err == nil {
-		_, err := db.Exec("UPDATE users SET email = ?, is_admin = ?, auth_method = 'oidc' WHERE id = ?", email, isAdmin, id)
+	if err := s.db.QueryRow("SELECT id FROM users WHERE oidc_sub = ?", sub).Scan(&id); err == nil {
+		_, err := s.db.Exec("UPDATE users SET email = ?, is_admin = ?, auth_method = 'oidc' WHERE id = ?", email, isAdmin, id)
 		return id, err
 	}
-	if err := db.QueryRow("SELECT id FROM users WHERE lower(email) = lower(?)", email).Scan(&id); err == nil {
-		_, err := db.Exec("UPDATE users SET oidc_sub = ?, is_admin = ?, auth_method = 'oidc' WHERE id = ?", sub, isAdmin, id)
+	if err := s.db.QueryRow("SELECT id FROM users WHERE lower(email) = lower(?)", email).Scan(&id); err == nil {
+		_, err := s.db.Exec("UPDATE users SET oidc_sub = ?, is_admin = ?, auth_method = 'oidc' WHERE id = ?", sub, isAdmin, id)
 		return id, err
 	}
-	username := oidcUsernameForEmail(email)
+	username := s.oidcUsernameForEmail(email)
 	display := name
 	if display == "" {
 		display = username
 	}
-	res, err := db.Exec(`INSERT INTO users (username, display_name, email, color, oidc_sub, auth_method, is_admin)
+	res, err := s.db.Exec(`INSERT INTO users (username, display_name, email, color, oidc_sub, auth_method, is_admin)
 		VALUES (?, ?, ?, ?, ?, 'oidc', ?)`, username, display, email, models.DefaultColor, sub, isAdmin)
 	if err != nil {
 		return 0, err
@@ -368,8 +326,12 @@ func oidcLinkOrProvision(sub, email, name string, groups []string) (int64, error
 	return res.LastInsertId()
 }
 
-// oidcUsernameForEmail derives a unique users.username from the email local part.
-func oidcUsernameForEmail(email string) string {
+// OIDCLinkOrProvision is exported for tests.
+func (s *Service) OIDCLinkOrProvision(sub, email, name string, groups []string) (int64, error) {
+	return s.oidcLinkOrProvision(sub, email, name, groups)
+}
+
+func (s *Service) oidcUsernameForEmail(email string) string {
 	local := email
 	if i := strings.Index(local, "@"); i >= 0 {
 		local = local[:i]
@@ -387,12 +349,14 @@ func oidcUsernameForEmail(email string) string {
 	candidate := base
 	for i := 2; ; i++ {
 		var count int
-		if err := db.QueryRow("SELECT COUNT(*) FROM users WHERE username = ?", candidate).Scan(&count); err != nil || count == 0 {
+		if err := s.db.QueryRow("SELECT COUNT(*) FROM users WHERE username = ?", candidate).Scan(&count); err != nil || count == 0 {
 			return candidate
 		}
 		candidate = strings.ToLower(strings.TrimSpace(base + "-" + itoa(i)))
 	}
 }
+
+func (s *Service) OIDCUsernameForEmail(email string) string { return s.oidcUsernameForEmail(email) }
 
 func itoa(i int) string {
 	if i == 0 {
@@ -407,9 +371,20 @@ func itoa(i int) string {
 	return string(b[p:])
 }
 
-// errOIDCIdentity is returned when the IdP identity is missing subject/email.
 type oidcError string
 
 func (e oidcError) Error() string { return string(e) }
 
 const errOIDCIdentity oidcError = "incomplete OIDC identity"
+
+// Exported helpers for tests / main
+func (s *Service) OIDCClientSecret() string { return s.oidcCfg.ClientSecret }
+
+func OIDCClientSecret() string { return oidcClientSecret() }
+
+// OIDC config field accessors for tests if needed
+func (s *Service) SetOIDCConfig(cfg oidcConfig) { s.oidcCfg = cfg }
+func (s *Service) GetOIDCConfig() oidcConfig    { return s.oidcCfg }
+
+// Additional fields stored inside Service struct
+// We need to declare them; they are below

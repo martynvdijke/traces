@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	authpkg "traces/internal/auth"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
@@ -17,21 +18,7 @@ func setupOIDCTestDB(t *testing.T) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	origSessionStore := sessionStore
-	origCSRFTokens := csrfTokens
-	origCfg := oidcCfg
-	t.Cleanup(func() {
-		sessionStore = origSessionStore
-		csrfTokens = origCSRFTokens
-		oidcCfg = origCfg
-		oidcResetProvider()
-	})
-
 	newTestDB(t)
-
-	sessionStore = make(map[string]sessionInfo)
-	csrfTokens = make(map[string]string)
-	oidcCfg = oidcConfig{}
 
 	db.Exec(`CREATE TABLE users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -51,20 +38,20 @@ func setupOIDCTestDB(t *testing.T) {
 func oidcTestRouter() *gin.Engine {
 	r := gin.New()
 	api := r.Group("/api")
-	api.GET("/auth/oidc/login", handleOIDCLogin)
-	api.GET("/auth/oidc/callback", handleOIDCCallback)
-	api.GET("/auth/oidc/logout", handleOIDCLogout)
+	api.GET("/auth/oidc/login", authSvc.HandleOIDCLogin)
+	api.GET("/auth/oidc/callback", authSvc.HandleOIDCCallback)
+	api.GET("/auth/oidc/logout", authSvc.HandleOIDCLogout)
 	return r
 }
 
 func TestOIDCIsAdminGroups(t *testing.T) {
-	if !oidcIsAdmin([]string{"users", "admins"}) {
+	if !authSvc.OIDCIsAdmin([]string{"users", "admins"}) {
 		t.Error("groups containing admins should map to admin")
 	}
-	if oidcIsAdmin([]string{"users"}) {
+	if authSvc.OIDCIsAdmin([]string{"users"}) {
 		t.Error("groups without admins should not map to admin")
 	}
-	if oidcIsAdmin(nil) {
+	if authSvc.OIDCIsAdmin(nil) {
 		t.Error("nil groups should not map to admin")
 	}
 }
@@ -77,7 +64,7 @@ func TestOIDCClientSecretFile(t *testing.T) {
 	}
 	t.Setenv("OIDC_CLIENT_SECRET_FILE", secretPath)
 	t.Setenv("OIDC_CLIENT_SECRET", "fallback")
-	if got := oidcClientSecret(); got != "s3cret" {
+	if got := authpkg.OIDCClientSecret(); got != "s3cret" {
 		t.Errorf("secret from file = %q, want %q", got, "s3cret")
 	}
 }
@@ -98,7 +85,7 @@ func TestOIDCDisabledRoutesReturnNotFound(t *testing.T) {
 
 func TestOIDCCallbackRejectsBadState(t *testing.T) {
 	setupOIDCTestDB(t)
-	oidcCfg = oidcConfig{Enabled: true, IssuerURL: "https://idp.example.com", ClientID: "x", ClientSecret: "y", RedirectURL: "https://app.example.com/api/auth/oidc/callback"}
+	authSvc.SetOIDCConfig(authpkg.OIDCConfig{Enabled: true, IssuerURL: "https://idp.example.com", ClientID: "x", ClientSecret: "y", RedirectURL: "https://app.example.com/api/auth/oidc/callback"})
 	r := oidcTestRouter()
 
 	w := httptest.NewRecorder()
@@ -108,7 +95,7 @@ func TestOIDCCallbackRejectsBadState(t *testing.T) {
 	if w.Code != http.StatusBadRequest {
 		t.Errorf("callback with mismatched state = %d, want 400", w.Code)
 	}
-	if len(sessionStore) != 0 {
+	if authSessions.Count() != 0 {
 		t.Error("no session should be created on state mismatch")
 	}
 }
@@ -117,7 +104,7 @@ func TestOIDCLinkOrProvision(t *testing.T) {
 	setupOIDCTestDB(t)
 
 	// First login auto-provisions, non-admin without admins group.
-	id, err := oidcLinkOrProvision("sub-1", "Ada@Example.com", "Ada", []string{"users"})
+	id, err := authSvc.OIDCLinkOrProvision("sub-1", "Ada@Example.com", "Ada", []string{"users"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -132,7 +119,7 @@ func TestOIDCLinkOrProvision(t *testing.T) {
 	}
 
 	// Returning login with admins group syncs the admin flag on the same row.
-	id2, err := oidcLinkOrProvision("sub-1", "ada@example.com", "Ada", []string{"admins"})
+	id2, err := authSvc.OIDCLinkOrProvision("sub-1", "ada@example.com", "Ada", []string{"admins"})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -148,7 +135,7 @@ func TestOIDCLinkOrProvision(t *testing.T) {
 	if _, err := db.Exec("INSERT INTO users (username, email) VALUES ('grace', 'grace@example.com')"); err != nil {
 		t.Fatal(err)
 	}
-	id3, err := oidcLinkOrProvision("sub-9", "grace@example.com", "Grace", nil)
+	id3, err := authSvc.OIDCLinkOrProvision("sub-9", "grace@example.com", "Grace", nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -164,10 +151,10 @@ func TestOIDCLinkOrProvision(t *testing.T) {
 	}
 
 	// Unverified/missing identity is rejected.
-	if _, err := oidcLinkOrProvision("", "x@example.com", "X", nil); err == nil {
+	if _, err := authSvc.OIDCLinkOrProvision("", "x@example.com", "X", nil); err == nil {
 		t.Error("empty sub should be rejected")
 	}
-	if _, err := oidcLinkOrProvision("sub-z", "", "X", nil); err == nil {
+	if _, err := authSvc.OIDCLinkOrProvision("sub-z", "", "X", nil); err == nil {
 		t.Error("empty email should be rejected")
 	}
 }
@@ -175,10 +162,10 @@ func TestOIDCLinkOrProvision(t *testing.T) {
 func TestOIDCUsernameDedup(t *testing.T) {
 	setupOIDCTestDB(t)
 	db.Exec("INSERT INTO users (username, email) VALUES ('ada', 'ada@x.com')")
-	if got := oidcUsernameForEmail("ada@y.com"); got == "ada" {
+	if got := authSvc.OIDCUsernameForEmail("ada@y.com"); got == "ada" {
 		t.Error("derived username should avoid collision with existing username")
 	}
-	if got := oidcUsernameForEmail("not-an-email!!"); got == "" {
+	if got := authSvc.OIDCUsernameForEmail("not-an-email!!"); got == "" {
 		t.Error("derived username should never be empty")
 	}
 }

@@ -7,6 +7,7 @@ import (
 	"strings"
 	"testing"
 	"time"
+	authpkg "traces/internal/auth"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
@@ -19,17 +20,16 @@ import (
 func TestRecycleBin(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	origSessionStore := sessionStore
-	origCSRFTokens := csrfTokens
+	origAuthSess := authSessions
+	origAuthSvc2 := authSvc
 	t.Cleanup(func() {
-		sessionStore = origSessionStore
-		csrfTokens = origCSRFTokens
+		authSessions = origAuthSess
+		authSvc = origAuthSvc2
 	})
 
 	newTestDB(t)
 
-	sessionStore = make(map[string]sessionInfo)
-	csrfTokens = make(map[string]string)
+	authSessions.Clear()
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -72,7 +72,7 @@ func TestRecycleBin(t *testing.T) {
 	auth := router.Group("")
 	auth.Use(func(c *gin.Context) {
 		cookie, err := c.Cookie("session")
-		if err != nil || sessionStore[cookie].expiresAt == 0 {
+		if sess, ok := authSessions.Get(cookie); err != nil || !ok || sess.ExpiresAt == 0 {
 			c.AbortWithStatusJSON(http.StatusUnauthorized, gin.H{"error": "Unauthorized"})
 			return
 		}
@@ -86,7 +86,7 @@ func TestRecycleBin(t *testing.T) {
 	auth.POST("/api/events", eventsSvc.SaveEvent)
 
 	sessionID := "test-trash-session"
-	sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
+	authSessions.Set(sessionID, authpkg.SessionInfo{UserID: 0, ExpiresAt: time.Now().Add(24 * time.Hour).Unix()})
 
 	t.Run("soft_delete_moves_event_to_trash", func(t *testing.T) {
 		_, err := db.Exec("INSERT INTO timeline_events (title, description, event_date) VALUES (?, ?, ?)", "Trash Event", "Will be deleted", "2026-07-04")
@@ -185,15 +185,15 @@ func TestRecycleBin(t *testing.T) {
 func TestHTMXEndpoints(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	origSessionStore := sessionStore
-	origCSRFTokens := csrfTokens
+	origSess2 := authSessions
+	origSvc2 := authSvc
 	origPublicMode := publicMode
 	origRenderer := htmxRenderer
 	origBasePath := basePath
 	tmpDir := t.TempDir()
 	t.Cleanup(func() {
-		sessionStore = origSessionStore
-		csrfTokens = origCSRFTokens
+		authSessions = origSess2
+		authSvc = origSvc2
 		publicMode = origPublicMode
 		htmxRenderer = origRenderer
 		basePath = origBasePath
@@ -211,20 +211,19 @@ func TestHTMXEndpoints(t *testing.T) {
 		t.Fatalf("NewRenderer: %v", err)
 	}
 
-	sessionStore = make(map[string]sessionInfo)
-	csrfTokens = make(map[string]string)
+	authSessions.Clear()
 
 	r := gin.New()
 
 	ensureEventsSvc(t)
 	adminHTMX := r.Group("/api/admin")
-	adminHTMX.Use(authMiddlewareGin(), csrfMiddleware())
+	adminHTMX.Use(authSvc.AuthMiddlewareGin(), authSvc.CSRFMiddleware())
 	eventsSvc.RegisterHTMXRoutes(adminHTMX)
 
 	sessionID := "htmx-test-session"
 	csrfToken := "htmx-test-csrf-token"
-	sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}
-	csrfTokens[sessionID] = csrfToken
+	authSessions.Set(sessionID, authpkg.SessionInfo{UserID: 0, ExpiresAt: time.Now().Add(24 * time.Hour).Unix()})
+	authSessions.SetCSRF(sessionID, csrfToken)
 
 	t.Run("htmx_events_list_returns_html", func(t *testing.T) {
 		w := httptest.NewRecorder()
