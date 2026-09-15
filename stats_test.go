@@ -6,6 +6,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+
+	"traces/internal/events"
 )
 
 func TestContributions(t *testing.T) {
@@ -197,23 +199,23 @@ func TestStatsDistribution(t *testing.T) {
 	t.Run("haversine_distance", func(t *testing.T) {
 		nyLat, nyLng := 40.7128, -74.0060
 		laLat, laLng := 34.0522, -118.2437
-		dist := haversine(nyLat, nyLng, laLat, laLng)
+		dist := events.Haversine(nyLat, nyLng, laLat, laLng)
 		if dist < 3000 || dist > 5000 {
 			t.Errorf("NYC to LA distance = %.0f km, expected ~3940 km", dist)
 		}
 	})
 
 	t.Run("is_leap_year", func(t *testing.T) {
-		if !isLeapYear("2024") {
+		if !events.IsLeapYear("2024") {
 			t.Error("2024 should be a leap year")
 		}
-		if isLeapYear("2023") {
+		if events.IsLeapYear("2023") {
 			t.Error("2023 should NOT be a leap year")
 		}
-		if !isLeapYear("2000") {
+		if !events.IsLeapYear("2000") {
 			t.Error("2000 should be a leap year")
 		}
-		if isLeapYear("1900") {
+		if events.IsLeapYear("1900") {
 			t.Error("1900 should NOT be a leap year")
 		}
 	})

@@ -6,6 +6,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
 
+	"traces/internal/events"
 	"traces/internal/models"
 )
 
@@ -55,7 +56,7 @@ func TestUniqueStrings(t *testing.T) {
 		{[]string{"same", "same", "same"}, []string{"same"}},
 	}
 	for _, tt := range tests {
-		result := uniqueStrings(tt.input)
+		result := events.UniqueStrings(tt.input)
 		if len(result) != len(tt.expected) {
 			t.Errorf("uniqueStrings(%v) = %v, want %v", tt.input, result, tt.expected)
 			continue

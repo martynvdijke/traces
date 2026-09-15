@@ -10,6 +10,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+
+	"traces/internal/events"
 )
 
 func TestWeatherDataStructure(t *testing.T) {
@@ -70,11 +72,11 @@ func TestWeatherCodeMapping(t *testing.T) {
 		{99, "Thunderstorm", "bolt"},
 	}
 	for _, tt := range tests {
-		if got := weatherCodeToCondition(tt.code); got != tt.condition {
-			t.Errorf("weatherCodeToCondition(%d) = %q, want %q", tt.code, got, tt.condition)
+		if got := events.WeatherCodeToCondition(tt.code); got != tt.condition {
+			t.Errorf("WeatherCodeToCondition(%d) = %q, want %q", tt.code, got, tt.condition)
 		}
-		if got := weatherCodeToIcon(tt.code); got != tt.icon {
-			t.Errorf("weatherCodeToIcon(%d) = %q, want %q", tt.code, got, tt.icon)
+		if got := events.WeatherCodeToIcon(tt.code); got != tt.icon {
+			t.Errorf("WeatherCodeToIcon(%d) = %q, want %q", tt.code, got, tt.icon)
 		}
 	}
 }
@@ -153,8 +155,9 @@ func TestFetchWeatherValidatesInput(t *testing.T) {
 	newTestDB(t)
 
 	t.Run("missing_fields_returns_400", func(t *testing.T) {
+		svc := ensureEventsSvc(t)
 		r := gin.New()
-		r.POST("/api/weather/fetch", fetchWeather)
+		r.POST("/api/weather/fetch", svc.FetchWeather)
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/api/weather/fetch", strings.NewReader(`{}`))
 		req.Header.Set("Content-Type", "application/json")
@@ -165,8 +168,9 @@ func TestFetchWeatherValidatesInput(t *testing.T) {
 	})
 
 	t.Run("invalid_date_returns_400", func(t *testing.T) {
+		svc := ensureEventsSvc(t)
 		r := gin.New()
-		r.POST("/api/weather/fetch", fetchWeather)
+		r.POST("/api/weather/fetch", svc.FetchWeather)
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("POST", "/api/weather/fetch", strings.NewReader(`{"latitude":52.52,"longitude":13.41,"date":"bad-date"}`))
 		req.Header.Set("Content-Type", "application/json")
