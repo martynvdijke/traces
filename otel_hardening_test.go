@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"traces/internal/integrations"
 	"traces/internal/logging"
 )
 
@@ -79,8 +80,10 @@ func TestGetOtelConfig(t *testing.T) {
 	// seed a config
 	db.Exec(`UPDATE otel_settings SET endpoint=?, traces_enabled=?, metrics_enabled=?, logs_enabled=? WHERE id=1`, "http://otel:4317", 1, 0, 1)
 
+	svc := integrations.New(db, logService, func(tr, me, lo bool) { otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled = tr, me, lo })
+	svc.SetOtel(otelEndpoint, otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled)
 	router := gin.New()
-	router.GET("/api/otel/config", getOtelConfig)
+	router.GET("/api/otel/config", svc.GetOtelConfig)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/api/otel/config", nil)
@@ -128,9 +131,11 @@ func TestSaveOtelConfig(t *testing.T) {
 	logService = logging.New(db, func() bool { return otelLogsEnabled })
 	logService.Init()
 
+	svc := integrations.New(db, logService, func(tr, me, lo bool) { otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled = tr, me, lo })
+	svc.SetOtel(otelEndpoint, otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled)
 	router := gin.New()
-	router.GET("/api/otel/config", getOtelConfig)
-	router.POST("/api/otel/config", saveOtelConfig)
+	router.GET("/api/otel/config", svc.GetOtelConfig)
+	router.POST("/api/otel/config", svc.SaveOtelConfig)
 
 	payload := `{"endpoint":"http://new:4318","traces_enabled":true,"metrics_enabled":true,"logs_enabled":false}`
 	w := httptest.NewRecorder()
@@ -154,9 +159,9 @@ func TestSaveOtelConfig(t *testing.T) {
 	if tE != 1 || mE != 1 || lE != 0 {
 		t.Errorf("db flags = %d/%d/%d, want 1/1/0", tE, mE, lE)
 	}
-	// verify globals updated
-	if otelEndpoint != "http://new:4318" || !otelTracesEnabled || !otelMetricsEnabled || otelLogsEnabled {
-		t.Errorf("globals not updated: endpoint=%q traces=%v metrics=%v logs=%v", otelEndpoint, otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled)
+	// verify globals updated (endpoint lives in service, bools on globals)
+	if !otelTracesEnabled || !otelMetricsEnabled || otelLogsEnabled {
+		t.Errorf("globals not updated: traces=%v metrics=%v logs=%v", otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled)
 	}
 
 	// GET should return updated values
@@ -178,8 +183,9 @@ func TestSaveOtelConfigInvalidJSON(t *testing.T) {
 	t.Cleanup(func() { db = origDB })
 	db = setupOtelDB(t)
 	t.Cleanup(func() { db.Close() })
+	svc := integrations.New(db, logService, nil)
 	router := gin.New()
-	router.POST("/api/otel/config", saveOtelConfig)
+	router.POST("/api/otel/config", svc.SaveOtelConfig)
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/otel/config", strings.NewReader(`{bad`))
 	req.Header.Set("Content-Type", "application/json")

@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
+	"traces/internal/integrations"
 	"traces/internal/media"
 	"traces/internal/models"
 )
@@ -44,13 +45,16 @@ func doJSON(router http.Handler, method, target, body string, cookies ...string)
 func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	origDB := db
+	origSvc := integrationsSvc
 	newDB, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	db = newDB
+	integrationsSvc = integrations.New(newDB, logService, nil)
 	t.Cleanup(func() {
 		db = origDB
+		integrationsSvc = origSvc
 		newDB.Close()
 	})
 	return newDB

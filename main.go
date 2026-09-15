@@ -29,7 +29,6 @@ import (
 	"context"
 	"crypto/rand"
 	"crypto/sha256"
-	"crypto/tls"
 	"database/sql"
 	"encoding/csv"
 	"encoding/hex"
@@ -44,7 +43,6 @@ import (
 	"maps"
 	"math"
 	"net/http"
-	"net/smtp"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -68,6 +66,7 @@ import (
 
 	"traces/internal/database"
 	"traces/internal/httpx"
+	"traces/internal/integrations"
 	"traces/internal/logging"
 	"traces/internal/media"
 	"traces/internal/models"
@@ -80,9 +79,7 @@ func init() {
 }
 
 var (
-	publicMode    bool = false
-	gotifyEnabled bool
-	immichEnabled bool
+	publicMode bool = false
 )
 
 // sessionInfo carries the identity and expiry of an authenticated session.
@@ -102,16 +99,6 @@ var (
 	dbPath             = "/db/traces.db"
 	mediaPath          = "/app/media"
 	backupPath         = "/db/backups"
-	gotifyURL          = ""
-	gotifyToken        = ""
-	umamiURL           = ""
-	umamiSiteID        = ""
-	umamiEnabled       bool
-	immichURL          = ""
-	immichAPIKey       = ""
-	bggUsername        = ""
-	bggEnabled         bool
-	bggLastSync        = ""
 	otelEndpoint       = ""
 	otelTracesEnabled  bool
 	otelMetricsEnabled bool
@@ -121,6 +108,7 @@ var (
 	tel                *telemetry.Telemetry
 	mediaSvc           *media.Media
 	htmxRenderer       *httpx.Renderer
+	integrationsSvc    *integrations.Service
 )
 
 func currentTracer() trace.Tracer {
@@ -138,24 +126,17 @@ func main() {
 		backupPath = filepath.Join(basePath, "backups")
 	}
 
-	gotifyURL = os.Getenv("GOTIFY_URL")
-	gotifyToken = os.Getenv("GOTIFY_TOKEN")
-	if os.Getenv("GOTIFY_ENABLED") == "true" {
-		gotifyEnabled = true
-	}
-
-	umamiURL = os.Getenv("UMAMI_URL")
-	umamiSiteID = os.Getenv("UMAMI_SITE_ID")
-
-	immichURL = os.Getenv("IMMICH_URL")
-	immichAPIKey = os.Getenv("IMMICH_API_KEY")
-	if os.Getenv("IMMICH_ENABLED") == "true" {
-		immichEnabled = true
-	}
-	bggUsername = os.Getenv("BGG_USERNAME")
-	if os.Getenv("BGG_ENABLED") == "true" {
-		bggEnabled = true
-	}
+	// Capture provider env so composition root can seed integrations.Service after DB init.
+	envGotifyURL := os.Getenv("GOTIFY_URL")
+	envGotifyToken := os.Getenv("GOTIFY_TOKEN")
+	envGotifyEnabled := os.Getenv("GOTIFY_ENABLED") == "true"
+	envUmamiURL := os.Getenv("UMAMI_URL")
+	envUmamiSiteID := os.Getenv("UMAMI_SITE_ID")
+	envImmichURL := os.Getenv("IMMICH_URL")
+	envImmichAPIKey := os.Getenv("IMMICH_API_KEY")
+	envImmichEnabled := os.Getenv("IMMICH_ENABLED") == "true"
+	envBGGUsername := os.Getenv("BGG_USERNAME")
+	envBGGEnabled := os.Getenv("BGG_ENABLED") == "true"
 
 	if err := os.MkdirAll(mediaPath, 0755); err != nil {
 		log.Printf("Warning: could not create media directory: %v", err)
@@ -191,13 +172,18 @@ func main() {
 		log.Printf("[LogService] Failed to initialize: %v", err)
 	}
 
-	if immichURL == "" {
+	integrationsSvc = integrations.New(db, logService, func(t, m, l bool) { otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled = t, m, l })
+	integrationsSvc.SetGotify(envGotifyURL, envGotifyToken, envGotifyEnabled)
+	integrationsSvc.SetUmami(envUmamiURL, envUmamiSiteID, false)
+	integrationsSvc.SetImmich(envImmichURL, envImmichAPIKey, envImmichEnabled)
+	integrationsSvc.SetBGG(envBGGUsername, "", envBGGEnabled)
+	integrationsSvc.SetPublicMode(func() bool { return publicMode })
+
+	if envImmichURL == "" {
 		var cfg models.ImmichConfig
 		var enabledInt int
 		if err := db.QueryRow("SELECT url, api_key, enabled FROM immich_settings WHERE id = 1").Scan(&cfg.URL, &cfg.APIKey, &enabledInt); err == nil {
-			immichURL = cfg.URL
-			immichAPIKey = cfg.APIKey
-			immichEnabled = enabledInt == 1
+			integrationsSvc.SetImmich(cfg.URL, cfg.APIKey, enabledInt == 1)
 		}
 	}
 
@@ -205,19 +191,15 @@ func main() {
 		var cfg models.BGGConfig
 		var enabledInt int
 		if err := db.QueryRow("SELECT username, enabled, last_sync FROM bgg_settings WHERE id = 1").Scan(&cfg.Username, &enabledInt, &cfg.LastSync); err == nil {
-			bggUsername = cfg.Username
-			bggEnabled = enabledInt == 1
-			bggLastSync = cfg.LastSync
+			integrationsSvc.SetBGG(cfg.Username, cfg.LastSync, enabledInt == 1)
 		}
 	}
 
-	if umamiURL == "" {
+	if envUmamiURL == "" {
 		var cfg models.UmamiConfig
 		var enabledInt int
 		if err := db.QueryRow("SELECT url, site_id, enabled FROM umami_settings WHERE id = 1").Scan(&cfg.URL, &cfg.SiteID, &enabledInt); err == nil {
-			umamiURL = cfg.URL
-			umamiSiteID = cfg.SiteID
-			umamiEnabled = enabledInt == 1
+			integrationsSvc.SetUmami(cfg.URL, cfg.SiteID, enabledInt == 1)
 		}
 	}
 
@@ -255,6 +237,8 @@ func main() {
 		r.Use(otelgin.Middleware(tel.ServiceName()))
 		r.Use(tel.MetricsMiddleware())
 	}
+	integrationsSvc.SetTracer(currentTracer())
+	integrationsSvc.SetOtel(otelEndpoint, otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled)
 	shutdownTelemetry := func() {
 		if tel != nil {
 			tel.Shutdown()
@@ -293,7 +277,7 @@ func main() {
 		api.GET("/config", getPublicConfig)
 		api.GET("/manifest.json", serveManifest)
 		api.GET("/health", handleHealth)
-		api.GET("/trmnl/summary", getTRMNLSummary)
+		api.GET("/trmnl/summary", integrationsSvc.GetTRMNLSummary)
 		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
 		api.GET("/sw.js", serveServiceWorker)
 
@@ -327,38 +311,38 @@ func main() {
 			auth.POST("/persons", savePerson)
 			auth.DELETE("/persons", deletePerson)
 			auth.GET("/persons/:id/events", getPersonEvents)
-			auth.GET("/gotify/config", getGotifyConfig)
-			auth.POST("/gotify/config", saveGotifyConfig)
-			auth.POST("/gotify/test", testGotify)
-			auth.GET("/memories", getMemories)
-			auth.GET("/memories/config", getMemoriesConfig)
-			auth.POST("/memories/config", saveMemoriesConfig)
-			auth.POST("/memories/send", sendMemoriesEmailHandler)
-			auth.GET("/email/config", getEmailConfig)
-			auth.POST("/email/config", saveEmailConfig)
-			auth.POST("/email/test", testEmail)
+			auth.GET("/gotify/config", integrationsSvc.GetGotifyConfig)
+			auth.POST("/gotify/config", integrationsSvc.SaveGotifyConfig)
+			auth.POST("/gotify/test", integrationsSvc.TestGotify)
+			auth.GET("/memories", integrationsSvc.GetMemories)
+			auth.GET("/memories/config", integrationsSvc.GetMemoriesConfig)
+			auth.POST("/memories/config", integrationsSvc.SaveMemoriesConfig)
+			auth.POST("/memories/send", integrationsSvc.SendMemoriesEmailHandler)
+			auth.GET("/email/config", integrationsSvc.GetEmailConfig)
+			auth.POST("/email/config", integrationsSvc.SaveEmailConfig)
+			auth.POST("/email/test", integrationsSvc.TestEmail)
 			auth.POST("/weather/fetch", fetchWeather)
-			auth.POST("/auto-tag", autoTagEvent)
+			auth.POST("/auto-tag", integrationsSvc.AutoTagEvent)
 			auth.POST("/users", saveUser)
 			auth.DELETE("/users", deleteUser)
 			auth.GET("/users/:id/events", getUserEvents)
 			auth.POST("/events/recurring/generate", generateRecurringEvents)
-			auth.GET("/ollama/config", getOllamaConfig)
-			auth.POST("/ollama/config", saveOllamaConfig)
-			auth.GET("/immich/config", getImmichConfig)
-			auth.POST("/immich/config", saveImmichConfig)
-			auth.POST("/immich/test", testImmich)
-			auth.GET("/immich/memories", fetchImmichMemories)
-			auth.POST("/immich/import", importImmichMemories)
-			auth.GET("/bgg/config", getBGGConfig)
-			auth.POST("/bgg/config", saveBGGConfig)
-			auth.POST("/bgg/test", testBGG)
-			auth.POST("/bgg/sync", syncBGGHandler)
-			auth.POST("/bgg/seed", seedBGGForTest)
-			auth.GET("/umami/config", getUmamiConfig)
-			auth.POST("/umami/config", saveUmamiConfig)
-			auth.GET("/otel/config", getOtelConfig)
-			auth.POST("/otel/config", saveOtelConfig)
+			auth.GET("/ollama/config", integrationsSvc.GetOllamaConfig)
+			auth.POST("/ollama/config", integrationsSvc.SaveOllamaConfig)
+			auth.GET("/immich/config", integrationsSvc.GetImmichConfig)
+			auth.POST("/immich/config", integrationsSvc.SaveImmichConfig)
+			auth.POST("/immich/test", integrationsSvc.TestImmich)
+			auth.GET("/immich/memories", integrationsSvc.FetchImmichMemories)
+			auth.POST("/immich/import", integrationsSvc.ImportImmichMemories)
+			auth.GET("/bgg/config", integrationsSvc.GetBGGConfig)
+			auth.POST("/bgg/config", integrationsSvc.SaveBGGConfig)
+			auth.POST("/bgg/test", integrationsSvc.TestBGG)
+			auth.POST("/bgg/sync", integrationsSvc.SyncBGGHandler)
+			auth.POST("/bgg/seed", integrationsSvc.SeedBGGForTest)
+			auth.GET("/umami/config", integrationsSvc.GetUmamiConfig)
+			auth.POST("/umami/config", integrationsSvc.SaveUmamiConfig)
+			auth.GET("/otel/config", integrationsSvc.GetOtelConfig)
+			auth.POST("/otel/config", integrationsSvc.SaveOtelConfig)
 			auth.POST("/backup", handleBackup)
 			auth.GET("/backups", handleListBackups)
 			auth.GET("/backup/config", getBackupConfig)
@@ -652,10 +636,11 @@ func getCSRFToken(c *gin.Context) {
 // @Success 200 {object} map[string]string
 // @Router /config [get]
 func getPublicConfig(c *gin.Context) {
+	uURL, uSite, uEnabled := integrationsSvc.UmamiSettings()
 	c.JSON(http.StatusOK, gin.H{
-		"umami_url":     umamiURL,
-		"umami_site":    umamiSiteID,
-		"umami_enabled": umamiEnabled,
+		"umami_url":     uURL,
+		"umami_site":    uSite,
+		"umami_enabled": uEnabled,
 		"oidc_enabled":  oidcReady(),
 	})
 }
@@ -1093,7 +1078,7 @@ func saveEvent(c *gin.Context) {
 	tel.RecordEventOperation(action)
 	span.SetAttributes(attribute.String("action", action))
 
-	sendGotifyNotification(fmt.Sprintf("Event %s: %s (%s)", action, e.Title, e.Date), e.Description)
+	integrationsSvc.SendGotifyNotification(fmt.Sprintf("Event %s: %s (%s)", action, e.Title, e.Date), e.Description)
 	c.JSON(http.StatusOK, e)
 }
 
@@ -1130,7 +1115,7 @@ func deleteEvent(c *gin.Context) {
 	}
 
 	tel.RecordEventOperation("delete")
-	sendGotifyNotification(fmt.Sprintf("Event deleted: %s", title), "")
+	integrationsSvc.SendGotifyNotification(fmt.Sprintf("Event deleted: %s", title), "")
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -1413,7 +1398,7 @@ func handleUpload(c *gin.Context) {
 		exifLat, exifLng = extractEXIFGPS(data)
 	}
 
-	sendGotifyNotification(fmt.Sprintf("New media uploaded: %s (%s)", filename, mediaType), url)
+	integrationsSvc.SendGotifyNotification(fmt.Sprintf("New media uploaded: %s (%s)", filename, mediaType), url)
 
 	resp := gin.H{
 		"url":        url,
@@ -1843,7 +1828,7 @@ func cloneEvent(c *gin.Context) {
 		return
 	}
 
-	sendGotifyNotification(fmt.Sprintf("Event cloned: %s", e.Title), "")
+	integrationsSvc.SendGotifyNotification(fmt.Sprintf("Event cloned: %s", e.Title), "")
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -1934,7 +1919,7 @@ func importEvents(c *gin.Context) {
 		}
 	}
 
-	sendGotifyNotification(fmt.Sprintf("Imported %d events", count), "")
+	integrationsSvc.SendGotifyNotification(fmt.Sprintf("Imported %d events", count), "")
 	c.JSON(http.StatusOK, gin.H{"imported": count})
 }
 
@@ -2552,7 +2537,7 @@ func applyTemplate(c *gin.Context) {
 	id, _ := result.LastInsertId()
 	event.ID = int(id)
 
-	sendGotifyNotification(fmt.Sprintf("Event created from template: %s", event.Title), event.Description)
+	integrationsSvc.SendGotifyNotification(fmt.Sprintf("Event created from template: %s", event.Title), event.Description)
 	c.JSON(http.StatusOK, event)
 }
 
@@ -2737,7 +2722,7 @@ func createShareLink(c *gin.Context) {
 		return
 	}
 
-	sendGotifyNotification("New share link created", fmt.Sprintf("Expires: %s", expires.Format("2006-01-02")))
+	integrationsSvc.SendGotifyNotification("New share link created", fmt.Sprintf("Expires: %s", expires.Format("2006-01-02")))
 	c.JSON(http.StatusOK, gin.H{"token": token, "expires": expires.Format("2006-01-02")})
 }
 
@@ -3069,7 +3054,7 @@ func savePerson(c *gin.Context) {
 		}
 		id, _ := result.LastInsertId()
 		p.ID = int(id)
-		sendGotifyNotification(fmt.Sprintf("Person created: %s", p.Name), p.Bio)
+		integrationsSvc.SendGotifyNotification(fmt.Sprintf("Person created: %s", p.Name), p.Bio)
 	} else {
 		_, err := db.Exec("UPDATE persons SET name=?, avatar_url=?, bio=?, birth_date=?, color=? WHERE id=?",
 			p.Name, p.AvatarURL, p.Bio, p.BirthDate, p.Color, p.ID)
@@ -3077,7 +3062,7 @@ func savePerson(c *gin.Context) {
 			httpx.ServerError(c, err)
 			return
 		}
-		sendGotifyNotification(fmt.Sprintf("Person updated: %s", p.Name), p.Bio)
+		integrationsSvc.SendGotifyNotification(fmt.Sprintf("Person updated: %s", p.Name), p.Bio)
 	}
 
 	c.JSON(http.StatusOK, p)
@@ -3109,7 +3094,7 @@ func deletePerson(c *gin.Context) {
 		return
 	}
 
-	sendGotifyNotification(fmt.Sprintf("Person deleted: %s", name), "")
+	integrationsSvc.SendGotifyNotification(fmt.Sprintf("Person deleted: %s", name), "")
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -3178,1003 +3163,6 @@ func getMapData(c *gin.Context) {
 		"features": features,
 	}
 	c.JSON(http.StatusOK, result)
-}
-
-// @Summary Get Gotify config
-// @Description Returns the current Gotify notification configuration
-// @Tags Notifications
-// @Produce json
-// @Success 200 {object} object "Gotify config"
-// @Router /gotify/config [get]
-func getGotifyConfig(c *gin.Context) {
-	var cfg models.GotifyConfig
-	var enabledInt int
-	err := db.QueryRow("SELECT url, token, enabled FROM gotify_settings WHERE id = 1").Scan(&cfg.URL, &cfg.Token, &enabledInt)
-	if err == nil {
-		cfg.Enabled = enabledInt == 1
-	}
-	c.JSON(http.StatusOK, cfg)
-}
-
-// @Summary Save Gotify config
-// @Description Saves the Gotify notification configuration
-// @Tags Notifications
-// @Accept json
-// @Produce json
-// @Param config body object true "Gotify config" SchemaProperties({url:{type:string}, token:{type:string}, enabled:{type:boolean}})
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Router /gotify/config [post]
-func saveGotifyConfig(c *gin.Context) {
-	var cfg models.GotifyConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	enabledInt := 0
-	if cfg.Enabled {
-		enabledInt = 1
-	}
-
-	_, err := db.Exec(`UPDATE gotify_settings SET url=?, token=?, enabled=? WHERE id=1`, cfg.URL, cfg.Token, enabledInt)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-
-	gotifyURL = cfg.URL
-	gotifyToken = cfg.Token
-	gotifyEnabled = cfg.Enabled
-
-	if logService != nil {
-		logService.Log("info", "gotify", "Gotify settings saved", nil)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-// @Summary Test Gotify notification
-// @Description Sends a test notification via Gotify
-// @Tags Notifications
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Router /gotify/test [post]
-func testGotify(c *gin.Context) {
-	if gotifyURL == "" || gotifyToken == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Gotify URL and token not configured"})
-		return
-	}
-
-	body := fmt.Sprintf(`{"title":"TRACES Test","message":"This is a test notification from TRACES","priority":5}`)
-	req, err := http.NewRequest("POST", gotifyURL+"/message", strings.NewReader(body))
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-	req.Header.Set("X-Gotify-Key", gotifyToken)
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Gotify"})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Notification sent successfully"})
-	} else {
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Gotify returned %d", resp.StatusCode)})
-	}
-}
-
-func getImmichConfig(c *gin.Context) {
-	var cfg models.ImmichConfig
-	var enabledInt int
-	err := db.QueryRow("SELECT url, api_key, enabled FROM immich_settings WHERE id = 1").Scan(&cfg.URL, &cfg.APIKey, &enabledInt)
-	if err == nil {
-		cfg.Enabled = enabledInt == 1
-	}
-	c.JSON(http.StatusOK, cfg)
-}
-
-func saveImmichConfig(c *gin.Context) {
-	var cfg models.ImmichConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	enabledInt := 0
-	if cfg.Enabled {
-		enabledInt = 1
-	}
-
-	_, err := db.Exec(`UPDATE immich_settings SET url=?, api_key=?, enabled=? WHERE id=1`, cfg.URL, cfg.APIKey, enabledInt)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-
-	immichURL = cfg.URL
-	immichAPIKey = cfg.APIKey
-	immichEnabled = cfg.Enabled
-
-	if logService != nil {
-		logService.Log("info", "immich", "Immich settings saved", nil)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func getUmamiConfig(c *gin.Context) {
-	var cfg models.UmamiConfig
-	var enabledInt int
-	err := db.QueryRow("SELECT url, site_id, enabled FROM umami_settings WHERE id = 1").Scan(&cfg.URL, &cfg.SiteID, &enabledInt)
-	if err == nil {
-		cfg.Enabled = enabledInt == 1
-	}
-	c.JSON(http.StatusOK, cfg)
-}
-
-func saveUmamiConfig(c *gin.Context) {
-	var cfg models.UmamiConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	enabledInt := 0
-	if cfg.Enabled {
-		enabledInt = 1
-	}
-
-	_, err := db.Exec(`UPDATE umami_settings SET url=?, site_id=?, enabled=? WHERE id=1`, cfg.URL, cfg.SiteID, enabledInt)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-
-	umamiURL = cfg.URL
-	umamiSiteID = cfg.SiteID
-	umamiEnabled = cfg.Enabled
-
-	if logService != nil {
-		logService.Log("info", "umami", "Umami settings saved", nil)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func getOtelConfig(c *gin.Context) {
-	var cfg models.OtelConfig
-	var tEnabled, mEnabled, lEnabled int
-	err := db.QueryRow("SELECT endpoint, traces_enabled, metrics_enabled, logs_enabled FROM otel_settings WHERE id = 1").Scan(&cfg.Endpoint, &tEnabled, &mEnabled, &lEnabled)
-	if err == nil {
-		cfg.TracesEnabled = tEnabled == 1
-		cfg.MetricsEnabled = mEnabled == 1
-		cfg.LogsEnabled = lEnabled == 1
-	}
-	c.JSON(http.StatusOK, cfg)
-}
-
-func saveOtelConfig(c *gin.Context) {
-	var cfg models.OtelConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	tEnabled := 0
-	if cfg.TracesEnabled {
-		tEnabled = 1
-	}
-	mEnabled := 0
-	if cfg.MetricsEnabled {
-		mEnabled = 1
-	}
-	lEnabled := 0
-	if cfg.LogsEnabled {
-		lEnabled = 1
-	}
-
-	_, err := db.Exec(`UPDATE otel_settings SET endpoint=?, traces_enabled=?, metrics_enabled=?, logs_enabled=? WHERE id=1`,
-		cfg.Endpoint, tEnabled, mEnabled, lEnabled)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-
-	otelEndpoint = cfg.Endpoint
-	otelTracesEnabled = cfg.TracesEnabled
-	otelMetricsEnabled = cfg.MetricsEnabled
-	otelLogsEnabled = cfg.LogsEnabled
-
-	if logService != nil {
-		logService.Log("info", "otel", "OTel settings saved", nil)
-	}
-
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func testImmich(c *gin.Context) {
-	if immichURL == "" || immichAPIKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich URL and API key not configured"})
-		return
-	}
-
-	req, err := http.NewRequest("GET", strings.TrimRight(immichURL, "/")+"/api/server-info/about", nil)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to create request"})
-		return
-	}
-	req.Header.Set("x-api-key", immichAPIKey)
-	req.Header.Set("Accept", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Immich: " + err.Error()})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode >= 200 && resp.StatusCode < 300 {
-		if logService != nil {
-			logService.Log("info", "immich", "Immich connection test successful", nil)
-		}
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Connected to Immich successfully"})
-	} else {
-		body, _ := io.ReadAll(resp.Body)
-		if logService != nil {
-			logService.Log("error", "immich", "Immich connection test failed: "+string(body), nil)
-		}
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Immich returned %d: %s", resp.StatusCode, string(body))})
-	}
-}
-
-type immichTimelineResponse struct {
-	Title  string        `json:"title"`
-	Assets []immichAsset `json:"assets"`
-}
-
-type immichAsset struct {
-	ID               string      `json:"id"`
-	OriginalFileName string      `json:"originalFileName"`
-	Type             string      `json:"type"`
-	ExifInfo         *immichExif `json:"exifInfo"`
-}
-
-type immichExif struct {
-	DateTimeOriginal *string  `json:"dateTimeOriginal"`
-	Latitude         *float64 `json:"latitude"`
-	Longitude        *float64 `json:"longitude"`
-	City             *string  `json:"city"`
-	Country          *string  `json:"country"`
-}
-
-func fetchImmichMemories(c *gin.Context) {
-	if immichURL == "" || immichAPIKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich not configured"})
-		return
-	}
-
-	req, err := http.NewRequest("GET", strings.TrimRight(immichURL, "/")+"/api/timeline/memory", nil)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	req.Header.Set("x-api-key", immichAPIKey)
-	req.Header.Set("Accept", "application/json")
-
-	client := &http.Client{Timeout: 10 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to fetch memories from Immich: " + err.Error()})
-		return
-	}
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
-		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("Immich returned %d: %s", resp.StatusCode, string(body))})
-		return
-	}
-
-	var timeline []immichTimelineResponse
-	if err := json.NewDecoder(resp.Body).Decode(&timeline); err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-
-	memories := make([]models.ImmichMemoryAsset, 0)
-	for _, group := range timeline {
-		for _, asset := range group.Assets {
-			lat := 0.0
-			lng := 0.0
-			if asset.ExifInfo != nil {
-				if asset.ExifInfo.Latitude != nil {
-					lat = *asset.ExifInfo.Latitude
-				}
-				if asset.ExifInfo.Longitude != nil {
-					lng = *asset.ExifInfo.Longitude
-				}
-			}
-			memories = append(memories, models.ImmichMemoryAsset{
-				ID:               asset.ID,
-				OriginalFileName: asset.OriginalFileName,
-				Type:             asset.Type,
-				ThumbnailURL:     strings.TrimRight(immichURL, "/") + "/api/assets/" + asset.ID + "/thumbnail",
-				AssetCount:       len(group.Assets),
-				MemoryDate:       group.Title,
-				Latitude:         lat,
-				Longitude:        lng,
-				Description:      asset.OriginalFileName,
-			})
-		}
-	}
-
-	c.JSON(http.StatusOK, memories)
-}
-
-func importImmichMemories(c *gin.Context) {
-	var assetIDs []string
-	if err := c.ShouldBindJSON(&assetIDs); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if immichURL == "" || immichAPIKey == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Immich not configured"})
-		return
-	}
-
-	if len(assetIDs) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No assets selected"})
-		return
-	}
-
-	today := time.Now().Format("2006-01-02")
-	count := 0
-
-	for _, assetID := range assetIDs {
-		req, err := http.NewRequest("GET", strings.TrimRight(immichURL, "/")+"/api/assets/"+assetID, nil)
-		if err != nil {
-			continue
-		}
-		req.Header.Set("x-api-key", immichAPIKey)
-		req.Header.Set("Accept", "application/json")
-
-		client := &http.Client{Timeout: 10 * time.Second}
-		resp, err := client.Do(req)
-		if err != nil {
-			continue
-		}
-
-		var asset immichAsset
-		if err := json.NewDecoder(resp.Body).Decode(&asset); err != nil {
-			resp.Body.Close()
-			continue
-		}
-		resp.Body.Close()
-
-		mediaType := "image"
-		if asset.Type == "VIDEO" {
-			mediaType = "video"
-		} else if asset.Type == "AUDIO" {
-			mediaType = "audio"
-		}
-
-		var lat, lng *float64
-		location := ""
-		eventDate := today
-		if asset.ExifInfo != nil {
-			if asset.ExifInfo.Latitude != nil {
-				v := *asset.ExifInfo.Latitude
-				lat = &v
-			}
-			if asset.ExifInfo.Longitude != nil {
-				v := *asset.ExifInfo.Longitude
-				lng = &v
-			}
-			if asset.ExifInfo.City != nil && *asset.ExifInfo.City != "" {
-				location = *asset.ExifInfo.City
-				if asset.ExifInfo.Country != nil && *asset.ExifInfo.Country != "" {
-					location += ", " + *asset.ExifInfo.Country
-				}
-			}
-			if asset.ExifInfo.DateTimeOriginal != nil && *asset.ExifInfo.DateTimeOriginal != "" {
-				if t, err := time.Parse(time.RFC3339, *asset.ExifInfo.DateTimeOriginal); err == nil {
-					eventDate = t.Format("2006-01-02")
-				}
-			}
-		}
-
-		thumbnailURL := strings.TrimRight(immichURL, "/") + "/api/assets/" + asset.ID + "/thumbnail"
-		mediaURL := strings.TrimRight(immichURL, "/") + "/api/assets/" + asset.ID + "/original"
-
-		_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, latitude, longitude, recurring, weather_data, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			asset.OriginalFileName, asset.OriginalFileName, eventDate, location, mediaType, mediaURL, thumbnailURL, "immich-import", 0, lat, lng, "", "", 0)
-		if err == nil {
-			count++
-		}
-	}
-
-	sendGotifyNotification(fmt.Sprintf("Imported %d memories from Immich", count), "")
-	c.JSON(http.StatusOK, gin.H{"imported": count, "message": fmt.Sprintf("Successfully imported %d memories from Immich", count)})
-}
-
-// @Summary Get memory events
-// @Description Returns events from past years that fall within the configured memory window
-// @Tags Memories
-// @Produce json
-// @Success 200 {array} object "memory events"
-// @Router /memories [get]
-func getMemories(c *gin.Context) {
-	_, span := httpx.StartSpan(currentTracer(), c, "getMemories")
-	defer span.End()
-
-	var cfg models.MemoriesConfig
-	var enabledInt int
-	err := db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &cfg.DaysWindow, &cfg.EmailEnabled)
-	if err != nil || enabledInt == 0 {
-		c.JSON(http.StatusOK, []any{})
-		return
-	}
-	cfg.Enabled = enabledInt == 1
-
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	start := today.AddDate(0, 0, -cfg.DaysWindow)
-	end := today.AddDate(0, 0, cfg.DaysWindow)
-
-	startMD := start.Format("01-02")
-	endMD := end.Format("01-02")
-
-	var rows *sql.Rows
-	if startMD <= endMD {
-		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
-			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
-			FROM timeline_events e
-			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
-			AND e.event_date != ''
-			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
-			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
-			ORDER BY e.event_date DESC`, startMD, endMD)
-	} else {
-		rows, err = db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
-			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
-			FROM timeline_events e
-			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
-			AND e.event_date != ''
-			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
-			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)
-			ORDER BY e.event_date DESC`, startMD, endMD)
-	}
-
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	defer rows.Close()
-
-	type MemoryEvent struct {
-		models.TimelineEvent
-		YearsAgo int `json:"years_ago"`
-	}
-
-	memories := make([]MemoryEvent, 0)
-	pMap := make(map[int]models.Person)
-	pRows, _ := db.Query("SELECT id, name, avatar_url, bio, birth_date, color, created_at FROM persons")
-	if pRows != nil {
-		defer pRows.Close()
-		for pRows.Next() {
-			var p models.Person
-			if pRows.Scan(&p.ID, &p.Name, &p.AvatarURL, &p.Bio, &p.BirthDate, &p.Color, &p.CreatedAt) == nil {
-				pMap[p.ID] = p
-			}
-		}
-	}
-
-	for rows.Next() {
-		var me MemoryEvent
-		var personID sql.NullInt64
-		var thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData, startTime, endTime sql.NullString
-		var isFav sql.NullBool
-		err := rows.Scan(&me.ID, &me.Title, &me.Description, &me.Date, &me.Location, &me.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &me.SortOrder, &me.IsPublic, &isFav, &me.CreatedAt, &personID, &me.Latitude, &me.Longitude, &recurring, &weatherData, &me.UserID, &startTime, &endTime, &me.YearsAgo)
-		if err != nil {
-			continue
-		}
-		me.IsFavorite = isFav.Bool
-		me.MediaURL = mediaURL.String
-		me.Thumbnail = thumbnail.String
-		me.MediaCaption = mediaCaption.String
-		me.Tags = tags.String
-		me.Recurring = recurring.String
-		me.WeatherData = weatherData.String
-		me.StartTime = startTime.String
-		me.EndTime = endTime.String
-		if personID.Valid {
-			pid := int(personID.Int64)
-			me.PersonID = &pid
-			if p, ok := pMap[pid]; ok {
-				me.Person = &p
-			}
-		}
-		memories = append(memories, me)
-	}
-
-	c.JSON(http.StatusOK, memories)
-}
-
-// trmnlEvent is a single timeline event in the TRMNL monthly highlights payload.
-type trmnlEvent struct {
-	ID         int    `json:"id"`
-	Title      string `json:"title"`
-	Date       string `json:"date"`
-	Year       int    `json:"year"`
-	MediaType  string `json:"media_type"`
-	MediaURL   string `json:"media_url"`
-	Thumbnail  string `json:"thumbnail"`
-	Location   string `json:"location"`
-	PersonName string `json:"person_name"`
-	Tags       string `json:"tags"`
-	IsFavorite bool   `json:"is_favorite"`
-}
-
-type trmnlMediaStat struct {
-	Type  string `json:"type"`
-	Count int    `json:"count"`
-}
-
-type trmnlTagStat struct {
-	Tag   string `json:"tag"`
-	Count int    `json:"count"`
-}
-
-type trmnlPersonStat struct {
-	Name  string `json:"name"`
-	Count int    `json:"count"`
-}
-
-type trmnlStats struct {
-	EventCount    int               `json:"event_count"`
-	FavoriteCount int               `json:"favorite_count"`
-	Media         []trmnlMediaStat  `json:"media"`
-	TopTags       []trmnlTagStat    `json:"top_tags"`
-	TopPersons    []trmnlPersonStat `json:"top_persons"`
-}
-
-type trmnlSummary struct {
-	Month  string       `json:"month"`
-	Events []trmnlEvent `json:"events"`
-	Stats  trmnlStats   `json:"stats"`
-}
-
-// @Summary TRMNL monthly highlights
-// @Description Public summary of events in the current calendar month across all years, for TRMNL device polling
-// @Tags TRMNL
-// @Produce json
-// @Success 200 {object} object "monthly highlights"
-// @Router /trmnl/summary [get]
-func getTRMNLSummary(c *gin.Context) {
-	_, span := httpx.StartSpan(currentTracer(), c, "getTRMNLSummary")
-	defer span.End()
-
-	// Public events only, unless the instance runs in public mode (matches /api/public).
-	visibility := ""
-	if !publicMode {
-		visibility = " AND e.is_public = 1"
-	}
-	filter := "(e.deleted_at IS NULL OR e.deleted_at = '') AND e.event_date != '' AND strftime('%m', e.event_date) = strftime('%m', 'now')" + visibility
-
-	// Top events: favorites first, then newest, capped at 8.
-	rows, err := db.Query(`SELECT e.id, e.title, e.event_date, CAST(strftime('%Y', e.event_date) AS INTEGER), COALESCE(e.location, ''), COALESCE(e.media_type, ''), COALESCE(e.media_url, ''), COALESCE(e.thumbnail, ''), COALESCE(e.tags, ''), COALESCE(e.is_favorite, 0), COALESCE(p.name, '')
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id
-		WHERE ` + filter + `
-		ORDER BY e.is_favorite DESC, e.event_date DESC
-		LIMIT 8`)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	defer rows.Close()
-
-	events := make([]trmnlEvent, 0)
-	for rows.Next() {
-		var ev trmnlEvent
-		var fav int
-		if err := rows.Scan(&ev.ID, &ev.Title, &ev.Date, &ev.Year, &ev.Location, &ev.MediaType, &ev.MediaURL, &ev.Thumbnail, &ev.Tags, &fav, &ev.PersonName); err != nil {
-			continue
-		}
-		ev.IsFavorite = fav == 1
-		events = append(events, ev)
-	}
-
-	// Month stats: aggregate media types, tags, and persons over every event in the month.
-	stats := trmnlStats{
-		Media:      make([]trmnlMediaStat, 0),
-		TopTags:    make([]trmnlTagStat, 0),
-		TopPersons: make([]trmnlPersonStat, 0),
-	}
-	mediaCount := make(map[string]int)
-	tagCount := make(map[string]int)
-	personCount := make(map[string]int)
-
-	sRows, err := db.Query(`SELECT COALESCE(e.media_type, ''), COALESCE(e.tags, ''), COALESCE(p.name, ''), COALESCE(e.is_favorite, 0)
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id
-		WHERE ` + filter)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	defer sRows.Close()
-
-	for sRows.Next() {
-		var mediaType, tags, personName string
-		var fav int
-		if err := sRows.Scan(&mediaType, &tags, &personName, &fav); err != nil {
-			continue
-		}
-		stats.EventCount++
-		if fav == 1 {
-			stats.FavoriteCount++
-		}
-		if mediaType == "" {
-			mediaType = "text"
-		}
-		mediaCount[mediaType]++
-		for _, tag := range strings.Split(tags, ",") {
-			tag = strings.TrimSpace(tag)
-			if tag != "" {
-				tagCount[tag]++
-			}
-		}
-		if personName != "" {
-			personCount[personName]++
-		}
-	}
-
-	for mt, count := range mediaCount {
-		stats.Media = append(stats.Media, trmnlMediaStat{Type: mt, Count: count})
-	}
-	sort.Slice(stats.Media, func(i, j int) bool {
-		return stats.Media[i].Count > stats.Media[j].Count
-	})
-
-	for tag, count := range tagCount {
-		stats.TopTags = append(stats.TopTags, trmnlTagStat{Tag: tag, Count: count})
-	}
-	sort.Slice(stats.TopTags, func(i, j int) bool {
-		return stats.TopTags[i].Count > stats.TopTags[j].Count
-	})
-	if len(stats.TopTags) > 3 {
-		stats.TopTags = stats.TopTags[:3]
-	}
-
-	for name, count := range personCount {
-		stats.TopPersons = append(stats.TopPersons, trmnlPersonStat{Name: name, Count: count})
-	}
-	sort.Slice(stats.TopPersons, func(i, j int) bool {
-		return stats.TopPersons[i].Count > stats.TopPersons[j].Count
-	})
-	if len(stats.TopPersons) > 3 {
-		stats.TopPersons = stats.TopPersons[:3]
-	}
-
-	c.JSON(http.StatusOK, trmnlSummary{
-		Month:  time.Now().Month().String(),
-		Events: events,
-		Stats:  stats,
-	})
-}
-
-// @Summary Get memories config
-// @Description Returns the memories/on-this-day configuration
-// @Tags Memories
-// @Produce json
-// @Success 200 {object} object "Memories config"
-// @Router /memories/config [get]
-func getMemoriesConfig(c *gin.Context) {
-	var cfg models.MemoriesConfig
-	var enabledInt int
-	err := db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &cfg.DaysWindow, &cfg.EmailEnabled)
-	if err != nil {
-		c.JSON(http.StatusOK, models.MemoriesConfig{Enabled: true, DaysWindow: 3, EmailEnabled: false})
-		return
-	}
-	cfg.Enabled = enabledInt == 1
-	c.JSON(http.StatusOK, cfg)
-}
-
-// @Summary Save memories config
-// @Description Saves the memories/on-this-day configuration
-// @Tags Memories
-// @Accept json
-// @Produce json
-// @Param config body object true "Memories config" SchemaProperties({enabled:{type:boolean}, days_window:{type:integer}, email_enabled:{type:boolean}})
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Router /memories/config [post]
-func saveMemoriesConfig(c *gin.Context) {
-	var cfg models.MemoriesConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	enabledInt := 0
-	if cfg.Enabled {
-		enabledInt = 1
-	}
-	emailInt := 0
-	if cfg.EmailEnabled {
-		emailInt = 1
-	}
-	if cfg.DaysWindow < 1 {
-		cfg.DaysWindow = 1
-	}
-	if cfg.DaysWindow > 14 {
-		cfg.DaysWindow = 14
-	}
-	_, err := db.Exec(`UPDATE memories_settings SET enabled=?, days_window=?, email_enabled=? WHERE id=1`, enabledInt, cfg.DaysWindow, emailInt)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	if logService != nil {
-		logService.Log("info", "memories", "Memories settings saved", nil)
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-// @Summary Get email config
-// @Description Returns the current email/SMTP configuration
-// @Tags Email
-// @Produce json
-// @Success 200 {object} object "Email config"
-// @Router /email/config [get]
-func getEmailConfig(c *gin.Context) {
-	var cfg models.EmailConfig
-	var port int
-	err := db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&cfg.SMTPHost, &port, &cfg.SMTPUser, &cfg.SMTPPass, &cfg.FromAddr, &cfg.ToAddr)
-	if err != nil {
-		c.JSON(http.StatusOK, models.EmailConfig{SMTPPort: 587})
-		return
-	}
-	cfg.SMTPPort = port
-	c.JSON(http.StatusOK, cfg)
-}
-
-// @Summary Save email config
-// @Description Saves the email/SMTP configuration
-// @Tags Email
-// @Accept json
-// @Produce json
-// @Param config body object true "Email config" SchemaProperties({smtp_host:{type:string}, smtp_port:{type:integer}, smtp_user:{type:string}, smtp_pass:{type:string}, from_addr:{type:string}, to_addr:{type:string}})
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Router /email/config [post]
-func saveEmailConfig(c *gin.Context) {
-	var cfg models.EmailConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if cfg.SMTPPort == 0 {
-		cfg.SMTPPort = 587
-	}
-	_, err := db.Exec(`UPDATE email_settings SET smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=?, from_addr=?, to_addr=? WHERE id=1`,
-		cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.FromAddr, cfg.ToAddr)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	if logService != nil {
-		logService.Log("info", "email", "Email settings saved", nil)
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-// @Summary Test email
-// @Description Sends a test email using the configured SMTP settings
-// @Tags Email
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Router /email/test [post]
-func testEmail(c *gin.Context) {
-	var cfg models.EmailConfig
-	var port int
-	err := db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&cfg.SMTPHost, &port, &cfg.SMTPUser, &cfg.SMTPPass, &cfg.FromAddr, &cfg.ToAddr)
-	if err != nil || cfg.SMTPHost == "" || cfg.ToAddr == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email not configured"})
-		return
-	}
-	cfg.SMTPPort = port
-
-	subject := "TRACES Test Email"
-	body := "This is a test email from TRACES. If you receive this, your email settings are working correctly."
-	if err := sendEmail(cfg, cfg.ToAddr, subject, body); err != nil {
-		if logService != nil {
-			logService.Log("error", "email", "Email test failed: "+err.Error(), nil)
-		}
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email"})
-		return
-	}
-	if logService != nil {
-		logService.Log("info", "email", "Email test sent successfully", nil)
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "Test email sent successfully"})
-}
-
-func sendEmail(cfg models.EmailConfig, toAddr, subject, body string) error {
-	addr := fmt.Sprintf("%s:%d", cfg.SMTPHost, cfg.SMTPPort)
-	msg := fmt.Appendf(nil, "From: %s\r\nTo: %s\r\nSubject: %s\r\nMIME-Version: 1.0\r\nContent-Type: text/plain; charset=UTF-8\r\n\r\n%s\r\n", cfg.FromAddr, toAddr, subject, body)
-
-	var auth smtp.Auth
-	if cfg.SMTPUser != "" {
-		auth = smtp.PlainAuth("", cfg.SMTPUser, cfg.SMTPPass, cfg.SMTPHost)
-	}
-
-	if cfg.SMTPPort == 465 {
-		tlsCfg := &tls.Config{ServerName: cfg.SMTPHost}
-		conn, err := tls.Dial("tcp", addr, tlsCfg)
-		if err != nil {
-			return err
-		}
-		client, err := smtp.NewClient(conn, cfg.SMTPHost)
-		if err != nil {
-			return err
-		}
-		defer client.Close()
-		if auth != nil {
-			if err = client.Auth(auth); err != nil {
-				return err
-			}
-		}
-		if err = client.Mail(cfg.FromAddr); err != nil {
-			return err
-		}
-		if err = client.Rcpt(toAddr); err != nil {
-			return err
-		}
-		w, err := client.Data()
-		if err != nil {
-			return err
-		}
-		_, err = w.Write(msg)
-		if err != nil {
-			return err
-		}
-		return w.Close()
-	}
-
-	return smtp.SendMail(addr, auth, cfg.FromAddr, []string{toAddr}, msg)
-}
-
-// @Summary Send memories email
-// @Description Manually trigger sending of memories/on-this-day email
-// @Tags Memories
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Router /memories/send [post]
-func sendMemoriesEmailHandler(c *gin.Context) {
-	var memCfg models.MemoriesConfig
-	var enabledInt int
-	db.QueryRow("SELECT enabled, days_window, email_enabled FROM memories_settings WHERE id = 1").Scan(&enabledInt, &memCfg.DaysWindow, &memCfg.EmailEnabled)
-	memCfg.Enabled = enabledInt == 1
-
-	if !memCfg.Enabled {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Memories are disabled"})
-		return
-	}
-
-	var emailCfg models.EmailConfig
-	var port int
-	err := db.QueryRow("SELECT smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr FROM email_settings WHERE id = 1").Scan(&emailCfg.SMTPHost, &port, &emailCfg.SMTPUser, &emailCfg.SMTPPass, &emailCfg.FromAddr, &emailCfg.ToAddr)
-	if err != nil || emailCfg.SMTPHost == "" {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Email not configured"})
-		return
-	}
-	emailCfg.SMTPPort = port
-
-	// Collect recipient emails: per-user emails first, fall back to global to_addr
-	var recipients []string
-	userRows, err := db.Query("SELECT email FROM users WHERE email != '' AND email IS NOT NULL")
-	if err == nil {
-		for userRows.Next() {
-			var email string
-			if err := userRows.Scan(&email); err == nil && email != "" {
-				recipients = append(recipients, email)
-			}
-		}
-		userRows.Close()
-	}
-	if len(recipients) == 0 && emailCfg.ToAddr != "" {
-		recipients = append(recipients, emailCfg.ToAddr)
-	}
-
-	if len(recipients) == 0 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "No recipient emails configured"})
-		return
-	}
-
-	now := time.Now()
-	today := time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
-	start := today.AddDate(0, 0, -memCfg.DaysWindow)
-	end := today.AddDate(0, 0, memCfg.DaysWindow)
-	startMD := start.Format("01-02")
-	endMD := end.Format("01-02")
-
-	var rows *sql.Rows
-	if startMD <= endMD {
-		rows, err = db.Query(`SELECT e.title, e.event_date,
-			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
-			FROM timeline_events e
-			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
-			AND e.event_date != ''
-			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
-			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
-			ORDER BY e.event_date DESC`, startMD, endMD)
-	} else {
-		rows, err = db.Query(`SELECT e.title, e.event_date,
-			CAST(strftime('%Y','now') AS INTEGER) - CAST(strftime('%Y', e.event_date) AS INTEGER) AS years_ago
-			FROM timeline_events e
-			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
-			AND e.event_date != ''
-			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
-			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)
-			ORDER BY e.event_date DESC`, startMD, endMD)
-	}
-
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	defer rows.Close()
-
-	var memories []string
-	for rows.Next() {
-		var title, date string
-		var yearsAgo int
-		if err := rows.Scan(&title, &date, &yearsAgo); err == nil {
-			memories = append(memories, fmt.Sprintf("  - %d year(s) ago: %s (%s)", yearsAgo, title, date))
-		}
-	}
-
-	if len(memories) == 0 {
-		c.JSON(http.StatusOK, gin.H{"status": "ok", "message": "No memories for today"})
-		return
-	}
-
-	subject := "TRACES Memories - " + today.Format("January 2, 2006")
-	body := "You have " + strconv.Itoa(len(memories)) + " memory/memories from this date in past years:\n\n" + strings.Join(memories, "\n")
-
-	sent := 0
-	var lastErr error
-	for _, to := range recipients {
-		if err := sendEmail(emailCfg, to, subject, body); err != nil {
-			lastErr = err
-			log.Printf("[MEMORIES] Failed to send email to %s: %v", to, err)
-			continue
-		}
-		sent++
-	}
-
-	if sent == 0 {
-		if logService != nil {
-			logService.Log("error", "memories", "Failed to send memories email: "+lastErr.Error(), nil)
-		}
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to send email"})
-		return
-	}
-
-	if logService != nil {
-		logService.Log("info", "memories", fmt.Sprintf("Sent %d memories via email to %d recipient(s)", len(memories), sent), nil)
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": fmt.Sprintf("Sent %d memories via email to %d recipient(s)", len(memories), sent)})
 }
 
 func scanEventsWithPerson(rows *sql.Rows) []models.TimelineEvent {
@@ -4410,110 +3398,6 @@ func weatherCodeToIcon(code int) string {
 	default:
 		return "bolt"
 	}
-}
-
-// @Summary Auto-tag event
-// @Description Automatically generates tags for an event using AI/Ollama
-// @Tags Events
-// @Accept json
-// @Produce json
-// @Param body body object true "Auto-tag request" SchemaProperties({id:{type:integer}})
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Router /auto-tag [post]
-func autoTagEvent(c *gin.Context) {
-	var input struct {
-		Title       string `json:"title"`
-		Description string `json:"description"`
-		Location    string `json:"location"`
-	}
-	if err := c.ShouldBindJSON(&input); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-
-	if len(input.Title) > 500 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Title too long"})
-		return
-	}
-	if len(input.Description) > 2000 {
-		c.JSON(http.StatusBadRequest, gin.H{"error": "Description too long"})
-		return
-	}
-
-	var ollamaURL, ollamaModel string
-	var enabledInt int
-	err := db.QueryRow("SELECT url, model, enabled FROM ollama_settings WHERE id = 1").Scan(&ollamaURL, &ollamaModel, &enabledInt)
-	if err != nil || enabledInt == 0 {
-		ollamaURL = os.Getenv("OLLAMA_URL")
-		if ollamaURL == "" {
-			ollamaURL = "http://localhost:11434"
-		}
-		ollamaModel = os.Getenv("OLLAMA_MODEL")
-		if ollamaModel == "" {
-			ollamaModel = "llama3.2"
-		}
-	}
-
-	sanitizePrompt := func(s string) string {
-		s = strings.ReplaceAll(s, "\n", " ")
-		s = strings.ReplaceAll(s, "\r", " ")
-		if len(s) > 200 {
-			s = s[:200]
-		}
-		return s
-	}
-
-	prompt := fmt.Sprintf(`Suggest 3-5 single-word tags for this event (comma-separated):
-Title: %s
-Description: %s
-Location: %s
-Tags:`, sanitizePrompt(input.Title), sanitizePrompt(input.Description), sanitizePrompt(input.Location))
-
-	reqBody, _ := json.Marshal(map[string]any{
-		"model":  ollamaModel,
-		"prompt": prompt,
-		"stream": false,
-	})
-
-	client := &http.Client{Timeout: 30 * time.Second}
-	req, err := http.NewRequestWithContext(c.Request.Context(), "POST", ollamaURL+"/api/generate", bytes.NewReader(reqBody))
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Ollama"})
-		return
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := client.Do(req)
-	if err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to connect to Ollama"})
-		return
-	}
-	defer resp.Body.Close()
-
-	var ollamaResp struct {
-		Response string `json:"response"`
-	}
-	if err := json.NewDecoder(resp.Body).Decode(&ollamaResp); err != nil {
-		c.JSON(http.StatusBadGateway, gin.H{"error": "Failed to parse Ollama response"})
-		return
-	}
-
-	tags := strings.Split(ollamaResp.Response, ",")
-	cleanTags := make([]string, 0)
-	for _, t := range tags {
-		t = strings.TrimSpace(t)
-		t = strings.TrimPrefix(t, "- ")
-		t = strings.TrimPrefix(t, "* ")
-		if t != "" && !strings.HasPrefix(t, "Tags:") && len(t) < 50 {
-			cleanTags = append(cleanTags, t)
-		}
-		if len(cleanTags) >= 10 {
-			break
-		}
-	}
-
-	c.JSON(http.StatusOK, gin.H{"tags": cleanTags})
 }
 
 // @Summary List users
@@ -4771,60 +3655,6 @@ func generateRecurringEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"generated": generated})
 }
 
-// @Summary Get Ollama config
-// @Description Returns the current Ollama AI configuration
-// @Tags AI
-// @Produce json
-// @Success 200 {object} object "Ollama config"
-// @Router /ollama/config [get]
-func getOllamaConfig(c *gin.Context) {
-	var cfg models.OllamaConfig
-	var enabledInt int
-	err := db.QueryRow("SELECT url, model, enabled FROM ollama_settings WHERE id = 1").Scan(&cfg.URL, &cfg.Model, &enabledInt)
-	if err != nil {
-		c.JSON(http.StatusOK, models.OllamaConfig{URL: "http://localhost:11434", Model: "llama3.2", Enabled: false})
-		return
-	}
-	cfg.Enabled = enabledInt == 1
-	c.JSON(http.StatusOK, cfg)
-}
-
-// @Summary Save Ollama config
-// @Description Saves the Ollama AI configuration
-// @Tags AI
-// @Accept json
-// @Produce json
-// @Param config body object true "Ollama config"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Router /ollama/config [post]
-func saveOllamaConfig(c *gin.Context) {
-	var cfg models.OllamaConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	enabledInt := 0
-	if cfg.Enabled {
-		enabledInt = 1
-	}
-	if cfg.URL == "" {
-		cfg.URL = "http://localhost:11434"
-	}
-	if cfg.Model == "" {
-		cfg.Model = "llama3.2"
-	}
-	_, err := db.Exec(`UPDATE ollama_settings SET url=?, model=?, enabled=? WHERE id=1`, cfg.URL, cfg.Model, enabledInt)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	if logService != nil {
-		logService.Log("info", "ollama", "Ollama settings saved", nil)
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
 func backupDatabase() {
 	name := fmt.Sprintf("traces-backup-%s.db", time.Now().Format("2006-01-02-150405"))
 	dst := filepath.Join(backupPath, name)
@@ -5032,41 +3862,4 @@ func generateSessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
-}
-
-func sendGotifyNotification(title, message string) {
-	if !gotifyEnabled || gotifyURL == "" || gotifyToken == "" {
-		return
-	}
-
-	payload := map[string]any{
-		"title":    title,
-		"message":  message,
-		"priority": 5,
-	}
-
-	body, _ := json.Marshal(payload)
-	url := strings.TrimSuffix(gotifyURL, "/") + "/message"
-
-	go func() {
-		client := &http.Client{Timeout: 10 * time.Second}
-		req, err := http.NewRequest("POST", url, bytes.NewReader(body))
-		if err != nil {
-			log.Printf("[GOTIFY] Notification failed: %v", err)
-			return
-		}
-		req.Header.Set("Content-Type", "application/json")
-		req.Header.Set("X-Gotify-Key", gotifyToken)
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Printf("[GOTIFY] Notification failed: %v", err)
-			return
-		}
-		defer resp.Body.Close()
-		if resp.StatusCode >= 400 {
-			log.Printf("[GOTIFY] Notification failed with status: %d", resp.StatusCode)
-		} else {
-			log.Printf("[GOTIFY] Notification sent: %s", title)
-		}
-	}()
 }

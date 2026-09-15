@@ -1,4 +1,4 @@
-package main
+package integrations
 
 import (
 	"database/sql"
@@ -17,19 +17,19 @@ import (
 	"traces/internal/models"
 )
 
-// getBGGConfig returns current BGG settings.
-func getBGGConfig(c *gin.Context) {
+// GetBGGConfig returns current BGG settings.
+func (s *Service) GetBGGConfig(c *gin.Context) {
 	var cfg models.BGGConfig
 	var enabledInt int
-	err := db.QueryRow("SELECT username, enabled, last_sync FROM bgg_settings WHERE id = 1").Scan(&cfg.Username, &enabledInt, &cfg.LastSync)
+	err := s.db.QueryRow("SELECT username, enabled, last_sync FROM bgg_settings WHERE id = 1").Scan(&cfg.Username, &enabledInt, &cfg.LastSync)
 	if err == nil {
 		cfg.Enabled = enabledInt == 1
 	}
 	c.JSON(http.StatusOK, cfg)
 }
 
-// saveBGGConfig persists BGG settings and updates in-memory globals.
-func saveBGGConfig(c *gin.Context) {
+// SaveBGGConfig persists BGG settings and updates in-memory state.
+func (s *Service) SaveBGGConfig(c *gin.Context) {
 	var cfg models.BGGConfig
 	if err := c.ShouldBindJSON(&cfg); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -39,23 +39,22 @@ func saveBGGConfig(c *gin.Context) {
 	if cfg.Enabled {
 		enabledInt = 1
 	}
-	_, err := db.Exec(`UPDATE bgg_settings SET username=?, enabled=? WHERE id=1`, cfg.Username, enabledInt)
+	_, err := s.db.Exec(`UPDATE bgg_settings SET username=?, enabled=? WHERE id=1`, cfg.Username, enabledInt)
 	if err != nil {
 		httpx.ServerError(c, err)
 		return
 	}
-	bggUsername = cfg.Username
-	bggEnabled = cfg.Enabled
-	if logService != nil {
-		logService.Log("info", "bgg", "BGG settings saved", map[string]interface{}{"username": cfg.Username})
+	s.bggUsername = cfg.Username
+	s.bggEnabled = cfg.Enabled
+	if s.log != nil {
+		s.log.Log("info", "bgg", "BGG settings saved", map[string]interface{}{"username": cfg.Username})
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// testBGG checks that the configured username resolves against BGG XMLAPI2.
-func testBGG(c *gin.Context) {
-	username := bggUsername
-	// Allow ad-hoc test with body username if settings not yet saved
+// TestBGG checks that the configured username resolves against BGG XMLAPI2.
+func (s *Service) TestBGG(c *gin.Context) {
+	username := s.bggUsername
 	if username == "" {
 		var body struct {
 			Username string `json:"username"`
@@ -86,20 +85,17 @@ func testBGG(c *gin.Context) {
 		c.JSON(http.StatusBadGateway, gin.H{"error": fmt.Sprintf("BGG returned %d: %s", resp.StatusCode, string(body))})
 		return
 	}
-	// Try to parse minimal structure to ensure valid XML
 	body, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	var plays bggPlaysXML
 	if err := xml.Unmarshal(body, &plays); err != nil {
 		c.JSON(http.StatusBadGateway, gin.H{"error": "BGG returned invalid XML: " + err.Error()})
 		return
 	}
-	if logService != nil {
-		logService.Log("info", "bgg", "BGG connection test successful", map[string]interface{}{"username": username})
+	if s.log != nil {
+		s.log.Log("info", "bgg", "BGG connection test successful", map[string]interface{}{"username": username})
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "message": fmt.Sprintf("Connected to BGG (%s) — %d plays on first page", username, len(plays.Plays))})
 }
-
-// ---- BGG XML structures ----
 
 type bggPlaysXML struct {
 	XMLName xml.Name     `xml:"plays"`
@@ -136,30 +132,27 @@ type bggPlayerXML struct {
 	Win      string `xml:"win,attr"`
 }
 
-// ---- Sync ----
-
 const bggPerPage = 100
 
-func syncBGGHandler(c *gin.Context) {
-	if bggUsername == "" {
+func (s *Service) SyncBGGHandler(c *gin.Context) {
+	if s.bggUsername == "" {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "BGG username not configured"})
 		return
 	}
-	result, err := syncBGGPlays(db, bggUsername)
+	result, err := syncBGGPlays(s.db, s.bggUsername)
 	if err != nil {
 		log.Printf("[BGG] sync failed: %v", err)
-		if logService != nil {
-			logService.Log("error", "bgg", "BGG sync failed: "+err.Error(), nil)
+		if s.log != nil {
+			s.log.Log("error", "bgg", "BGG sync failed: "+err.Error(), nil)
 		}
 		c.JSON(http.StatusBadGateway, gin.H{"error": err.Error()})
 		return
 	}
-	// Update last_sync
 	now := time.Now().Format(time.RFC3339)
-	_, _ = db.Exec(`UPDATE bgg_settings SET last_sync=? WHERE id=1`, now)
-	bggLastSync = now
-	if logService != nil {
-		logService.Log("info", "bgg", fmt.Sprintf("BGG sync completed: %d imported, %d skipped", result.Imported, result.Skipped), nil)
+	_, _ = s.db.Exec(`UPDATE bgg_settings SET last_sync=? WHERE id=1`, now)
+	s.bggLastSync = now
+	if s.log != nil {
+		s.log.Log("info", "bgg", fmt.Sprintf("BGG sync completed: %d imported, %d skipped", result.Imported, result.Skipped), nil)
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "imported": result.Imported, "skipped": result.Skipped, "total": result.Total, "message": fmt.Sprintf("Imported %d new plays (%d already present)", result.Imported, result.Skipped)})
 }
@@ -180,7 +173,6 @@ func syncBGGPlays(db *sql.DB, username string) (bggSyncResult, error) {
 			return res, err
 		}
 		if statusCode == 202 {
-			// BGG throttling — wait and retry same page
 			time.Sleep(3 * time.Second)
 			plays, statusCode, err = fetchBGGPlaysPage(client, username, page)
 			if err != nil {
@@ -200,7 +192,6 @@ func syncBGGPlays(db *sql.DB, username string) (bggSyncResult, error) {
 			res.Total++
 			imported, err := importBGGPlay(db, p)
 			if err != nil {
-				// Log but continue — skip corrupt row
 				log.Printf("[BGG] import play %s failed: %v", p.ID, err)
 				continue
 			}
@@ -249,7 +240,6 @@ func importBGGPlay(db *sql.DB, p bggPlayXML) (bool, error) {
 		return false, fmt.Errorf("missing play id")
 	}
 	sourceRef := "bgg-play-" + p.ID
-	// Check existing
 	var exists int
 	err := db.QueryRow(`SELECT COUNT(*) FROM timeline_events WHERE source='bgg' AND source_ref=?`, sourceRef).Scan(&exists)
 	if err != nil {
@@ -262,13 +252,11 @@ func importBGGPlay(db *sql.DB, p bggPlayXML) (bool, error) {
 	if p.Item.Name == "" {
 		title = "Played board game"
 	}
-	// Date fallback to today if empty or invalid
 	eventDate := strings.TrimSpace(p.Date)
 	if eventDate == "" {
 		eventDate = time.Now().Format("2006-01-02")
 	}
 	location := strings.TrimSpace(p.Location)
-	// Build description: players summary + comments + duration
 	descParts := []string{}
 	if p.Players != nil && len(p.Players.Players) > 0 {
 		parts := []string{}
@@ -299,14 +287,9 @@ func importBGGPlay(db *sql.DB, p bggPlayXML) (bool, error) {
 	}
 	description := strings.Join(descParts, "\n")
 	tags := "boardgame"
-	if p.Item.Name != "" {
-		// also tag with slug? keep simple boardgame
-	}
-
 	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, tags, media_type, source, source_ref) VALUES (?, ?, ?, ?, ?, 'boardgame', 'bgg', ?)`,
 		title, description, eventDate, location, tags, sourceRef)
 	if err != nil {
-		// Unique constraint violation means race — treat as skipped
 		if strings.Contains(err.Error(), "UNIQUE") || strings.Contains(err.Error(), "unique") {
 			return false, nil
 		}
@@ -315,8 +298,8 @@ func importBGGPlay(db *sql.DB, p bggPlayXML) (bool, error) {
 	return true, nil
 }
 
-// seedBGGForTest inserts a canned BGG event for E2E. Guarded to E2E/test environments.
-func seedBGGForTest(c *gin.Context) {
+// SeedBGGForTest inserts a canned BGG event for E2E.
+func (s *Service) SeedBGGForTest(c *gin.Context) {
 	if os.Getenv("E2E_BGG_SEED") == "" && os.Getenv("CI") == "" && os.Getenv("PLAYWRIGHT") == "" {
 		c.JSON(http.StatusNotFound, gin.H{"error": "not found"})
 		return
@@ -346,7 +329,7 @@ func seedBGGForTest(c *gin.Context) {
 		ref = fmt.Sprintf("bgg-play-e2e-%d", time.Now().UnixNano())
 	}
 	location := body.Location
-	res, err := db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, tags, media_type, source, source_ref) VALUES (?, ?, ?, ?, 'boardgame', 'boardgame', 'bgg', ?)`,
+	res, err := s.db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, tags, media_type, source, source_ref) VALUES (?, ?, ?, ?, 'boardgame', 'boardgame', 'bgg', ?)`,
 		title, "Players: E2E Tester\nSeeded for BGG corner E2E", date, location, ref)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})

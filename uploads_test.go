@@ -19,6 +19,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 	"golang.org/x/crypto/bcrypt"
+	"traces/internal/integrations"
 )
 
 func TestHandleUploadHashing(t *testing.T) {
@@ -321,7 +322,8 @@ func TestAutoTagEvent(t *testing.T) {
 	)`)
 
 	router := gin.New()
-	router.POST("/api/auto-tag", autoTagEvent)
+	svc := integrations.New(db, logService, nil)
+	router.POST("/api/auto-tag", svc.AutoTagEvent)
 
 	t.Run("empty_title_falls_back_to_ollama", func(t *testing.T) {
 		t.Setenv("OLLAMA_URL", "http://127.0.0.1:1")
