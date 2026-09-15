@@ -15,6 +15,10 @@ import (
 	"github.com/prometheus/client_golang/prometheus"
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 	"github.com/prometheus/client_golang/prometheus/testutil"
+	"go.opentelemetry.io/otel"
+	"go.opentelemetry.io/otel/log/global"
+	sdklog "go.opentelemetry.io/otel/sdk/log"
+	sdkmetric "go.opentelemetry.io/otel/sdk/metric"
 	"go.opentelemetry.io/otel/sdk/resource"
 	sdktrace "go.opentelemetry.io/otel/sdk/trace"
 )
@@ -747,38 +751,82 @@ func TestInitShutdownTelemetry(t *testing.T) {
 }
 
 func TestTelemetryGracefulDegradation(t *testing.T) {
-	// Save and restore OTel global state and env vars
 	origEndpoint := otelEndpoint
 	origTraces := otelTracesEnabled
 	origMetrics := otelMetricsEnabled
 	origLogs := otelLogsEnabled
 	origProtocol := otelExporterProtocol
+	origTraceKind := otelTraceExporterKind
+	origMetricKind := otelMetricExporterKind
+	origLogKind := otelLogExporterKind
+	origTP := otel.GetTracerProvider()
+	origMP := otel.GetMeterProvider()
+	origLP := global.GetLoggerProvider()
+	origTraceFn := newOTLPTraceExporterFn
+	origMetricFn := newOTLPMetricExporterFn
+	origLogFn := newOTLPLogExporterFn
+	origReg := prometheus.DefaultRegisterer
+	origGatherer := prometheus.DefaultGatherer
+	isolatedReg := prometheus.NewRegistry()
+	prometheus.DefaultRegisterer = isolatedReg
+	prometheus.DefaultGatherer = isolatedReg
+	_ = isolatedReg.Register(httpRequestsTotal)
+	_ = isolatedReg.Register(httpRequestDuration)
+	_ = isolatedReg.Register(eventOperationsTotal)
+	_ = isolatedReg.Register(dbQueryDuration)
+	_ = isolatedReg.Register(logEntriesTotal)
 	t.Cleanup(func() {
 		otelEndpoint = origEndpoint
 		otelTracesEnabled = origTraces
 		otelMetricsEnabled = origMetrics
 		otelLogsEnabled = origLogs
 		otelExporterProtocol = origProtocol
+		otelTraceExporterKind = origTraceKind
+		otelMetricExporterKind = origMetricKind
+		otelLogExporterKind = origLogKind
+		otel.SetTracerProvider(origTP)
+		otel.SetMeterProvider(origMP)
+		global.SetLoggerProvider(origLP)
+		newOTLPTraceExporterFn = origTraceFn
+		newOTLPMetricExporterFn = origMetricFn
+		newOTLPLogExporterFn = origLogFn
+		prometheus.DefaultRegisterer = origReg
+		prometheus.DefaultGatherer = origGatherer
 	})
 
-	// Set an unreachable endpoint to test graceful degradation
+	// Inject constructor failures to exercise the stdout fallback path for all signals
 	otelEndpoint = "http://127.0.0.1:1"
 	otelTracesEnabled = true
 	otelMetricsEnabled = true
 	otelLogsEnabled = true
 	t.Setenv("OTEL_SERVICE_NAME", "traces-test")
+	newOTLPTraceExporterFn = func(endpoint string) (sdktrace.SpanExporter, error) {
+		return nil, fmt.Errorf("injected trace failure")
+	}
+	newOTLPMetricExporterFn = func(endpoint string) (sdkmetric.Exporter, error) {
+		return nil, fmt.Errorf("injected metric failure")
+	}
+	newOTLPLogExporterFn = func(endpoint string) (sdklog.Exporter, error) {
+		return nil, fmt.Errorf("injected log failure")
+	}
 
-	// This should not panic despite the unreachable endpoint;
-	// it should fall back to stdout exporters
+	// Should not panic and should fall back to stdout exporters for all signals
 	tp, err := initTelemetry()
 	if err != nil {
-		t.Logf("initTelemetry returned error (acceptable in test): %v", err)
-	} else {
-		if tp == nil {
-			t.Error("expected non-nil tracer provider even with degradation")
-		} else {
-			tp.Shutdown(context.Background())
-		}
+		t.Fatalf("initTelemetry with injected failures should not error: %v", err)
+	}
+	if tp == nil {
+		t.Fatal("expected non-nil tracer provider even with degradation")
+	}
+	defer tp.Shutdown(context.Background())
+	if otelTraceExporterKind != "stdout" {
+		t.Errorf("trace kind = %q, want stdout", otelTraceExporterKind)
+	}
+	if otelMetricExporterKind != "stdout" {
+		t.Errorf("metric kind = %q, want stdout", otelMetricExporterKind)
+	}
+	if otelLogExporterKind != "stdout" {
+		t.Errorf("log kind = %q, want stdout", otelLogExporterKind)
 	}
 }
 

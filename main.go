@@ -40,7 +40,6 @@ import (
 	"image/jpeg"
 	"image/png"
 	"io"
-	"io/fs"
 	"log"
 	"maps"
 	"math"
@@ -66,42 +65,11 @@ import (
 	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
-	"golang.org/x/net/webdav"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
-	swaggerFiles "github.com/swaggo/files/v2"
-	ginSwagger "github.com/swaggo/gin-swagger"
-
 	"traces/internal/models"
 )
-
-type webdavFS struct{ fsFS fs.FS }
-
-func (w webdavFS) Mkdir(ctx context.Context, _ string, _ os.FileMode) error { return os.ErrPermission }
-func (w webdavFS) RemoveAll(ctx context.Context, _ string) error            { return os.ErrPermission }
-func (w webdavFS) Rename(ctx context.Context, _, _ string) error            { return os.ErrPermission }
-func (w webdavFS) OpenFile(ctx context.Context, name string, flag int, _ os.FileMode) (webdav.File, error) {
-	if flag != os.O_RDONLY {
-		return nil, os.ErrPermission
-	}
-	f, err := w.fsFS.Open(name)
-	if err != nil {
-		return nil, err
-	}
-	return &webdavFile{File: f}, nil
-}
-func (w webdavFS) Stat(ctx context.Context, name string) (os.FileInfo, error) {
-	return fs.Stat(w.fsFS, name)
-}
-
-type webdavFile struct{ fs.File }
-
-func (webdavFile) Write([]byte) (int, error)          { return 0, os.ErrPermission }
-func (webdavFile) Readdir(int) ([]os.FileInfo, error) { return nil, nil }
-func (f webdavFile) Seek(offset int64, whence int) (int64, error) {
-	return f.File.(io.Seeker).Seek(offset, whence)
-}
 
 func init() {
 	image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
@@ -447,14 +415,8 @@ func main() {
 		c.File(filepath.Join(basePath, "static/setup.html"))
 	})
 
-	r.GET("/docs", func(c *gin.Context) {
-		c.Redirect(http.StatusMovedPermanently, "/swagger/index.html")
-	})
-
-	r.GET("/swagger/*any", ginSwagger.WrapHandler(&webdav.Handler{FileSystem: webdavFS{fsFS: swaggerFiles.FS}}))
-
 	r.GET("/api-docs", func(c *gin.Context) {
-		c.File(filepath.Join(basePath, "static/swagger.json"))
+		c.File(filepath.Join(basePath, "docs/swagger.json"))
 	})
 
 	r.Static("/static", filepath.Join(basePath, "static"))

@@ -78,6 +78,16 @@ var (
 	// otelServiceName is the resolved service name used for the OTel resource
 	// and the otelgin middleware.
 	otelServiceName = "traces"
+
+	// Exporter kind tracking for tests (values: "otlp-grpc", "otlp-http", "stdout", "disabled").
+	otelTraceExporterKind  string
+	otelMetricExporterKind string
+	otelLogExporterKind    string
+
+	// Overridable constructors for testing fallback paths.
+	newOTLPTraceExporterFn  = newOTLPTraceExporter
+	newOTLPMetricExporterFn = newOTLPMetricExporter
+	newOTLPLogExporterFn    = newOTLPLogExporter
 )
 
 // initOTelMetrics creates OTel metric instruments after the meter provider is set up.
@@ -182,20 +192,31 @@ func initTelemetry() (*sdktrace.TracerProvider, error) {
 
 	var traceExporter sdktrace.SpanExporter
 	if otelEndpoint != "" && otelTracesEnabled {
-		traceExporter, err = newOTLPTraceExporter(otelEndpoint)
+		traceExporter, err = newOTLPTraceExporterFn(otelEndpoint)
 		if err != nil {
 			stdlog.Printf("[OTel] Failed to create OTLP trace exporter: %v, falling back to stdout", err)
 			traceExporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint())
 			if err != nil {
 				return nil, fmt.Errorf("creating stdout trace exporter: %w", err)
 			}
+			otelTraceExporterKind = "stdout"
 		} else {
+			if otelExporterProtocol == "http/protobuf" {
+				otelTraceExporterKind = "otlp-http"
+			} else {
+				otelTraceExporterKind = "otlp-grpc"
+			}
 			stdlog.Printf("[OTel] Trace exporter: OTLP %s (%s)", otelExporterProtocol, otelEndpoint)
 		}
 	} else {
 		traceExporter, err = stdouttrace.New(stdouttrace.WithPrettyPrint())
 		if err != nil {
 			return nil, fmt.Errorf("creating stdout trace exporter: %w", err)
+		}
+		if !otelTracesEnabled {
+			otelTraceExporterKind = "disabled"
+		} else {
+			otelTraceExporterKind = "stdout"
 		}
 	}
 
@@ -235,15 +256,31 @@ func initLogExporter(res *resource.Resource) error {
 	var err error
 
 	if otelEndpoint != "" && otelLogsEnabled {
-		logExporter, err = newOTLPLogExporter(otelEndpoint)
+		logExporter, err = newOTLPLogExporterFn(otelEndpoint)
 		if err != nil {
-			return fmt.Errorf("creating OTLP log exporter: %w", err)
+			stdlog.Printf("[OTel] Failed to create OTLP log exporter: %v, falling back to stdout", err)
+			logExporter, err = stdoutlog.New()
+			if err != nil {
+				return fmt.Errorf("creating stdout log exporter: %w", err)
+			}
+			otelLogExporterKind = "stdout"
+		} else {
+			if otelExporterProtocol == "http/protobuf" {
+				otelLogExporterKind = "otlp-http"
+			} else {
+				otelLogExporterKind = "otlp-grpc"
+			}
+			stdlog.Printf("[OTel] Log exporter: OTLP %s (%s)", otelExporterProtocol, otelEndpoint)
 		}
-		stdlog.Printf("[OTel] Log exporter: OTLP %s (%s)", otelExporterProtocol, otelEndpoint)
 	} else {
 		logExporter, err = stdoutlog.New()
 		if err != nil {
 			return fmt.Errorf("creating stdout log exporter: %w", err)
+		}
+		if !otelLogsEnabled {
+			otelLogExporterKind = "disabled"
+		} else {
+			otelLogExporterKind = "stdout"
 		}
 		stdlog.Println("[OTel] Log exporter: stdout")
 	}
@@ -280,15 +317,31 @@ func initMetricExporterWithRegisterer(res *resource.Resource, reg prometheus.Reg
 	var err error
 
 	if otelEndpoint != "" && otelMetricsEnabled {
-		metricExporter, err = newOTLPMetricExporter(otelEndpoint)
+		metricExporter, err = newOTLPMetricExporterFn(otelEndpoint)
 		if err != nil {
-			return fmt.Errorf("creating OTLP metric exporter: %w", err)
+			stdlog.Printf("[OTel] Failed to create OTLP metric exporter: %v, falling back to stdout", err)
+			metricExporter, err = stdoutmetric.New()
+			if err != nil {
+				return fmt.Errorf("creating stdout metric exporter: %w", err)
+			}
+			otelMetricExporterKind = "stdout"
+		} else {
+			if otelExporterProtocol == "http/protobuf" {
+				otelMetricExporterKind = "otlp-http"
+			} else {
+				otelMetricExporterKind = "otlp-grpc"
+			}
+			stdlog.Printf("[OTel] Metric exporter: OTLP %s (%s)", otelExporterProtocol, otelEndpoint)
 		}
-		stdlog.Printf("[OTel] Metric exporter: OTLP %s (%s)", otelExporterProtocol, otelEndpoint)
 	} else {
 		metricExporter, err = stdoutmetric.New()
 		if err != nil {
 			return fmt.Errorf("creating stdout metric exporter: %w", err)
+		}
+		if !otelMetricsEnabled {
+			otelMetricExporterKind = "disabled"
+		} else {
+			otelMetricExporterKind = "stdout"
 		}
 		stdlog.Println("[OTel] Metric exporter: stdout")
 	}

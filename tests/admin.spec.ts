@@ -901,4 +901,59 @@ test.describe('TRACES Admin Backend', () => {
     const data = await resp.json();
     expect(Array.isArray(data)).toBeTruthy();
   });
+
+  test('should get and save otel config', async ({ request }) => {
+    const getResp = await request.get('/api/otel/config', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    expect(getResp.ok()).toBeTruthy();
+    const cfg = await getResp.json();
+    expect(cfg).toHaveProperty('endpoint');
+    expect(cfg).toHaveProperty('traces_enabled');
+    expect(cfg).toHaveProperty('metrics_enabled');
+    expect(cfg).toHaveProperty('logs_enabled');
+
+    const saveResp = await request.post('/api/otel/config', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { endpoint: 'http://otel-collector:4317', traces_enabled: true, metrics_enabled: false, logs_enabled: true }
+    });
+    expect(saveResp.ok()).toBeTruthy();
+    const body = await saveResp.json();
+    expect(body.status).toBe('ok');
+
+    const getResp2 = await request.get('/api/otel/config', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    const cfg2 = await getResp2.json();
+    expect(cfg2.endpoint).toBe('http://otel-collector:4317');
+    expect(cfg2.traces_enabled).toBe(true);
+    expect(cfg2.metrics_enabled).toBe(false);
+    expect(cfg2.logs_enabled).toBe(true);
+
+    // restore empty
+    await request.post('/api/otel/config', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { endpoint: '', traces_enabled: false, metrics_enabled: false, logs_enabled: false }
+    });
+  });
+
+  test('should persist otel config per-signal flags', async ({ request }) => {
+    await request.post('/api/otel/config', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { endpoint: 'http://otel:4318', traces_enabled: false, metrics_enabled: true, logs_enabled: false }
+    });
+    const resp = await request.get('/api/otel/config', {
+      headers: { Cookie: `session=${sessionCookie}` }
+    });
+    const cfg = await resp.json();
+    expect(cfg.endpoint).toBe('http://otel:4318');
+    expect(cfg.traces_enabled).toBe(false);
+    expect(cfg.metrics_enabled).toBe(true);
+    expect(cfg.logs_enabled).toBe(false);
+    // cleanup
+    await request.post('/api/otel/config', {
+      headers: { Cookie: `session=${sessionCookie}`, 'X-CSRF-Token': csrfToken },
+      data: { endpoint: '', traces_enabled: false, metrics_enabled: false, logs_enabled: false }
+    });
+  });
 });

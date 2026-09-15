@@ -28,6 +28,7 @@ ENV DOCKER=true
 
 COPY --from=builder /app/traces-server .
 COPY --from=builder /app/static ./static
+COPY --from=builder /app/docs/swagger.json ./docs/swagger.json
 COPY --from=ts-builder /app/static/js ./static/js
 
 RUN mkdir -p /db && chmod 777 /db

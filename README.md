@@ -136,19 +136,46 @@ task prepush
 > timeline/grid/lightbox previews). Without it, uploads still work and videos
 > fall back to the generic video placeholder.
 
+### Observability (OpenTelemetry)
+
+TRACES exports traces, metrics, and logs over OTLP and always attaches a Prometheus
+reader at `/metrics`. The following environment variables are read:
+
+| Variable | Effect |
+|----------|--------|
+| `OTEL_EXPORTER_OTLP_ENDPOINT` | Collector endpoint; also implies all signals are enabled unless individually set to `none` |
+| `OTEL_TRACES_EXPORTER` | Set to `none` to disable **traces only** |
+| `OTEL_METRICS_EXPORTER` | Set to `none` to disable **metrics only** |
+| `OTEL_LOGS_EXPORTER` | Set to `none` to disable **logs only** |
+| `OTEL_EXPORTER_OTLP_PROTOCOL` | `grpc` (default) or `http/protobuf` |
+| `OTEL_SERVICE_NAME` | Service name | 
+| `OTEL_RESOURCE_ATTRIBUTES` | Comma-separated resource attributes |
+| `OTEL_TRACES_SAMPLER` | `always_on`, `always_off`, `traceidratio`, `parentbased_*` |
+| `OTEL_TRACES_SAMPLER_ARG` | Ratio for the `*traceidratio` samplers |
+
+When `OTEL_EXPORTER_OTLP_ENDPOINT` is empty, each enabled signal writes to its stdout
+exporter instead. If an OTLP exporter cannot be constructed, that signal falls back to
+stdout rather than aborting initialization. Environment variables take precedence over
+the DB-backed `/api/otel/config` settings.
+
+**Not read (unsupported):** per-signal endpoints
+(`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT`), OTLP headers, timeouts,
+compression, and TLS settings. Only the shared endpoint above is honored.
+
 ## Project Structure
 
 ```
 traces/
 ├── main.go                # Go backend (Gin framework)
-├── main_test.go           # Go unit tests
+├── *_test.go              # Go unit tests (split by domain: auth, events, uploads, search, stats, ...)
 ├── go.mod / go.sum        # Go module dependencies
 ├── ts/                    # TypeScript source files
 │   ├── index.ts           # Timeline page
 │   ├── admin.ts           # Admin panel
 │   ├── login.ts           # Login page
 │   ├── setup.ts           # Setup page
-│   └── map.ts             # Map page
+│   ├── map.ts             # Map page
+│   └── shared/            # Shared frontend modules (format, api, analytics, map, types)
 ├── static/                # Static assets served by the app
 │   ├── index.html         # Main timeline page
 │   ├── admin.html         # Admin management panel
@@ -192,6 +219,13 @@ traces/
 | `POST` | `/api/gotify/test` | Yes | Test notification |
 | `POST` | `/api/login` | No | Admin login |
 | `POST` | `/api/logout` | No | Admin logout |
+
+> **OpenAPI:** `GET /api-docs` returns the single committed OpenAPI document
+> (`docs/swagger.json`).
+>
+> **Breaking (docs endpoints):** the Swagger UI (`/swagger/*any`) and the `/docs`
+> redirect have been removed, and `/api-docs` now returns the current generated
+> specification instead of the previous stale copy.
 
 ## Philosophy
 
