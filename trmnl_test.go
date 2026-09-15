@@ -19,19 +19,10 @@ func setupTRMNLTestDB(t *testing.T) (*gin.Engine, *sql.DB) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	origDB := db
 	origPublicMode := publicMode
-	t.Cleanup(func() {
-		db = origDB
-		publicMode = origPublicMode
-	})
+	t.Cleanup(func() { publicMode = origPublicMode })
 
-	testDB, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { testDB.Close() })
-	db = testDB
+	newTestDB(t)
 
 	if _, err := db.Exec(`CREATE TABLE timeline_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -76,7 +67,7 @@ func setupTRMNLTestDB(t *testing.T) (*gin.Engine, *sql.DB) {
 
 	router := gin.New()
 	router.GET("/api/trmnl/summary", getTRMNLSummary)
-	return router, testDB
+	return router, db
 }
 
 // currentMonthDate builds a date string inside the current calendar month for the given year.

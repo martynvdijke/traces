@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"strings"
 	"testing"
 	"time"
@@ -434,13 +433,13 @@ func TestLogServicePruneLimit(t *testing.T) {
 func TestHandleGetLogs(t *testing.T) {
 	origDB := db
 	origLogService := logService
-	defer func() {
+	t.Cleanup(func() {
 		db = origDB
 		logService = origLogService
-	}()
+	})
 
 	db = setupTestDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	logService = &LogService{db: db}
 	logService.Init()
@@ -473,13 +472,13 @@ func TestHandleGetLogs(t *testing.T) {
 func TestHandleGetLogCount(t *testing.T) {
 	origDB := db
 	origLogService := logService
-	defer func() {
+	t.Cleanup(func() {
 		db = origDB
 		logService = origLogService
-	}()
+	})
 
 	db = setupTestDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	logService = &LogService{db: db}
 	logService.Init()
@@ -509,13 +508,13 @@ func TestHandleGetLogCount(t *testing.T) {
 func TestHandleClearLogs(t *testing.T) {
 	origDB := db
 	origLogService := logService
-	defer func() {
+	t.Cleanup(func() {
 		db = origDB
 		logService = origLogService
-	}()
+	})
 
 	db = setupTestDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	logService = &LogService{db: db}
 	logService.Init()
@@ -542,13 +541,13 @@ func TestHandleClearLogs(t *testing.T) {
 func TestHandleGetLogSettings(t *testing.T) {
 	origDB := db
 	origLogService := logService
-	defer func() {
+	t.Cleanup(func() {
 		db = origDB
 		logService = origLogService
-	}()
+	})
 
 	db = setupTestDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	ls := &LogService{db: db}
 	ls.Init()
@@ -578,13 +577,13 @@ func TestHandleGetLogSettings(t *testing.T) {
 func TestHandleUpdateLogSettings(t *testing.T) {
 	origDB := db
 	origLogService := logService
-	defer func() {
+	t.Cleanup(func() {
 		db = origDB
 		logService = origLogService
-	}()
+	})
 
 	db = setupTestDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	ls := &LogService{db: db}
 	ls.Init()
@@ -611,13 +610,13 @@ func TestHandleUpdateLogSettings(t *testing.T) {
 func TestHandleUpdateLogSettingsInvalid(t *testing.T) {
 	origDB := db
 	origLogService := logService
-	defer func() {
+	t.Cleanup(func() {
 		db = origDB
 		logService = origLogService
-	}()
+	})
 
 	db = setupTestDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	ls := &LogService{db: db}
 	ls.Init()
@@ -644,13 +643,13 @@ func TestHandleUpdateLogSettingsInvalid(t *testing.T) {
 func TestHandleGetLogSources(t *testing.T) {
 	origDB := db
 	origLogService := logService
-	defer func() {
+	t.Cleanup(func() {
 		db = origDB
 		logService = origLogService
-	}()
+	})
 
 	db = setupTestDB(t)
-	defer db.Close()
+	t.Cleanup(func() { db.Close() })
 
 	logService = &LogService{db: db}
 	logService.Init()
@@ -701,9 +700,7 @@ func TestParseOTelProtocol(t *testing.T) {
 	}
 	for _, tt := range tests {
 		t.Run("protocol_"+tt.env, func(t *testing.T) {
-			orig := os.Getenv("OTEL_EXPORTER_OTLP_PROTOCOL")
-			os.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.env)
-			defer os.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", orig)
+			t.Setenv("OTEL_EXPORTER_OTLP_PROTOCOL", tt.env)
 
 			parseOTelProtocol()
 			if otelExporterProtocol != tt.want {
@@ -756,22 +753,20 @@ func TestTelemetryGracefulDegradation(t *testing.T) {
 	origMetrics := otelMetricsEnabled
 	origLogs := otelLogsEnabled
 	origProtocol := otelExporterProtocol
-	origSvcName := os.Getenv("OTEL_SERVICE_NAME")
-	defer func() {
+	t.Cleanup(func() {
 		otelEndpoint = origEndpoint
 		otelTracesEnabled = origTraces
 		otelMetricsEnabled = origMetrics
 		otelLogsEnabled = origLogs
 		otelExporterProtocol = origProtocol
-		os.Setenv("OTEL_SERVICE_NAME", origSvcName)
-	}()
+	})
 
 	// Set an unreachable endpoint to test graceful degradation
 	otelEndpoint = "http://127.0.0.1:1"
 	otelTracesEnabled = true
 	otelMetricsEnabled = true
 	otelLogsEnabled = true
-	os.Setenv("OTEL_SERVICE_NAME", "traces-test")
+	t.Setenv("OTEL_SERVICE_NAME", "traces-test")
 
 	// This should not panic despite the unreachable endpoint;
 	// it should fall back to stdout exporters

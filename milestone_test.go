@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -15,12 +14,7 @@ func setupMilestoneTestDB(t *testing.T) func() {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	origDB := db
-	var err error
-	db, err = sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
+	newTestDB(t)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
@@ -58,10 +52,7 @@ func setupMilestoneTestDB(t *testing.T) func() {
 		source_ref TEXT DEFAULT ''
 	)`)
 
-	return func() {
-		db.Close()
-		db = origDB
-	}
+	return func() {}
 }
 
 func TestGetPersonEventsMilestones(t *testing.T) {

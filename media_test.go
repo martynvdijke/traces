@@ -115,7 +115,7 @@ func TestExtractVideoPosterFallback(t *testing.T) {
 func TestBuildReverseGeocodeURL(t *testing.T) {
 	orig := nominatimURL
 	nominatimURL = "https://nominatim.example.org/reverse"
-	defer func() { nominatimURL = orig }()
+	t.Cleanup(func() { nominatimURL = orig })
 
 	want := "https://nominatim.example.org/reverse?format=jsonv2&lat=40.712800&lon=-74.006000&zoom=16"
 	if got := buildReverseGeocodeURL(40.7128, -74.006); got != want {
@@ -139,7 +139,7 @@ func TestReverseGeocode(t *testing.T) {
 
 		orig := nominatimURL
 		nominatimURL = server.URL
-		defer func() { nominatimURL = orig }()
+		t.Cleanup(func() { nominatimURL = orig })
 
 		if got := reverseGeocode(40.6782, -73.9442); got != "Brooklyn, New York" {
 			t.Errorf("reverseGeocode = %q, want %q", got, "Brooklyn, New York")
@@ -154,7 +154,7 @@ func TestReverseGeocode(t *testing.T) {
 
 		orig := nominatimURL
 		nominatimURL = server.URL
-		defer func() { nominatimURL = orig }()
+		t.Cleanup(func() { nominatimURL = orig })
 
 		if got := reverseGeocode(40.6782, -73.9442); got != "" {
 			t.Errorf("reverseGeocode = %q, want empty string on non-200", got)

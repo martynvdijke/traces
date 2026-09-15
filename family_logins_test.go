@@ -5,7 +5,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
-	"net/http/httptest"
 	"strings"
 	"testing"
 	"time"
@@ -66,17 +65,6 @@ func mustHash(t *testing.T, password string) string {
 		t.Fatal(err)
 	}
 	return string(hashed)
-}
-
-func doJSON(router http.Handler, method, target, body string, cookies ...string) *httptest.ResponseRecorder {
-	req := httptest.NewRequest(method, target, strings.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	for _, ck := range cookies {
-		req.Header.Set("Cookie", ck)
-	}
-	w := httptest.NewRecorder()
-	router.ServeHTTP(w, req)
-	return w
 }
 
 func TestFamilyLogin(t *testing.T) {

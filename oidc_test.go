@@ -1,7 +1,6 @@
 package main
 
 import (
-	"database/sql"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -18,24 +17,17 @@ func setupOIDCTestDB(t *testing.T) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	origDB := db
 	origSessionStore := sessionStore
 	origCSRFTokens := csrfTokens
 	origCfg := oidcCfg
 	t.Cleanup(func() {
-		db = origDB
 		sessionStore = origSessionStore
 		csrfTokens = origCSRFTokens
 		oidcCfg = origCfg
 		oidcResetProvider()
 	})
 
-	var err error
-	db, err = sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { db.Close() })
+	newTestDB(t)
 
 	sessionStore = make(map[string]sessionInfo)
 	csrfTokens = make(map[string]string)

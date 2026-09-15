@@ -5603,18 +5603,6 @@ func sendGotifyNotification(title, message string) {
 	}()
 }
 
-func EscapeHtml(text string) string {
-	if text == "" {
-		return ""
-	}
-	text = strings.ReplaceAll(text, "&", "&amp;")
-	text = strings.ReplaceAll(text, "<", "&lt;")
-	text = strings.ReplaceAll(text, ">", "&gt;")
-	text = strings.ReplaceAll(text, `"`, "&quot;")
-	text = strings.ReplaceAll(text, "'", "&#039;")
-	return text
-}
-
 var mdRenderer = goldmark.New()
 
 func RenderMarkdown(text string) string {
@@ -5623,26 +5611,7 @@ func RenderMarkdown(text string) string {
 	}
 	var buf bytes.Buffer
 	if err := mdRenderer.Convert([]byte(text), &buf); err != nil {
-		return EscapeHtml(text)
+		return models.EscapeHtml(text)
 	}
 	return buf.String()
-}
-
-func GetMediaIcon(mediaType string) string {
-	switch mediaType {
-	case "video":
-		return "fa-solid fa-video"
-	case "audio":
-		return "fa-solid fa-music"
-	default:
-		return "fa-solid fa-image"
-	}
-}
-
-func FormatDate(dateStr string) string {
-	date, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return dateStr
-	}
-	return date.Format("Jan 2")
 }

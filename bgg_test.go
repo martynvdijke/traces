@@ -17,15 +17,7 @@ func setupBGGTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
 
-	origDB := db
-	t.Cleanup(func() { db = origDB })
-
-	testDB, err := sql.Open("sqlite3", ":memory:")
-	if err != nil {
-		t.Fatal(err)
-	}
-	t.Cleanup(func() { testDB.Close() })
-	db = testDB
+	newTestDB(t)
 
 	if _, err := db.Exec(`CREATE TABLE timeline_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -82,7 +74,7 @@ func setupBGGTestDB(t *testing.T) *sql.DB {
 		t.Fatal(err)
 	}
 
-	return testDB
+	return db
 }
 
 func sampleBGGPlay(id, date, game string) bggPlayXML {
