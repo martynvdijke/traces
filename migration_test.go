@@ -6,6 +6,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
+	"traces/internal/database"
 	"traces/internal/models"
 )
 
@@ -136,7 +137,7 @@ func TestMigrationFromV8ToCurrent(t *testing.T) {
 	}
 
 	for version < models.CurrentSchemaVersion {
-		runMigration(version)
+		database.RunMigration(db, version)
 		version++
 		db.Exec("DELETE FROM schema_version")
 		db.Exec("INSERT INTO schema_version (version) VALUES (?)", version)
@@ -148,7 +149,7 @@ func TestMigrationFromV8ToCurrent(t *testing.T) {
 		t.Errorf("schema version after migration = %d, want %d", migratedVersion, models.CurrentSchemaVersion)
 	}
 
-	createTables()
+	database.CreateTables(db)
 
 	eventCount = 0
 	db.QueryRow("SELECT COUNT(*) FROM timeline_events").Scan(&eventCount)

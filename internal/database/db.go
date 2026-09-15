@@ -7,6 +7,8 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+
+	"traces/internal/models"
 )
 
 // Config holds database configuration paths.
@@ -45,13 +47,13 @@ func Migrate(db *sql.DB) {
 	}
 
 	if schemaVersion < 0 {
-		createTables(db)
+		CreateTables(db)
 		CreateFTS5Table(db)
 		seedDefaults(db)
 		schemaVersion = 0
 	}
 
-	for v := schemaVersion; v < 21; v++ {
+	for v := schemaVersion; v < models.CurrentSchemaVersion; v++ {
 		RunMigration(db, v)
 		_, _ = db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", v+1)
 	}
@@ -59,7 +61,7 @@ func Migrate(db *sql.DB) {
 	CreateFTS5Table(db)
 }
 
-func createTables(db *sql.DB) {
+func CreateTables(db *sql.DB) {
 	queries := []string{
 		`CREATE TABLE IF NOT EXISTS timeline_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -139,7 +141,10 @@ func createTables(db *sql.DB) {
 			color TEXT DEFAULT '#7c3aed',
 			avatar_url TEXT DEFAULT '',
 			password_hash TEXT DEFAULT '',
-			created_at TEXT DEFAULT CURRENT_TIMESTAMP
+			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+			oidc_sub TEXT DEFAULT '',
+			auth_method TEXT DEFAULT '',
+			is_admin INTEGER DEFAULT 0
 		)`,
 		`CREATE TABLE IF NOT EXISTS ollama_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -472,6 +477,13 @@ func RunMigration(db *sql.DB, fromVersion int) {
 		)`)
 		_, _ = db.Exec(`INSERT OR IGNORE INTO bgg_settings (id, username, enabled, last_sync) VALUES (1, '', 0, '')`)
 		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_events_bgg_ref ON timeline_events(source_ref) WHERE source='bgg'`)
+		_, _ = db.Exec(`UPDATE timeline_events SET media_type='boardgame' WHERE source='bgg' AND (media_type IS NULL OR media_type='')`)
+	case 21:
+		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN oidc_sub TEXT DEFAULT ''`)
+		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN auth_method TEXT DEFAULT ''`)
+		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`)
+		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(oidc_sub) WHERE oidc_sub <> ''`)
+		_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`)
 	}
 }
 

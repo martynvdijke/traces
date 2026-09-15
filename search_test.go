@@ -5,6 +5,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+
+	"traces/internal/database"
 )
 
 func TestFTSSearch(t *testing.T) {
@@ -21,7 +23,7 @@ func TestFTSSearch(t *testing.T) {
 		tags TEXT
 	)`)
 
-	createFTS5Table()
+	database.CreateFTS5Table(db)
 
 	var ftsAvailable bool
 	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='events_fts'").Scan(&ftsAvailable)
@@ -214,7 +216,7 @@ func TestGlobalSearch(t *testing.T) {
 		name TEXT
 	)`)
 
-	createFTS5Table()
+	database.CreateFTS5Table(db)
 
 	var ftsAvailable bool
 	db.QueryRow("SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='events_fts'").Scan(&ftsAvailable)
@@ -325,7 +327,7 @@ func TestSearchEventsCombinedFilters(t *testing.T) {
 	db.Exec("INSERT INTO persons (id, name) VALUES (1, 'Alice')")
 	db.Exec("INSERT INTO persons (id, name) VALUES (2, 'Bob')")
 
-	createFTS5Table()
+	database.CreateFTS5Table(db)
 
 	db.Exec("INSERT INTO timeline_events (title, event_date, location, media_type, tags, person_id) VALUES ('Beach Party', '2026-07-15', 'Miami', 'image', 'beach, summer', 1)")
 	db.Exec("INSERT INTO timeline_events (title, event_date, location, media_type, tags, person_id) VALUES ('Mountain Trip', '2026-07-20', 'Denver', 'video', 'hiking, summer', 2)")

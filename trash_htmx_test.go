@@ -11,6 +11,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
+	"traces/internal/database"
 	"traces/internal/models"
 )
 
@@ -199,7 +200,8 @@ func TestHTMXEndpoints(t *testing.T) {
 
 	newTestDB(t)
 
-	initDB()
+	database.Migrate(db)
+	database.SeedEvents(db, basePath)
 	initTemplates()
 
 	sessionStore = make(map[string]sessionInfo)
