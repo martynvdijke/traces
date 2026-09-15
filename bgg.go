@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+	"traces/internal/httpx"
 	"traces/internal/models"
 )
 
@@ -40,7 +41,7 @@ func saveBGGConfig(c *gin.Context) {
 	}
 	_, err := db.Exec(`UPDATE bgg_settings SET username=?, enabled=? WHERE id=1`, cfg.Username, enabledInt)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	bggUsername = cfg.Username

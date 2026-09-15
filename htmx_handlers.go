@@ -15,6 +15,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 
+	"traces/internal/httpx"
 	"traces/internal/models"
 )
 
@@ -59,7 +60,7 @@ func registerHTMXRoutes(r *gin.Engine) {
 	}
 }
 
-func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string) ([]EventRow, error) {
+func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string) ([]httpx.EventRow, error) {
 	query := `SELECT e.id, e.title, e.event_date, e.location, e.media_type, COALESCE(e.media_url,''), e.is_favorite, e.person_id, COALESCE(e.tags,''), e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
 		p.name, p.color
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
@@ -114,9 +115,9 @@ func getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string
 	}
 	defer rows.Close()
 
-	var events []EventRow
+	var events []httpx.EventRow
 	for rows.Next() {
-		var e EventRow
+		var e httpx.EventRow
 		var personID sql.NullInt64
 		var personName, personColor sql.NullString
 		var lat, lng sql.NullFloat64
@@ -165,7 +166,7 @@ func htmxListEvents(c *gin.Context) {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	renderTemplate(c.Writer, "event-list", events)
+	htmxRenderer.Render(c.Writer, "event-list", events)
 }
 
 func htmxSearchEvents(c *gin.Context) {
@@ -180,7 +181,7 @@ func htmxSearchEvents(c *gin.Context) {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	renderTemplate(c.Writer, "event-list", events)
+	htmxRenderer.Render(c.Writer, "event-list", events)
 }
 
 func htmxReadForm(c *gin.Context) map[string]string {
@@ -241,7 +242,7 @@ func htmxSaveEvent(c *gin.Context) {
 
 	desc := data["description"]
 
-	id := parseIntOrZero(idStr)
+	id := httpx.ParseIntOrZero(idStr)
 
 	var personID int
 	if personName != "" {
@@ -293,7 +294,7 @@ func htmxSaveEvent(c *gin.Context) {
 		return
 	}
 	c.Header("HX-Trigger", "reloadEvents")
-	renderTemplate(c.Writer, "event-list", events)
+	htmxRenderer.Render(c.Writer, "event-list", events)
 }
 
 func htmxDeleteEvent(c *gin.Context) {
@@ -311,7 +312,7 @@ func htmxDeleteEvent(c *gin.Context) {
 		c.Status(http.StatusInternalServerError)
 		return
 	}
-	renderTemplate(c.Writer, "event-list", events)
+	htmxRenderer.Render(c.Writer, "event-list", events)
 }
 
 func htmxEditEventForm(c *gin.Context) {
@@ -322,7 +323,7 @@ func htmxEditEventForm(c *gin.Context) {
 		return
 	}
 
-	var e EventRow
+	var e httpx.EventRow
 	var personID sql.NullInt64
 	var personName, personColor sql.NullString
 	var lat, lng sql.NullFloat64
@@ -365,7 +366,7 @@ func htmxEditEventForm(c *gin.Context) {
 		e.Longitude = lng.Float64
 	}
 
-	renderTemplate(c.Writer, "event-form", e)
+	htmxRenderer.Render(c.Writer, "event-form", e)
 }
 
 func htmxListPersons(c *gin.Context) {
@@ -387,20 +388,20 @@ func htmxListPersons(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var persons []PersonRow
+	var persons []httpx.PersonRow
 	for rows.Next() {
-		var p PersonRow
+		var p httpx.PersonRow
 		if err := rows.Scan(&p.ID, &p.Name, &p.AvatarURL, &p.Bio, &p.BirthDate, &p.Color, &p.EventCount); err == nil {
 			persons = append(persons, p)
 		}
 	}
 
-	renderTemplate(c.Writer, "person-list", persons)
+	htmxRenderer.Render(c.Writer, "person-list", persons)
 }
 
 func htmxSavePerson(c *gin.Context) {
 	data := htmxReadForm(c)
-	id := parseIntOrZero(data["id"])
+	id := httpx.ParseIntOrZero(data["id"])
 	name := data["name"]
 	bio := data["bio"]
 	birthDate := data["birth_date"]
@@ -445,7 +446,7 @@ func htmxPersonEvents(c *gin.Context) {
 		return
 	}
 
-	renderTemplate(c.Writer, "event-list", events)
+	htmxRenderer.Render(c.Writer, "event-list", events)
 }
 
 func htmxListTags(c *gin.Context) {
@@ -458,15 +459,15 @@ func htmxListTags(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var tags []TagRow
+	var tags []httpx.TagRow
 	for rows.Next() {
-		var t TagRow
+		var t httpx.TagRow
 		if err := rows.Scan(&t.Name, &t.Count); err == nil && t.Name != "" {
 			tags = append(tags, t)
 		}
 	}
 
-	renderTemplate(c.Writer, "tag-table", tags)
+	htmxRenderer.Render(c.Writer, "tag-table", tags)
 }
 
 func htmxDeleteTag(c *gin.Context) {
@@ -499,20 +500,20 @@ func htmxListCollections(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var collections []CollectionRow
+	var collections []httpx.CollectionRow
 	for rows.Next() {
-		var col CollectionRow
+		var col httpx.CollectionRow
 		if err := rows.Scan(&col.ID, &col.Name, &col.Description, &col.Color, &col.EventCount); err == nil {
 			collections = append(collections, col)
 		}
 	}
 
-	renderTemplate(c.Writer, "collection-list-htmx", collections)
+	htmxRenderer.Render(c.Writer, "collection-list-htmx", collections)
 }
 
 func htmxSaveCollection(c *gin.Context) {
 	data := htmxReadForm(c)
-	id := parseIntOrZero(data["id"])
+	id := httpx.ParseIntOrZero(data["id"])
 	name := data["name"]
 	description := data["description"]
 	color := data["color"]
@@ -552,11 +553,11 @@ func htmxEditCollectionForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		renderTemplate(c.Writer, "collection-form", CollectionRow{Color: models.DefaultColor})
+		htmxRenderer.Render(c.Writer, "collection-form", httpx.CollectionRow{Color: models.DefaultColor})
 		return
 	}
 
-	var col CollectionRow
+	var col httpx.CollectionRow
 	err = db.QueryRow("SELECT id, name, COALESCE(description,''), COALESCE(color,'#7c3aed'), 0 FROM collections WHERE id=?", id).Scan(
 		&col.ID, &col.Name, &col.Description, &col.Color, &col.EventCount)
 	if err != nil {
@@ -564,7 +565,7 @@ func htmxEditCollectionForm(c *gin.Context) {
 		return
 	}
 
-	renderTemplate(c.Writer, "collection-form", col)
+	htmxRenderer.Render(c.Writer, "collection-form", col)
 }
 
 func htmxListTemplates(c *gin.Context) {
@@ -576,20 +577,20 @@ func htmxListTemplates(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var templates []TemplateRow
+	var templates []httpx.TemplateRow
 	for rows.Next() {
-		var t TemplateRow
+		var t httpx.TemplateRow
 		if err := rows.Scan(&t.ID, &t.Title, &t.Tags, &t.Location, &t.PersonName); err == nil {
 			templates = append(templates, t)
 		}
 	}
 
-	renderTemplate(c.Writer, "template-list-htmx", templates)
+	htmxRenderer.Render(c.Writer, "template-list-htmx", templates)
 }
 
 func htmxSaveTemplate(c *gin.Context) {
 	data := htmxReadForm(c)
-	id := parseIntOrZero(data["id"])
+	id := httpx.ParseIntOrZero(data["id"])
 	title := data["title"]
 	tags := data["tags"]
 	location := data["location"]
@@ -625,11 +626,11 @@ func htmxEditTemplateForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		renderTemplate(c.Writer, "template-form", TemplateRow{})
+		htmxRenderer.Render(c.Writer, "template-form", httpx.TemplateRow{})
 		return
 	}
 
-	var t TemplateRow
+	var t httpx.TemplateRow
 	err = db.QueryRow("SELECT id, title, COALESCE(tags,''), COALESCE(location,''), '' FROM event_templates WHERE id=?", id).Scan(
 		&t.ID, &t.Title, &t.Tags, &t.Location, &t.PersonName)
 	if err != nil {
@@ -637,7 +638,7 @@ func htmxEditTemplateForm(c *gin.Context) {
 		return
 	}
 
-	renderTemplate(c.Writer, "template-form", t)
+	htmxRenderer.Render(c.Writer, "template-form", t)
 }
 
 func htmxListUsers(c *gin.Context) {
@@ -650,9 +651,9 @@ func htmxListUsers(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var users []UserRow
+	var users []httpx.UserRow
 	for rows.Next() {
-		var u UserRow
+		var u httpx.UserRow
 		if err := rows.Scan(&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Color, &u.EventCount); err == nil {
 			if u.DisplayName == "" {
 				u.DisplayName = u.Username
@@ -661,12 +662,12 @@ func htmxListUsers(c *gin.Context) {
 		}
 	}
 
-	renderTemplate(c.Writer, "user-list-htmx", users)
+	htmxRenderer.Render(c.Writer, "user-list-htmx", users)
 }
 
 func htmxSaveUser(c *gin.Context) {
 	data := htmxReadForm(c)
-	id := parseIntOrZero(data["id"])
+	id := httpx.ParseIntOrZero(data["id"])
 	username := data["username"]
 	displayName := data["display_name"]
 	email := data["email"]
@@ -707,11 +708,11 @@ func htmxEditUserForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		renderTemplate(c.Writer, "user-form", UserRow{Color: models.DefaultColor})
+		htmxRenderer.Render(c.Writer, "user-form", httpx.UserRow{Color: models.DefaultColor})
 		return
 	}
 
-	var u UserRow
+	var u httpx.UserRow
 	err = db.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(email,''), COALESCE(color,'#7c3aed'), 0 FROM users WHERE id=?", id).Scan(
 		&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Color, &u.EventCount)
 	if err != nil {
@@ -719,7 +720,7 @@ func htmxEditUserForm(c *gin.Context) {
 		return
 	}
 
-	renderTemplate(c.Writer, "user-form", u)
+	htmxRenderer.Render(c.Writer, "user-form", u)
 }
 
 func htmxListTrash(c *gin.Context) {
@@ -730,15 +731,15 @@ func htmxListTrash(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	var trash []TrashRow
+	var trash []httpx.TrashRow
 	for rows.Next() {
-		var t TrashRow
+		var t httpx.TrashRow
 		if err := rows.Scan(&t.ID, &t.Title, &t.Date, &t.DeletedAt); err == nil {
 			trash = append(trash, t)
 		}
 	}
 
-	renderTemplate(c.Writer, "trash-list-htmx", trash)
+	htmxRenderer.Render(c.Writer, "trash-list-htmx", trash)
 }
 
 func htmxRestoreEvent(c *gin.Context) {

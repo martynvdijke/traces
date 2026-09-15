@@ -61,13 +61,13 @@ import (
 	"github.com/rwcarlsen/goexif/exif"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/attribute"
-	"go.opentelemetry.io/otel/codes"
 	"go.opentelemetry.io/otel/trace"
 	"golang.org/x/crypto/bcrypt"
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"traces/internal/database"
+	"traces/internal/httpx"
 	"traces/internal/logging"
 	"traces/internal/media"
 	"traces/internal/models"
@@ -120,7 +120,15 @@ var (
 	logService         *logging.LogService
 	tel                *telemetry.Telemetry
 	mediaSvc           *media.Media
+	htmxRenderer       *httpx.Renderer
 )
+
+func currentTracer() trace.Tracer {
+	if tel != nil {
+		return tel.Tracer()
+	}
+	return nil
+}
 
 func main() {
 	if os.Getenv("DOCKER") != "true" {
@@ -171,7 +179,11 @@ func main() {
 	database.Migrate(db)
 	publicMode = os.Getenv("PUBLIC_MODE") == "true"
 	database.SeedEvents(db, basePath)
-	initTemplates()
+	var err2 error
+	htmxRenderer, err2 = httpx.NewRenderer()
+	if err2 != nil {
+		log.Fatalf("[HTML] Failed to parse templates: %v", err2)
+	}
 
 	// Initialize the logging service
 	logService = logging.New(db, func() bool { return otelLogsEnabled })
@@ -633,24 +645,6 @@ func getCSRFToken(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"token": token})
 }
 
-// startSpan creates a child span from the request context and returns the context + span.
-// Use it in handlers to add trace instrumentation.
-func startSpan(c *gin.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	if tel != nil && tel.Tracer() != nil {
-		return tel.Tracer().Start(c.Request.Context(), name, opts...)
-	}
-	return c.Request.Context(), trace.SpanFromContext(c.Request.Context())
-}
-
-func serverError(c *gin.Context, err error) {
-	log.Printf("[ERROR] %v", err)
-	if span := trace.SpanFromContext(c.Request.Context()); span.IsRecording() {
-		span.RecordError(err)
-		span.SetStatus(codes.Error, err.Error())
-	}
-	c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
-}
-
 // @Summary Get public config
 // @Description Returns public configuration (umami analytics settings)
 // @Tags Info
@@ -848,7 +842,7 @@ func handleLogout(c *gin.Context) {
 // @Success 200 {array} object "timeline events"
 // @Router /events [get]
 func getEvents(c *gin.Context) {
-	ctx, span := startSpan(c, "getEvents")
+	ctx, span := httpx.StartSpan(currentTracer(), c, "getEvents")
 	defer span.End()
 
 	filters := EventFilters{
@@ -880,7 +874,7 @@ func getEvents(c *gin.Context) {
 	rows, err := db.Query(query, args...)
 	tel.RecordDBQuery("getEvents", time.Since(_qStart))
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -901,7 +895,7 @@ func getEventsFull(c *gin.Context) {
 	query, _ := BuildEventQuery(EventFilters{Sort: "asc"})
 	rows, err := db.Query(query)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -986,7 +980,7 @@ func getPublicEvents(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1010,7 +1004,7 @@ func getContributions(c *gin.Context) {
 
 	rows, err := db.Query(`SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date) = ?`, year)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1036,7 +1030,7 @@ func getContributions(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /events [post]
 func saveEvent(c *gin.Context) {
-	_, span := startSpan(c, "saveEvent")
+	_, span := httpx.StartSpan(currentTracer(), c, "saveEvent")
 	defer span.End()
 
 	var e models.TimelineEvent
@@ -1078,7 +1072,7 @@ func saveEvent(c *gin.Context) {
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
 		tel.RecordDBQuery("saveEvent-insert", time.Since(_qStart))
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		id, _ := result.LastInsertId()
@@ -1090,7 +1084,7 @@ func saveEvent(c *gin.Context) {
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID, e.ID)
 		tel.RecordDBQuery("saveEvent-update", time.Since(_qStart))
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		action = "updated"
@@ -1112,7 +1106,7 @@ func saveEvent(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /events [delete]
 func deleteEvent(c *gin.Context) {
-	_, span := startSpan(c, "deleteEvent")
+	_, span := httpx.StartSpan(currentTracer(), c, "deleteEvent")
 	defer span.End()
 
 	idStr := c.Query("id")
@@ -1131,7 +1125,7 @@ func deleteEvent(c *gin.Context) {
 	_, err = db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=?", id)
 	tel.RecordDBQuery("deleteEvent", time.Since(_qStart))
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
@@ -1151,7 +1145,7 @@ func getTrashEvents(c *gin.Context) {
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE e.deleted_at != '' AND e.deleted_at IS NOT NULL ORDER BY e.deleted_at DESC`)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1256,7 +1250,7 @@ func restoreEvents(c *gin.Context) {
 
 	_, err := db.Exec("UPDATE timeline_events SET deleted_at='' WHERE id IN ("+inClause+")", args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "restored": len(input.IDs)})
@@ -1271,7 +1265,7 @@ func restoreEvents(c *gin.Context) {
 func emptyTrash(c *gin.Context) {
 	res, err := db.Exec("DELETE FROM timeline_events WHERE deleted_at != '' AND deleted_at IS NOT NULL")
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	count, _ := res.RowsAffected()
@@ -1291,7 +1285,7 @@ func emptyTrash(c *gin.Context) {
 // @Failure 400 {object} map[string]string
 // @Router /upload [post]
 func handleUpload(c *gin.Context) {
-	_, span := startSpan(c, "handleUpload")
+	_, span := httpx.StartSpan(currentTracer(), c, "handleUpload")
 	defer span.End()
 
 	mediaType := c.PostForm("media_type")
@@ -1495,7 +1489,7 @@ func searchEvents(c *gin.Context) {
 
 	rows, err := db.Query(sqlStr, args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1630,7 +1624,7 @@ func globalSearchEvents(c *gin.Context) {
 
 	rows, err := db.Query(sqlStr, args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1780,14 +1774,14 @@ func getPersonEvents(c *gin.Context) {
 		c.JSON(http.StatusNotFound, gin.H{"error": "Person not found"})
 		return
 	} else if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
 	query, args := BuildEventQuery(EventFilters{PersonID: idStr, Sort: "asc"})
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -1845,7 +1839,7 @@ func cloneEvent(c *gin.Context) {
 	_, err = db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, media_url, thumbnail, tags, sort_order, recurring, weather_data, event_start_time, event_end_time, user_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.Tags, e.SortOrder, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
@@ -1883,7 +1877,7 @@ func importEvents(c *gin.Context) {
 		reader := csv.NewReader(file)
 		records, err := reader.ReadAll()
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 
@@ -1973,7 +1967,7 @@ func exportEvents(c *gin.Context) {
 
 	rows, err := db.Query(sqlStr, args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2019,7 +2013,7 @@ func getEventsICS(c *gin.Context) {
 		ORDER BY e.event_date ASC`
 	rows, err := db.Query(sqlStr, year)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2127,7 +2121,7 @@ func toggleFavorite(c *gin.Context) {
 	db.QueryRow("SELECT is_favorite FROM timeline_events WHERE id=?", input.ID).Scan(&current)
 	_, err := db.Exec("UPDATE timeline_events SET is_favorite=? WHERE id=?", !current, input.ID)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok", "is_favorite": !current})
@@ -2170,14 +2164,14 @@ func batchEvents(c *gin.Context) {
 	case "delete":
 		_, err := db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id IN ("+inClause+")", args...)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "deleted": len(input.IDs)})
 	case "permanent_delete":
 		_, err := db.Exec("DELETE FROM timeline_events WHERE id IN ("+inClause+")", args...)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "deleted": len(input.IDs)})
@@ -2203,7 +2197,7 @@ func batchEvents(c *gin.Context) {
 		}
 		_, err := db.Exec("UPDATE timeline_events SET person_id=? WHERE id IN ("+inClause+")", append([]any{*input.PersonID}, args...)...)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": len(input.IDs)})
@@ -2214,7 +2208,7 @@ func batchEvents(c *gin.Context) {
 		}
 		_, err := db.Exec("UPDATE timeline_events SET user_id=? WHERE id IN ("+inClause+")", append([]any{*input.UserID}, args...)...)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": len(input.IDs)})
@@ -2234,7 +2228,7 @@ func getCollections(c *gin.Context) {
 		(SELECT COUNT(*) FROM collection_events ce WHERE ce.collection_id = c.id) as event_count
 		FROM collections c ORDER BY c.name`)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2274,7 +2268,7 @@ func saveCollection(c *gin.Context) {
 	if col.ID == 0 {
 		result, err := db.Exec("INSERT INTO collections (name, description, color) VALUES (?, ?, ?)", col.Name, col.Description, col.Color)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		id, _ := result.LastInsertId()
@@ -2282,7 +2276,7 @@ func saveCollection(c *gin.Context) {
 	} else {
 		_, err := db.Exec("UPDATE collections SET name=?, description=?, color=? WHERE id=?", col.Name, col.Description, col.Color, col.ID)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 	}
@@ -2307,7 +2301,7 @@ func deleteCollection(c *gin.Context) {
 	db.Exec("DELETE FROM collection_events WHERE collection_id=?", id)
 	_, err = db.Exec("DELETE FROM collections WHERE id=?", id)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -2338,7 +2332,7 @@ func getCollectionEvents(c *gin.Context) {
 
 	rows, err := db.Query(query, id)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2372,7 +2366,7 @@ func addEventToCollection(c *gin.Context) {
 	}
 	_, err = db.Exec("INSERT OR IGNORE INTO collection_events (collection_id, event_id) VALUES (?, ?)", colID, input.EventID)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -2401,7 +2395,7 @@ func removeEventFromCollection(c *gin.Context) {
 	}
 	_, err = db.Exec("DELETE FROM collection_events WHERE collection_id=? AND event_id=?", colID, eventID)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -2416,7 +2410,7 @@ func removeEventFromCollection(c *gin.Context) {
 func getTemplates(c *gin.Context) {
 	rows, err := db.Query("SELECT id, title, description, tags, person_id, user_id, location, media_type, created_at FROM event_templates ORDER BY title")
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2464,7 +2458,7 @@ func saveTemplate(c *gin.Context) {
 		result, err := db.Exec("INSERT INTO event_templates (title, description, tags, person_id, user_id, location, media_type) VALUES (?, ?, ?, ?, ?, ?, ?)",
 			t.Title, t.Description, t.Tags, pid, t.UserID, t.Location, t.MediaType)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		id, _ := result.LastInsertId()
@@ -2473,7 +2467,7 @@ func saveTemplate(c *gin.Context) {
 		_, err := db.Exec("UPDATE event_templates SET title=?, description=?, tags=?, person_id=?, user_id=?, location=?, media_type=? WHERE id=?",
 			t.Title, t.Description, t.Tags, pid, t.UserID, t.Location, t.MediaType, t.ID)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 	}
@@ -2496,7 +2490,7 @@ func deleteTemplate(c *gin.Context) {
 	}
 	_, err = db.Exec("DELETE FROM event_templates WHERE id=?", id)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
@@ -2552,7 +2546,7 @@ func applyTemplate(c *gin.Context) {
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
 		event.Title, event.Description, event.Date, event.Location, event.MediaType, event.Tags, event.UserID, event.PersonID)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	id, _ := result.LastInsertId()
@@ -2681,7 +2675,7 @@ func getWrapped(c *gin.Context) {
 // @Success 200 {object} object "event statistics"
 // @Router /stats [get]
 func getEventStats(c *gin.Context) {
-	_, span := startSpan(c, "getEventStats")
+	_, span := httpx.StartSpan(currentTracer(), c, "getEventStats")
 	defer span.End()
 
 	year := c.Query("year")
@@ -2799,7 +2793,7 @@ func getTags(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2855,7 +2849,7 @@ func renameTag(c *gin.Context) {
 
 	rows, err := db.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.OldName+"%")
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2912,7 +2906,7 @@ func deleteTag(c *gin.Context) {
 
 	rows, err := db.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.Name+"%")
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -2969,7 +2963,7 @@ func mergeTags(c *gin.Context) {
 
 	rows, err := db.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.Source+"%")
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -3032,7 +3026,7 @@ func getPersons(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -3070,7 +3064,7 @@ func savePerson(c *gin.Context) {
 		result, err := db.Exec("INSERT INTO persons (name, avatar_url, bio, birth_date, color) VALUES (?, ?, ?, ?, ?)",
 			p.Name, p.AvatarURL, p.Bio, p.BirthDate, p.Color)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		id, _ := result.LastInsertId()
@@ -3080,7 +3074,7 @@ func savePerson(c *gin.Context) {
 		_, err := db.Exec("UPDATE persons SET name=?, avatar_url=?, bio=?, birth_date=?, color=? WHERE id=?",
 			p.Name, p.AvatarURL, p.Bio, p.BirthDate, p.Color, p.ID)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		sendGotifyNotification(fmt.Sprintf("Person updated: %s", p.Name), p.Bio)
@@ -3140,7 +3134,7 @@ func getMapData(c *gin.Context) {
 
 	rows, err := db.Query(query, args...)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -3225,7 +3219,7 @@ func saveGotifyConfig(c *gin.Context) {
 
 	_, err := db.Exec(`UPDATE gotify_settings SET url=?, token=?, enabled=? WHERE id=1`, cfg.URL, cfg.Token, enabledInt)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
@@ -3301,7 +3295,7 @@ func saveImmichConfig(c *gin.Context) {
 
 	_, err := db.Exec(`UPDATE immich_settings SET url=?, api_key=?, enabled=? WHERE id=1`, cfg.URL, cfg.APIKey, enabledInt)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
@@ -3340,7 +3334,7 @@ func saveUmamiConfig(c *gin.Context) {
 
 	_, err := db.Exec(`UPDATE umami_settings SET url=?, site_id=?, enabled=? WHERE id=1`, cfg.URL, cfg.SiteID, enabledInt)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
@@ -3390,7 +3384,7 @@ func saveOtelConfig(c *gin.Context) {
 	_, err := db.Exec(`UPDATE otel_settings SET endpoint=?, traces_enabled=?, metrics_enabled=?, logs_enabled=? WHERE id=1`,
 		cfg.Endpoint, tEnabled, mEnabled, lEnabled)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
@@ -3470,7 +3464,7 @@ func fetchImmichMemories(c *gin.Context) {
 
 	req, err := http.NewRequest("GET", strings.TrimRight(immichURL, "/")+"/api/timeline/memory", nil)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	req.Header.Set("x-api-key", immichAPIKey)
@@ -3492,7 +3486,7 @@ func fetchImmichMemories(c *gin.Context) {
 
 	var timeline []immichTimelineResponse
 	if err := json.NewDecoder(resp.Body).Decode(&timeline); err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
@@ -3620,7 +3614,7 @@ func importImmichMemories(c *gin.Context) {
 // @Success 200 {array} object "memory events"
 // @Router /memories [get]
 func getMemories(c *gin.Context) {
-	_, span := startSpan(c, "getMemories")
+	_, span := httpx.StartSpan(currentTracer(), c, "getMemories")
 	defer span.End()
 
 	var cfg models.MemoriesConfig
@@ -3662,7 +3656,7 @@ func getMemories(c *gin.Context) {
 	}
 
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -3767,7 +3761,7 @@ type trmnlSummary struct {
 // @Success 200 {object} object "monthly highlights"
 // @Router /trmnl/summary [get]
 func getTRMNLSummary(c *gin.Context) {
-	_, span := startSpan(c, "getTRMNLSummary")
+	_, span := httpx.StartSpan(currentTracer(), c, "getTRMNLSummary")
 	defer span.End()
 
 	// Public events only, unless the instance runs in public mode (matches /api/public).
@@ -3784,7 +3778,7 @@ func getTRMNLSummary(c *gin.Context) {
 		ORDER BY e.is_favorite DESC, e.event_date DESC
 		LIMIT 8`)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -3814,7 +3808,7 @@ func getTRMNLSummary(c *gin.Context) {
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id
 		WHERE ` + filter)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer sRows.Close()
@@ -3927,7 +3921,7 @@ func saveMemoriesConfig(c *gin.Context) {
 	}
 	_, err := db.Exec(`UPDATE memories_settings SET enabled=?, days_window=?, email_enabled=? WHERE id=1`, enabledInt, cfg.DaysWindow, emailInt)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	if logService != nil {
@@ -3975,7 +3969,7 @@ func saveEmailConfig(c *gin.Context) {
 	_, err := db.Exec(`UPDATE email_settings SET smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=?, from_addr=?, to_addr=? WHERE id=1`,
 		cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.FromAddr, cfg.ToAddr)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	if logService != nil {
@@ -4136,7 +4130,7 @@ func sendMemoriesEmailHandler(c *gin.Context) {
 	}
 
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -4533,7 +4527,7 @@ func getUsers(c *gin.Context) {
 		(SELECT COUNT(*) FROM timeline_events WHERE user_id = users.id) as event_count
 		FROM users ORDER BY display_name ASC`)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -4595,7 +4589,7 @@ func saveUser(c *gin.Context) {
 		result, err := db.Exec("INSERT INTO users (username, display_name, email, color, avatar_url, password_hash) VALUES (?, ?, ?, ?, ?, ?)",
 			u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, passwordHash)
 		if err != nil {
-			serverError(c, err)
+			httpx.ServerError(c, err)
 			return
 		}
 		id, _ := result.LastInsertId()
@@ -4605,14 +4599,14 @@ func saveUser(c *gin.Context) {
 			_, err := db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=?, avatar_url=?, password_hash=? WHERE id=?",
 				u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, passwordHash, u.ID)
 			if err != nil {
-				serverError(c, err)
+				httpx.ServerError(c, err)
 				return
 			}
 		} else {
 			_, err := db.Exec("UPDATE users SET username=?, display_name=?, email=?, color=?, avatar_url=? WHERE id=?",
 				u.Username, u.DisplayName, u.Email, u.Color, u.AvatarURL, u.ID)
 			if err != nil {
-				serverError(c, err)
+				httpx.ServerError(c, err)
 				return
 			}
 		}
@@ -4668,7 +4662,7 @@ func getUserEvents(c *gin.Context) {
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.user_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer rows.Close()
@@ -4737,7 +4731,7 @@ func generateRecurringEvents(c *gin.Context) {
 
 	tx, err := db.Begin()
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	defer tx.Rollback()
@@ -4770,7 +4764,7 @@ func generateRecurringEvents(c *gin.Context) {
 	}
 
 	if err := tx.Commit(); err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 
@@ -4822,7 +4816,7 @@ func saveOllamaConfig(c *gin.Context) {
 	}
 	_, err := db.Exec(`UPDATE ollama_settings SET url=?, model=?, enabled=? WHERE id=1`, cfg.URL, cfg.Model, enabledInt)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	if logService != nil {
@@ -4994,7 +4988,7 @@ func saveBackupConfig(c *gin.Context) {
 	}
 	_, err := db.Exec(`UPDATE backup_settings SET retention_days=?, auto_prune=? WHERE id=1`, cfg.RetentionDays, autoPruneInt)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	if logService != nil {

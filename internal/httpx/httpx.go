@@ -1,7 +1,8 @@
-package main
+package httpx
 
 import (
 	"bytes"
+	"context"
 	"html/template"
 	"log"
 	"net/http"
@@ -9,10 +10,46 @@ import (
 	"strings"
 	"time"
 
+	"github.com/gin-gonic/gin"
+	"go.opentelemetry.io/otel/codes"
+	"go.opentelemetry.io/otel/trace"
+
 	"traces/internal/models"
 )
 
-var htmxTemplates *template.Template
+type Renderer struct {
+	tpl *template.Template
+}
+
+func NewRenderer() (*Renderer, error) {
+	funcMap := template.FuncMap{
+		"escapeHtml":     models.EscapeHtml,
+		"renderMarkdown": models.RenderMarkdown,
+		"getMediaIcon":   models.GetMediaIcon,
+		"formatDate":     FormatDateTpl,
+		"formatDateTime": formatDateTime,
+		"truncate":       truncate,
+		"upper":          upper,
+		"split":          split,
+		"now":            time.Now,
+	}
+	tpl, err := template.New("").Funcs(funcMap).Parse(htmxTemplateSource)
+	if err != nil {
+		return nil, err
+	}
+	return &Renderer{tpl: tpl}, nil
+}
+
+func (r *Renderer) Render(w http.ResponseWriter, name string, data any) {
+	var buf bytes.Buffer
+	if err := r.tpl.ExecuteTemplate(&buf, name, data); err != nil {
+		log.Printf("[HTMX] Template error %s: %v", name, err)
+		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "text/html; charset=utf-8")
+	w.Write(buf.Bytes())
+}
 
 func FormatDateTpl(dateStr string) string {
 	date, err := time.Parse("2006-01-02", dateStr)
@@ -40,15 +77,20 @@ func split(s, sep string) []string {
 	return strings.Split(s, sep)
 }
 
-func renderTemplate(w http.ResponseWriter, name string, data any) {
-	var buf bytes.Buffer
-	if err := htmxTemplates.ExecuteTemplate(&buf, name, data); err != nil {
-		log.Printf("[HTMX] Template error %s: %v", name, err)
-		http.Error(w, "Template error: "+err.Error(), http.StatusInternalServerError)
-		return
+func formatDateTime(dateStr string) string {
+	date, err := time.Parse("2006-01-02", dateStr)
+	if err != nil {
+		return dateStr
 	}
-	w.Header().Set("Content-Type", "text/html; charset=utf-8")
-	w.Write(buf.Bytes())
+	return date.Format("Jan 2, 2006")
+}
+
+func ParseIntOrZero(s string) int {
+	i, err := strconv.Atoi(s)
+	if err != nil {
+		return 0
+	}
+	return i
 }
 
 type EventRow struct {
@@ -118,39 +160,20 @@ type TrashRow struct {
 	DeletedAt string
 }
 
-func initTemplates() {
-	funcMap := template.FuncMap{
-		"escapeHtml":     models.EscapeHtml,
-		"renderMarkdown": models.RenderMarkdown,
-		"getMediaIcon":   models.GetMediaIcon,
-		"formatDate":     FormatDateTpl,
-		"formatDateTime": formatDateTime,
-		"truncate":       truncate,
-		"upper":          upper,
-		"split":          split,
-		"now":            time.Now,
+func ServerError(c *gin.Context, err error) {
+	log.Printf("[ERROR] %v", err)
+	if span := trace.SpanFromContext(c.Request.Context()); span.IsRecording() {
+		span.RecordError(err)
+		span.SetStatus(codes.Error, err.Error())
 	}
-	var err error
-	htmxTemplates, err = template.New("").Funcs(funcMap).Parse(htmxTemplateSource)
-	if err != nil {
-		log.Fatalf("[HTMX] Failed to parse templates: %v", err)
-	}
+	c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})
 }
 
-func formatDateTime(dateStr string) string {
-	date, err := time.Parse("2006-01-02", dateStr)
-	if err != nil {
-		return dateStr
+func StartSpan(tracer trace.Tracer, c *gin.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
+	if tracer != nil {
+		return tracer.Start(c.Request.Context(), name, opts...)
 	}
-	return date.Format("Jan 2, 2006")
-}
-
-func parseIntOrZero(s string) int {
-	i, err := strconv.Atoi(s)
-	if err != nil {
-		return 0
-	}
-	return i
+	return c.Request.Context(), trace.SpanFromContext(c.Request.Context())
 }
 
 const htmxTemplateSource = `

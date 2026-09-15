@@ -23,6 +23,7 @@ import (
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
 
+	"traces/internal/httpx"
 	"traces/internal/models"
 )
 
@@ -168,17 +169,17 @@ func handleOIDCLogin(c *gin.Context) {
 	}
 	state, err := oidcRandomURLSafe(24)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	nonce, err := oidcRandomURLSafe(24)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	verifier, err := oidcRandomURLSafe(32)
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	setOIDCTempCookie(c, "oidc_state", state)
@@ -269,14 +270,14 @@ func handleOIDCCallback(c *gin.Context) {
 	userID, err := oidcLinkOrProvision(idToken.Subject, email, name, claims.Groups)
 	if err != nil {
 		clearOIDCTempCookies(c)
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	clearOIDCTempCookies(c)
 	// Same session cookie shape as password login — AuthMiddleware accepts it as-is.
 	sessionID, err := generateSessionID()
 	if err != nil {
-		serverError(c, err)
+		httpx.ServerError(c, err)
 		return
 	}
 	sessionMu.Lock()

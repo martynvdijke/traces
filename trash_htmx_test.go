@@ -12,6 +12,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"traces/internal/database"
+	"traces/internal/httpx"
 	"traces/internal/models"
 )
 
@@ -186,14 +187,14 @@ func TestHTMXEndpoints(t *testing.T) {
 	origSessionStore := sessionStore
 	origCSRFTokens := csrfTokens
 	origPublicMode := publicMode
-	origHtmxTemplates := htmxTemplates
+	origRenderer := htmxRenderer
 	origBasePath := basePath
 	tmpDir := t.TempDir()
 	t.Cleanup(func() {
 		sessionStore = origSessionStore
 		csrfTokens = origCSRFTokens
 		publicMode = origPublicMode
-		htmxTemplates = origHtmxTemplates
+		htmxRenderer = origRenderer
 		basePath = origBasePath
 	})
 	basePath = tmpDir
@@ -202,7 +203,11 @@ func TestHTMXEndpoints(t *testing.T) {
 
 	database.Migrate(db)
 	database.SeedEvents(db, basePath)
-	initTemplates()
+	var err error
+	htmxRenderer, err = httpx.NewRenderer()
+	if err != nil {
+		t.Fatalf("NewRenderer: %v", err)
+	}
 
 	sessionStore = make(map[string]sessionInfo)
 	csrfTokens = make(map[string]string)
