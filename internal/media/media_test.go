@@ -1,8 +1,9 @@
-package main
+package media
 
 import (
 	"image"
 	"image/color"
+	"image/png"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -25,7 +26,7 @@ func TestResizeImageLanczos(t *testing.T) {
 	img := makeTestImage(800, 400)
 
 	t.Run("downscales_to_max_dim", func(t *testing.T) {
-		resized := resizeImage(img, 300)
+		resized := ResizeImage(img, 300)
 		b := resized.Bounds()
 		if b.Dx() != 300 || b.Dy() != 150 {
 			t.Errorf("expected 300x150, got %dx%d", b.Dx(), b.Dy())
@@ -34,7 +35,7 @@ func TestResizeImageLanczos(t *testing.T) {
 
 	t.Run("no_upscale_when_smaller", func(t *testing.T) {
 		small := makeTestImage(100, 50)
-		resized := resizeImage(small, 300)
+		resized := ResizeImage(small, 300)
 		b := resized.Bounds()
 		if b.Dx() != 100 || b.Dy() != 50 {
 			t.Errorf("expected original 100x50, got %dx%d", b.Dx(), b.Dy())
@@ -42,18 +43,90 @@ func TestResizeImageLanczos(t *testing.T) {
 	})
 }
 
+func TestResizeImage(t *testing.T) {
+	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
+
+	t.Run("larger_than_max", func(t *testing.T) {
+		resized := ResizeImage(img, 1920)
+		b := resized.Bounds()
+		if b.Dx() != 1920 || b.Dy() != 1080 {
+			t.Errorf("expected 1920x1080, got %dx%d", b.Dx(), b.Dy())
+		}
+	})
+
+	t.Run("smaller_than_max", func(t *testing.T) {
+		small := image.NewRGBA(image.Rect(0, 0, 800, 600))
+		resized := ResizeImage(small, 1920)
+		b := resized.Bounds()
+		if b.Dx() != 800 || b.Dy() != 600 {
+			t.Errorf("expected original 800x600, got %dx%d", b.Dx(), b.Dy())
+		}
+	})
+
+	t.Run("exact_dimensions", func(t *testing.T) {
+		resized := ResizeImage(img, 3840)
+		b := resized.Bounds()
+		if b.Dx() != 3840 || b.Dy() != 2160 {
+			t.Errorf("expected original 3840x2160, got %dx%d", b.Dx(), b.Dy())
+		}
+	})
+
+	t.Run("square_image", func(t *testing.T) {
+		sq := image.NewRGBA(image.Rect(0, 0, 4000, 4000))
+		resized := ResizeImage(sq, 500)
+		b := resized.Bounds()
+		if b.Dx() != 500 || b.Dy() != 500 {
+			t.Errorf("expected 500x500, got %dx%d", b.Dx(), b.Dy())
+		}
+	})
+}
+
+func TestSaveImage(t *testing.T) {
+	dir := t.TempDir()
+	m := New(LoadConfig(dir))
+
+	t.Run("save_jpeg", func(t *testing.T) {
+		img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+		path := filepath.Join(dir, "test.jpg")
+		if err := m.SaveImage(path, img, "jpeg"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Error("jpeg file was not created")
+		}
+	})
+
+	t.Run("save_png", func(t *testing.T) {
+		img := image.NewRGBA(image.Rect(0, 0, 100, 100))
+		path := filepath.Join(dir, "test.png")
+		if err := m.SaveImage(path, img, "png"); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := os.Stat(path); os.IsNotExist(err) {
+			t.Error("png file was not created")
+		}
+		f, err := os.Open(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer f.Close()
+		if _, err := png.DecodeConfig(f); err != nil {
+			t.Errorf("saved file is not a valid png: %v", err)
+		}
+	})
+}
+
 func TestWriteImageVariants(t *testing.T) {
 	mediaBase := t.TempDir()
 	subDir := "2026/08"
-	// In production handleUpload creates the subdirectory before writing
-	// variants; mirror that here.
 	if err := os.MkdirAll(filepath.Join(mediaBase, subDir), 0o755); err != nil {
 		t.Fatal(err)
 	}
 	img := makeTestImage(800, 600)
+	m := New(LoadConfig(mediaBase))
 
 	t.Run("jpeg_source_writes_all_variants", func(t *testing.T) {
-		variants := writeImageVariants(mediaBase, subDir, "hash123", ".jpg", "jpeg", img)
+		variants := m.WriteImageVariants(mediaBase, subDir, "hash123", ".jpg", "jpeg", img)
 
 		wantThumb := "/media/" + subDir + "/hash123_thumb.jpg"
 		wantSm := "/media/" + subDir + "/hash123_sm.webp"
@@ -82,7 +155,7 @@ func TestWriteImageVariants(t *testing.T) {
 	})
 
 	t.Run("gif_source_skips_webp", func(t *testing.T) {
-		variants := writeImageVariants(mediaBase, subDir, "gif1", ".gif", "gif", img)
+		variants := m.WriteImageVariants(mediaBase, subDir, "gif1", ".gif", "gif", img)
 
 		if variants["thumb"] == "" {
 			t.Error("expected thumb variant for gif source")
@@ -103,23 +176,19 @@ func TestVideoPosterFilename(t *testing.T) {
 }
 
 func TestExtractVideoPosterFallback(t *testing.T) {
-	// A nonexistent source video must yield "" regardless of whether ffmpeg is
-	// installed: without ffmpeg the helper bails early, with it the command
-	// fails on the missing input file.
-	got := extractVideoPoster(filepath.Join(t.TempDir(), "missing.mp4"), "h1", "test")
+	m := New(LoadConfig(t.TempDir()))
+	got := m.ExtractVideoPoster(filepath.Join(t.TempDir(), "missing.mp4"), "h1", "test")
 	if got != "" {
-		t.Errorf("extractVideoPoster = %q, want empty string on failure", got)
+		t.Errorf("ExtractVideoPoster = %q, want empty string on failure", got)
 	}
 }
 
 func TestBuildReverseGeocodeURL(t *testing.T) {
-	orig := nominatimURL
-	nominatimURL = "https://nominatim.example.org/reverse"
-	t.Cleanup(func() { nominatimURL = orig })
+	m := New(Config{MediaPath: t.TempDir(), JPEGQuality: 82, NominatimURL: "https://nominatim.example.org/reverse", PosterCapture: "00:00:01", PosterScale: "scale=640:-2"})
 
 	want := "https://nominatim.example.org/reverse?format=jsonv2&lat=40.712800&lon=-74.006000&zoom=16"
-	if got := buildReverseGeocodeURL(40.7128, -74.006); got != want {
-		t.Errorf("buildReverseGeocodeURL = %q, want %q", got, want)
+	if got := m.BuildReverseGeocodeURL(40.7128, -74.006); got != want {
+		t.Errorf("BuildReverseGeocodeURL = %q, want %q", got, want)
 	}
 }
 
@@ -137,12 +206,10 @@ func TestReverseGeocode(t *testing.T) {
 		}))
 		defer server.Close()
 
-		orig := nominatimURL
-		nominatimURL = server.URL
-		t.Cleanup(func() { nominatimURL = orig })
+		m := New(Config{MediaPath: t.TempDir(), JPEGQuality: 82, NominatimURL: server.URL, PosterCapture: "00:00:01", PosterScale: "scale=640:-2"})
 
-		if got := reverseGeocode(40.6782, -73.9442); got != "Brooklyn, New York" {
-			t.Errorf("reverseGeocode = %q, want %q", got, "Brooklyn, New York")
+		if got := m.ReverseGeocode(40.6782, -73.9442); got != "Brooklyn, New York" {
+			t.Errorf("ReverseGeocode = %q, want %q", got, "Brooklyn, New York")
 		}
 	})
 
@@ -152,12 +219,18 @@ func TestReverseGeocode(t *testing.T) {
 		}))
 		defer server.Close()
 
-		orig := nominatimURL
-		nominatimURL = server.URL
-		t.Cleanup(func() { nominatimURL = orig })
+		m := New(Config{MediaPath: t.TempDir(), JPEGQuality: 82, NominatimURL: server.URL, PosterCapture: "00:00:01", PosterScale: "scale=640:-2"})
 
-		if got := reverseGeocode(40.6782, -73.9442); got != "" {
-			t.Errorf("reverseGeocode = %q, want empty string on non-200", got)
+		if got := m.ReverseGeocode(40.6782, -73.9442); got != "" {
+			t.Errorf("ReverseGeocode = %q, want empty string on non-200", got)
 		}
 	})
+}
+
+func BenchmarkResizeImage(b *testing.B) {
+	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
+	b.ResetTimer()
+	for i := 0; i < b.N; i++ {
+		ResizeImage(img, 1920)
+	}
 }

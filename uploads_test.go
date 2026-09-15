@@ -21,84 +21,10 @@ import (
 	"golang.org/x/crypto/bcrypt"
 )
 
-func TestResizeImage(t *testing.T) {
-	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
-
-	t.Run("larger_than_max", func(t *testing.T) {
-		resized := resizeImage(img, 1920)
-		b := resized.Bounds()
-		if b.Dx() != 1920 || b.Dy() != 1080 {
-			t.Errorf("expected 1920x1080, got %dx%d", b.Dx(), b.Dy())
-		}
-	})
-
-	t.Run("smaller_than_max", func(t *testing.T) {
-		small := image.NewRGBA(image.Rect(0, 0, 800, 600))
-		resized := resizeImage(small, 1920)
-		b := resized.Bounds()
-		if b.Dx() != 800 || b.Dy() != 600 {
-			t.Errorf("expected original 800x600, got %dx%d", b.Dx(), b.Dy())
-		}
-	})
-
-	t.Run("exact_dimensions", func(t *testing.T) {
-		resized := resizeImage(img, 3840)
-		b := resized.Bounds()
-		if b.Dx() != 3840 || b.Dy() != 2160 {
-			t.Errorf("expected original 3840x2160, got %dx%d", b.Dx(), b.Dy())
-		}
-	})
-
-	t.Run("square_image", func(t *testing.T) {
-		sq := image.NewRGBA(image.Rect(0, 0, 4000, 4000))
-		resized := resizeImage(sq, 500)
-		b := resized.Bounds()
-		if b.Dx() != 500 || b.Dy() != 500 {
-			t.Errorf("expected 500x500, got %dx%d", b.Dx(), b.Dy())
-		}
-	})
-}
-
-func TestSaveImage(t *testing.T) {
-	dir := t.TempDir()
-
-	t.Run("save_jpeg", func(t *testing.T) {
-		img := image.NewRGBA(image.Rect(0, 0, 100, 100))
-		path := filepath.Join(dir, "test.jpg")
-		if err := saveImage(path, img, "jpeg"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			t.Error("jpeg file was not created")
-		}
-	})
-
-	t.Run("save_png", func(t *testing.T) {
-		img := image.NewRGBA(image.Rect(0, 0, 100, 100))
-		path := filepath.Join(dir, "test.png")
-		if err := saveImage(path, img, "png"); err != nil {
-			t.Fatal(err)
-		}
-		if _, err := os.Stat(path); os.IsNotExist(err) {
-			t.Error("png file was not created")
-		}
-		f, err := os.Open(path)
-		if err != nil {
-			t.Fatal(err)
-		}
-		defer f.Close()
-		if _, err := png.DecodeConfig(f); err != nil {
-			t.Errorf("saved file is not a valid png: %v", err)
-		}
-	})
-}
-
 func TestHandleUploadHashing(t *testing.T) {
 	gin.SetMode(gin.TestMode)
 
-	origMediaPath := mediaPath
-	mediaPath = t.TempDir()
-	t.Cleanup(func() { mediaPath = origMediaPath })
+	setupTestMediaSvc(t)
 
 	content := []byte("test-image-content-for-hash-test")
 	hash := sha256.Sum256(content)
@@ -132,18 +58,16 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 
 	origSessionStore := sessionStore
 	origCSRFTokens := csrfTokens
-	origMediaPath := mediaPath
 	t.Cleanup(func() {
 		sessionStore = origSessionStore
 		csrfTokens = origCSRFTokens
-		mediaPath = origMediaPath
 	})
 
 	newTestDB(t)
 
 	sessionStore = make(map[string]sessionInfo)
 	csrfTokens = make(map[string]string)
-	mediaPath = t.TempDir()
+	setupTestMediaSvc(t)
 
 	db.Exec(`CREATE TABLE IF NOT EXISTS admin_users (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

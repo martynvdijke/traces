@@ -69,6 +69,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"traces/internal/logging"
+	"traces/internal/media"
 	"traces/internal/models"
 	"traces/internal/telemetry"
 )
@@ -120,6 +121,7 @@ var (
 	otelServiceName    = "traces"
 	logService         *logging.LogService
 	tel                *telemetry.Telemetry
+	mediaSvc           *media.Media
 )
 
 func main() {
@@ -158,6 +160,8 @@ func main() {
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0755); err != nil {
 		log.Printf("Warning: could not create database directory: %v", err)
 	}
+
+	mediaSvc = media.New(media.LoadConfig(mediaPath))
 
 	var err error
 	db, err = sql.Open("sqlite3", dbPath)
@@ -1380,17 +1384,17 @@ func handleUpload(c *gin.Context) {
 				c.JSON(http.StatusBadRequest, gin.H{"error": "Image dimensions too large (max 10000x10000)"})
 				return
 			}
-			if size.X > fullMaxDim || size.Y > fullMaxDim {
-				img = resizeImage(img, fullMaxDim)
+			if size.X > media.FullMaxDim || size.Y > media.FullMaxDim {
+				img = media.ResizeImage(img, media.FullMaxDim)
 			}
 
-			if err := saveImage(uploadPath, img, format); err != nil {
+			if err := mediaSvc.SaveImage(uploadPath, img, format); err != nil {
 				os.WriteFile(uploadPath, data, 0644)
 			}
 
 			// Responsive variants: _thumb (original format, backward compatible),
 			// _sm/_md (WebP) for photographic sources.
-			variants = writeImageVariants(mediaPath, subDir, hashStr, ext, format, img)
+			variants = mediaSvc.WriteImageVariants(mediaPath, subDir, hashStr, ext, format, img)
 			if v, ok := variants["thumb"]; ok {
 				thumbnailURL = v
 			}
@@ -1405,7 +1409,7 @@ func handleUpload(c *gin.Context) {
 		if mediaType == "video" {
 			// Best-effort poster-frame thumbnail via optional ffmpeg binary.
 			// Empty on absence/failure; frontend falls back to video placeholder.
-			thumbnailURL = extractVideoPoster(uploadPath, hashStr, subDir)
+			thumbnailURL = mediaSvc.ExtractVideoPoster(uploadPath, hashStr, subDir)
 		}
 	}
 
@@ -1428,7 +1432,7 @@ func handleUpload(c *gin.Context) {
 	if exifLat != nil && exifLng != nil {
 		resp["latitude"] = *exifLat
 		resp["longitude"] = *exifLng
-		resp["location_suggestion"] = reverseGeocode(*exifLat, *exifLng)
+		resp["location_suggestion"] = mediaSvc.ReverseGeocode(*exifLat, *exifLng)
 	}
 	c.JSON(http.StatusOK, resp)
 }

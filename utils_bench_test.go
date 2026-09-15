@@ -1,7 +1,6 @@
 package main
 
 import (
-	"image"
 	"testing"
 
 	_ "github.com/mattn/go-sqlite3"
@@ -67,14 +66,6 @@ func TestUniqueStrings(t *testing.T) {
 				break
 			}
 		}
-	}
-}
-
-func BenchmarkResizeImage(b *testing.B) {
-	img := image.NewRGBA(image.Rect(0, 0, 3840, 2160))
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		resizeImage(img, 1920)
 	}
 }
 

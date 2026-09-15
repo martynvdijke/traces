@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
+	"traces/internal/media"
 	"traces/internal/models"
 )
 
@@ -53,4 +54,17 @@ func newTestDB(t *testing.T) *sql.DB {
 		newDB.Close()
 	})
 	return newDB
+}
+
+// setupTestMediaSvc points mediaPath at a temp dir and wires the composition
+// root's mediaSvc, restoring both on cleanup.
+func setupTestMediaSvc(t *testing.T) {
+	t.Helper()
+	origPath, origSvc := mediaPath, mediaSvc
+	mediaPath = t.TempDir()
+	mediaSvc = media.New(media.LoadConfig(mediaPath))
+	t.Cleanup(func() {
+		mediaPath = origPath
+		mediaSvc = origSvc
+	})
 }

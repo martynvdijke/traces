@@ -5,11 +5,11 @@ traces-server-linux-amd64.tar.gz
 
 # Database
 *.db
-db/
+/db/
 
-# Media uploads
-media/
-images/
+# Media uploads (runtime dirs at repo root, not source dirs like internal/media)
+/media/
+/images/
 
 # IDE
 .idea/
