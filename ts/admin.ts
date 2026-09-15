@@ -1,6 +1,9 @@
 export {};
 declare const bootstrap: any;
 declare const L: any;
+import { escapeHtml, getMediaIcon, formatBytes } from "./shared/format.js";
+import { ensureCSRF, csrfHeaders } from "./shared/api.js";
+import { loadAnalytics } from "./shared/analytics.js";
 
 let events: any[] = [];
 let persons: any[] = [];
@@ -69,7 +72,7 @@ async function init(): Promise<void> {
   loadImmichConfig();
   loadBGGConfig();
   loadUmamiConfig();
-  loadAdminAnalytics();
+  loadAnalytics();
   loadBackups();
   loadBackupConfig();
   loadTemplates();
@@ -86,19 +89,6 @@ async function init(): Promise<void> {
   });
 
   initLogViewer();
-}
-
-function loadAdminAnalytics(): void {
-  fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg) {
-    if (cfg.umami_url && cfg.umami_site && cfg.umami_enabled) {
-      var s = document.createElement('script');
-      s.async = true;
-      s.defer = true;
-      s.src = cfg.umami_url + '/script.js';
-      s.setAttribute('data-website-id', cfg.umami_site);
-      document.head.appendChild(s);
-    }
-  }).catch(function () { });
 }
 
 function populateYearFilter(): void {
@@ -205,7 +195,7 @@ function renderEventList(): void {
       <td><span class="fw-medium">${escapeHtml(e.title)}</span>${attribution ? '<div class="text-muted small">' + attribution + '</div>' : ''}</td>
       <td>${e.location ? '<i class="fa-solid fa-location-dot me-1 text-muted" style="font-size:0.7rem"></i>' + escapeHtml(e.location) : '<span class="text-muted">—</span>'}</td>
       <td>${p ? '<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (p.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(p.name) + '</span>' : '<span class="text-muted">—</span>'}</td>
-      <td>${e.media_url ? '<span class="media-type-badge ' + e.media_type + '"><i class="fa-solid ' + getMediaIcon(e.media_type) + ' me-1"></i>' + e.media_type + '</span>' : '<span class="text-muted">—</span>'}</td>
+      <td>${e.media_url ? '<span class="media-type-badge ' + e.media_type + '"><i class="' + getMediaIcon(e.media_type) + ' me-1"></i>' + e.media_type + '</span>' : '<span class="text-muted">—</span>'}</td>
       <td class="text-center"><i class="${favIcon}" style="cursor:pointer" onclick="toggleFav(${e.id})" title="Toggle favorite"></i></td>
       <td class="text-end pe-3">
         <button class="btn btn-sm btn-outline-primary me-1" onclick="editEvent(${e.id})" title="Edit"><i class="fa-solid fa-pen"></i></button>
@@ -213,13 +203,6 @@ function renderEventList(): void {
       </td>
     </tr>`;
   }).join('');
-}
-
-function getMediaIcon(t: string): string {
-  if (t === 'video') return 'fa-video';
-  if (t === 'audio') return 'fa-music';
-  if (t === 'boardgame') return 'fa-dice';
-  return 'fa-image';
 }
 
 function renderPersonList(): void {
@@ -509,8 +492,8 @@ function renderMilestoneCard(ev: any): string {
     const src = ev.thumbnail || ev.media_url;
     thumb = `<img src="${src}" class="thumb" alt="" loading="lazy">`;
   } else {
-    const icon = ev.media_url ? getMediaIcon(ev.media_type || '') : 'fa-feather';
-    thumb = `<div class="thumb-placeholder"><i class="fa-solid ${icon}"></i></div>`;
+    const icon = ev.media_url ? getMediaIcon(ev.media_type || '') : 'fa-solid fa-feather';
+    thumb = `<div class="thumb-placeholder"><i class="${icon}"></i></div>`;
   }
   const metaBits: string[] = [];
   if (ev.location) metaBits.push('<i class="fa-solid fa-location-dot me-1"></i>' + escapeHtml(ev.location));
@@ -883,7 +866,7 @@ function showUploadPreview(file: File): void {
   const img = document.getElementById('upload-preview-img') as HTMLImageElement;
   const name = document.getElementById('upload-preview-name')!;
   preview.style.display = 'block';
-  name.textContent = file.name + ' (' + formatFileSize(file.size) + ')';
+  name.textContent = file.name + ' (' + formatSize(file.size) + ')';
   if (file.type.startsWith('image/')) {
     const reader = new FileReader();
     reader.onload = e => { img.src = e.target!.result as string; };
@@ -891,12 +874,6 @@ function showUploadPreview(file: File): void {
   } else {
     img.src = '';
   }
-}
-
-function formatFileSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / 1048576).toFixed(1) + ' MB';
 }
 
 function openCamera(): void {
@@ -1051,27 +1028,6 @@ async function testGotify(): Promise<void> {
   el.innerHTML = res.ok
     ? '<div class="alert alert-success">Test notification sent!</div>'
     : '<div class="alert alert-danger">Error: ' + (data.error || '') + '</div>';
-}
-
-let csrfToken = '';
-
-async function ensureCSRF(): Promise<string> {
-  if (csrfToken) return csrfToken;
-  try {
-    const res = await fetch('/api/csrf-token');
-    if (res.ok) {
-      const data = await res.json();
-      csrfToken = data.token;
-    }
-  } catch (e) { }
-  return csrfToken;
-}
-
-function csrfHeaders(contentType?: string): Record<string, string> {
-  const h: Record<string, string> = {};
-  if (csrfToken) h['X-CSRF-Token'] = csrfToken;
-  if (contentType) h['Content-Type'] = contentType;
-  return h;
 }
 
 function logout(): void {
@@ -1755,11 +1711,7 @@ function filterEventsByTag(tag: string): void {
   debouncedSearch();
 }
 
-function formatSize(bytes: number): string {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1048576) return (bytes / 1024).toFixed(1) + ' KB';
-  return (bytes / 1048576).toFixed(1) + ' MB';
-}
+function formatSize(bytes: number): string { return formatBytes(bytes); }
 
 // BATCH OPERATIONS
 function toggleSelectAllEvents(): void {
@@ -2064,11 +2016,6 @@ async function addEventToCollection(): Promise<void> {
   result.innerHTML = res.ok
     ? '<span class="text-success">Added to collection!</span>'
     : '<span class="text-danger">Failed</span>';
-}
-
-function escapeHtml(text: string): string {
-  if (!text) return '';
-  return text.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#039;');
 }
 
 // ---- LOG VIEWER ----

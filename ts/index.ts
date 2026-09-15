@@ -1,63 +1,10 @@
 export {};
 declare const L: any;
-
-interface TimelineEvent {
-  id: number;
-  title: string;
-  description: string;
-  date: string;
-  location: string;
-  media_type: string;
-  media_url: string;
-  thumbnail: string;
-  media_caption: string;
-  tags: string;
-  sort_order: number;
-  is_public: boolean;
-  is_favorite: boolean;
-  created_at: string;
-  person_id?: number;
-  latitude?: number;
-  longitude?: number;
-  recurring: string;
-  weather_data: string;
-  start_time: string;
-  end_time: string;
-  user_id: number;
-  person?: {
-    id: number;
-    name: string;
-    avatar_url: string;
-    bio: string;
-    birth_date: string;
-    color: string;
-    created_at: string;
-  };
-  user?: {
-    id: number;
-    username: string;
-    display_name: string;
-    color: string;
-    avatar_url: string;
-  };
-}
-
-interface CalendarDay {
-  date: string;
-  events: TimelineEvent[];
-  count: number;
-}
-
-interface ContributionMap {
-  [date: string]: number;
-}
-
-interface Weather {
-  temperature: number;
-  condition: string;
-  icon: string;
-  wind_speed: number;
-}
+import { escapeHtml, getMediaIcon, renderMarkdown, formatDate, weatherIconClass } from "./shared/format.js";
+import { ensureCSRF } from "./shared/api.js";
+import { loadAnalytics } from "./shared/analytics.js";
+import { MAP_TILE_URL, MAP_TILE_OPTS } from "./shared/map.js";
+import type { TimelineEvent, CalendarDay, ContributionMap, Weather } from "./shared/types.js";
 
 type Theme = 'light' | 'dark';
 
@@ -911,17 +858,6 @@ async function filterByCollection(): Promise<void> {
   } catch (e) { console.error('Filter by collection failed', e); }
 }
 
-async function ensureCSRF(): Promise<string> {
-  try {
-    const res = await fetch('/api/csrf-token');
-    if (res.ok) {
-      const data = await res.json();
-      return data.token;
-    }
-  } catch (e) {}
-  return '';
-}
-
 async function loadData(): Promise<void> {
   renderSkeletons();
   await Promise.all([loadEvents(), loadContributions(), loadUsers(), loadCollections()]);
@@ -1127,26 +1063,6 @@ function renderStory(): void {
   updateLoadMoreVisibility();
 }
 
-function weatherIconClass(code: string): string {
-  const m: Record<string, string> = {
-    '01d': 'sun', '01n': 'moon',
-    '02d': 'cloud-sun', '02n': 'cloud-moon',
-    '03d': 'cloud', '03n': 'cloud',
-    '04d': 'cloud', '04n': 'cloud',
-    '09d': 'cloud-showers-heavy', '09n': 'cloud-showers-heavy',
-    '10d': 'cloud-rain', '10n': 'cloud-rain',
-    '11d': 'cloud-bolt', '11n': 'cloud-bolt',
-    '13d': 'snowflake', '13n': 'snowflake',
-    '50d': 'smog', '50n': 'smog',
-  };
-  if (m[code]) return m[code];
-  if (!code) return 'cloud-sun';
-  // fallback: raw code already a FA name? allow known FA names, else default
-  const known = new Set(['sun','moon','cloud','cloud-sun','cloud-moon','cloud-rain','cloud-showers-heavy','cloud-bolt','snowflake','smog','wind','clouds']);
-  if (known.has(code)) return code;
-  return 'cloud-sun';
-}
-
 function storyCardHtml(e: TimelineEvent): string {
   const hasMedia = !!e.media_url;
   const hasGeo = !!(e.latitude && e.longitude && (e.latitude !== 0 || e.longitude !== 0));
@@ -1261,7 +1177,7 @@ function createMiniMap(el: HTMLElement): void {
     boxZoom: false,
     keyboard: false
   }).setView([lat, lng], 10);
-  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 18 }).addTo(map);
+  L.tileLayer(MAP_TILE_URL, MAP_TILE_OPTS).addTo(map);
   L.marker([lat, lng], {
     icon: L.divIcon({
       className: 'custom-marker',
@@ -1383,38 +1299,6 @@ async function loadMoreGallery(): Promise<void> {
   if (sentinel) setTimeout(() => sentinel.classList.remove('is-loading'), 300);
 }
 
-function renderMarkdown(text: string): string {
-  if (!text) return '';
-  let html = escapeHtml(text);
-  html = html.replace(/### (.+)/g, '<h3>$1</h3>');
-  html = html.replace(/## (.+)/g, '<h2>$1</h2>');
-  html = html.replace(/# (.+)/g, '<h1>$1</h1>');
-  html = html.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
-  html = html.replace(/\*(.+?)\*/g, '<em>$1</em>');
-  html = html.replace(/`(.+?)`/g, '<code>$1</code>');
-  html = html.replace(/^> (.+)$/gm, '<blockquote>$1</blockquote>');
-  html = html.replace(/^- (.+)$/gm, '<li>$1</li>');
-  html = html.replace(/(<li>.*<\/li>\n?)/s, '<ul>$1</ul>');
-  html = html.replace(/\[(.+?)\]\((.+?)\)/g, '<a href="$2" target="_blank">$1</a>');
-  html = html.replace(/\n/g, '<br>');
-  return html;
-}
-
-function getMediaIcon(mediaType: string): string {
-  switch (mediaType) {
-    case 'video': return 'fa-solid fa-video';
-    case 'audio': return 'fa-solid fa-music';
-    case 'boardgame': return 'fa-solid fa-dice';
-    default: return 'fa-solid fa-image';
-  }
-}
-
-function formatDate(dateStr: string, includeYear?: boolean): string {
-  const date = new Date(dateStr);
-  if (includeYear) return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-}
-
 // ponytail: show year when story spans >1 year; Phase 4 will split viewedYear vs filterYear — revisit then
 function shouldShowYear(): boolean {
   const list = filteredEvents();
@@ -1423,11 +1307,6 @@ function shouldShowYear(): boolean {
 }
 
 let mapClusterGroup: any = null;
-const MAP_TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-const MAP_TILE_OPTS = {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom: 19
-} as any;
 
 function ensureMapInstance(): any {
   if (mapInstance) return mapInstance;
@@ -1779,15 +1658,6 @@ function renderLightbox(): void {
   }
 }
 
-function escapeHtml(text: string): string {
-  if (!text) return '';
-  return text.replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#039;');
-}
-
 let calendarYear: number = new Date().getFullYear();
 let calendarMonth: number = new Date().getMonth() + 1;
 let calendarEventList: TimelineEvent[] = [];
@@ -1911,19 +1781,6 @@ async function loadMemories(): Promise<void> {
     section.innerHTML = '<h5 class="mb-3"><i class="fa-solid fa-clock-rotate-left me-2 text-primary"></i>On This Day</h5>'
       + memories.map((m: any) => '<div class="memories-item"><div class="fw-bold">' + escapeHtml(m.title) + '</div><div class="small text-muted">' + m.years_ago + ' year' + (m.years_ago > 1 ? 's' : '') + ' ago &middot; ' + m.date + '</div></div>').join('');
   } catch (_) { }
-}
-
-function loadAnalytics(): void {
-  fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg) {
-    if (cfg.umami_url && cfg.umami_site && cfg.umami_enabled) {
-      var s = document.createElement('script');
-      s.async = true;
-      s.defer = true;
-      s.src = cfg.umami_url + '/script.js';
-      s.setAttribute('data-website-id', cfg.umami_site);
-      document.head.appendChild(s);
-    }
-  }).catch(function () { });
 }
 
 function restoreFiltersFromURL(): void {

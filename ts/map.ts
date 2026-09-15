@@ -1,17 +1,12 @@
 export {};
 declare const L: any;
+import { MAP_TILE_URL, MAP_TILE_OPTS } from "./shared/map.js";
 
 let mapInstance: any = null;
 let clusterGroup: any = null;
 let markerList: any[] = [];
 let visibleEvents: any[] = [];
 let mapEventsData: any[] = [];
-// Canonical basemap — must stay in sync with ts/index.ts overlay (single implementation requirement)
-export const MAP_TILE_URL = 'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png';
-export const MAP_TILE_OPTS: any = {
-  attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
-  maxZoom: 19
-};
 
 function initMap(): void {
   mapInstance = L.map('map').setView([40.7128, -74.0060], 5);

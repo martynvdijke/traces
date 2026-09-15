@@ -44,7 +44,7 @@ test.describe('TypeScript Build Output', () => {
     const body = await resp.text();
     expect(body).toContain('changeYear');
     expect(body).toContain('searchEvents');
-    expect(body).toContain('export {}');
+    expect(body).toContain('./shared/');
   });
 
   test('should serve compiled admin.js', async ({ request }) => {
@@ -53,7 +53,7 @@ test.describe('TypeScript Build Output', () => {
     const body = await resp.text();
     expect(body).toContain('logout');
     expect(body).toContain('loadEvents');
-    expect(body).toContain('export {}');
+    expect(body).toContain('./shared/');
   });
 
   test('should serve compiled login.js', async ({ request }) => {
@@ -61,7 +61,7 @@ test.describe('TypeScript Build Output', () => {
     expect(resp.ok()).toBeTruthy();
     const body = await resp.text();
     expect(body).toContain('login-form');
-    expect(body).toContain('export {}');
+    expect(body).toContain('./shared/analytics');
   });
 
   test('should serve compiled setup.js', async ({ request }) => {
@@ -69,7 +69,7 @@ test.describe('TypeScript Build Output', () => {
     expect(resp.ok()).toBeTruthy();
     const body = await resp.text();
     expect(body).toContain('setup-form');
-    expect(body).toContain('export {}');
+    expect(body).toContain('./shared/analytics');
   });
 
   test('should serve compiled map.js', async ({ request }) => {
