@@ -195,6 +195,45 @@ type CalendarDay struct {
 	Count  int             `json:"count"`
 }
 
+type StatsDistribution struct {
+	ByMonth        map[string]int  `json:"by_month"`
+	ByWeekday      map[string]int  `json:"by_weekday"`
+	ByTag          []TagCount      `json:"by_tag"`
+	ByPerson       []PersonCount   `json:"by_person"`
+	ByUser         []UserCount     `json:"by_user"`
+	ByLocation     []LocationCount `json:"by_location"`
+	GeoSpread      float64         `json:"geo_spread"`
+	EventCount     int             `json:"event_count"`
+	MediaBreakdown map[string]int  `json:"media_breakdown"`
+	DailyAvg       float64         `json:"daily_avg"`
+	MonthlyAvg     float64         `json:"monthly_avg"`
+	TopDay         string          `json:"top_day"`
+}
+
+type TagCount struct {
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type PersonCount struct {
+	ID    int    `json:"id"`
+	Name  string `json:"name"`
+	Count int    `json:"count"`
+}
+
+type UserCount struct {
+	ID          int    `json:"id"`
+	DisplayName string `json:"display_name"`
+	Count       int    `json:"count"`
+}
+
+type LocationCount struct {
+	Location string  `json:"location"`
+	Count    int     `json:"count"`
+	Lat      float64 `json:"lat"`
+	Lng      float64 `json:"lng"`
+}
+
 // Constants
 const (
 	DefaultColor         = "#7c3aed"

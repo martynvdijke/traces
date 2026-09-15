@@ -14,6 +14,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
+	"traces/internal/events"
 	"traces/internal/models"
 )
 
@@ -517,9 +518,9 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 		}
 		defer rows.Close()
 
-		events := scanEventsWithPerson(rows)
+		events := events.ScanEventsWithPerson(rows)
 		if len(events) != 1 {
-			t.Fatalf("expected 1 event from scanEventsWithPerson, got %d", len(events))
+			t.Fatalf("expected 1 event from events.ScanEventsWithPerson, got %d", len(events))
 		}
 
 		e := events[0]
@@ -552,7 +553,7 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 		}
 		defer rows.Close()
 
-		events := scanEventsWithPerson(rows)
+		events := events.ScanEventsWithPerson(rows)
 		if len(events) != 2 {
 			t.Fatalf("expected 2 events, got %d", len(events))
 		}

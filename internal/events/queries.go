@@ -1,4 +1,4 @@
-package main
+package events
 
 import (
 	"database/sql"
@@ -57,7 +57,7 @@ func BuildEventQuery(filters EventFilters) (string, []any) {
 
 	query := eventSelectColumns()
 	args := []any{}
-	query, args = appendEventFilters(query, args, filters)
+	query, args = AppendEventFilters(query, args, filters)
 	query += buildEventOrder(filters.Sort)
 	if filters.Limit > 0 {
 		query += " LIMIT ?"
@@ -77,8 +77,8 @@ func BuildEventQueryPrefix() string {
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND 1=1`
 }
 
-// appendEventFilters adds WHERE clauses for each non-empty filter.
-func appendEventFilters(query string, args []any, f EventFilters) (string, []any) {
+// AppendEventFilters adds WHERE clauses for each non-empty filter.
+func AppendEventFilters(query string, args []any, f EventFilters) (string, []any) {
 	if f.Year != "" {
 		query += " AND strftime('%Y', e.event_date) = ?"
 		args = append(args, f.Year)
@@ -117,6 +117,10 @@ func appendEventFilters(query string, args []any, f EventFilters) (string, []any
 		args = append(args, like, like, like, like)
 	}
 	return query, args
+}
+
+func appendEventFilters(query string, args []any, f EventFilters) (string, []any) {
+	return AppendEventFilters(query, args, f)
 }
 
 func buildEventOrder(sort string) string {
@@ -182,6 +186,11 @@ func ScanEvents(rows *sql.Rows) []models.TimelineEvent {
 		events = append(events, e)
 	}
 	return events
+}
+
+// ScanEventsWithPerson is an alias for ScanEvents for backward compatibility.
+func ScanEventsWithPerson(rows *sql.Rows) []models.TimelineEvent {
+	return ScanEvents(rows)
 }
 
 // ---- Stats query helpers ----
@@ -285,7 +294,7 @@ func QueryWeekdayCounts(d *sql.DB, year string) map[string]int {
 }
 
 // QueryTagFrequency returns a sorted list of tag counts for a year.
-func QueryTagFrequency(d *sql.DB, year string) []TagCount {
+func QueryTagFrequency(d *sql.DB, year string) []models.TagCount {
 	tagMap := make(map[string]int)
 	rows, err := d.Query(`SELECT tags FROM timeline_events
 		WHERE strftime('%Y', event_date) = ? AND tags != ''`, year)
@@ -303,17 +312,17 @@ func QueryTagFrequency(d *sql.DB, year string) []TagCount {
 			}
 		}
 	}
-	var result []TagCount
+	var result []models.TagCount
 	for name, count := range tagMap {
-		result = append(result, TagCount{Name: name, Count: count})
+		result = append(result, models.TagCount{Name: name, Count: count})
 	}
 	sort.Slice(result, func(i, j int) bool { return result[i].Count > result[j].Count })
 	return result
 }
 
 // QueryPersonEventCounts returns person event counts for a year.
-func QueryPersonEventCounts(d *sql.DB, year string) []PersonCount {
-	result := make([]PersonCount, 0)
+func QueryPersonEventCounts(d *sql.DB, year string) []models.PersonCount {
+	result := make([]models.PersonCount, 0)
 	rows, err := d.Query(`SELECT p.id, p.name, COUNT(e.id) as cnt FROM persons p
 		LEFT JOIN timeline_events e ON e.person_id = p.id AND strftime('%Y', e.event_date) = ?
 		GROUP BY p.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
@@ -322,7 +331,7 @@ func QueryPersonEventCounts(d *sql.DB, year string) []PersonCount {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var pc PersonCount
+		var pc models.PersonCount
 		rows.Scan(&pc.ID, &pc.Name, &pc.Count)
 		result = append(result, pc)
 	}
@@ -330,8 +339,8 @@ func QueryPersonEventCounts(d *sql.DB, year string) []PersonCount {
 }
 
 // QueryUserEventCounts returns user event counts for a year.
-func QueryUserEventCounts(d *sql.DB, year string) []UserCount {
-	result := make([]UserCount, 0)
+func QueryUserEventCounts(d *sql.DB, year string) []models.UserCount {
+	result := make([]models.UserCount, 0)
 	rows, err := d.Query(`SELECT u.id, u.display_name, COUNT(e.id) as cnt FROM users u
 		LEFT JOIN timeline_events e ON e.user_id = u.id AND strftime('%Y', e.event_date) = ?
 		GROUP BY u.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
@@ -340,7 +349,7 @@ func QueryUserEventCounts(d *sql.DB, year string) []UserCount {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var uc UserCount
+		var uc models.UserCount
 		rows.Scan(&uc.ID, &uc.DisplayName, &uc.Count)
 		result = append(result, uc)
 	}
@@ -348,8 +357,8 @@ func QueryUserEventCounts(d *sql.DB, year string) []UserCount {
 }
 
 // QueryLocationCounts returns top locations with coordinates for a year.
-func QueryLocationCounts(d *sql.DB, year string, limit int) []LocationCount {
-	result := make([]LocationCount, 0)
+func QueryLocationCounts(d *sql.DB, year string, limit int) []models.LocationCount {
+	result := make([]models.LocationCount, 0)
 	rows, err := d.Query(`SELECT location, latitude, longitude, COUNT(*) as cnt FROM timeline_events
 		WHERE strftime('%Y', event_date) = ? AND location != '' AND latitude != 0 AND longitude != 0
 		GROUP BY location ORDER BY cnt DESC LIMIT ?`, year, limit)
@@ -358,7 +367,7 @@ func QueryLocationCounts(d *sql.DB, year string, limit int) []LocationCount {
 	}
 	defer rows.Close()
 	for rows.Next() {
-		var lc LocationCount
+		var lc models.LocationCount
 		rows.Scan(&lc.Location, &lc.Lat, &lc.Lng, &lc.Count)
 		result = append(result, lc)
 	}

@@ -65,6 +65,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"traces/internal/database"
+	"traces/internal/events"
 	"traces/internal/httpx"
 	"traces/internal/integrations"
 	"traces/internal/logging"
@@ -830,7 +831,7 @@ func getEvents(c *gin.Context) {
 	ctx, span := httpx.StartSpan(currentTracer(), c, "getEvents")
 	defer span.End()
 
-	filters := EventFilters{
+	filters := events.EventFilters{
 		Year:   c.Query("year"),
 		Month:  c.Query("month"),
 		Tag:    c.Query("tag"),
@@ -853,7 +854,7 @@ func getEvents(c *gin.Context) {
 		attribute.String("user_id", filters.UserID),
 	)
 
-	query, args := BuildEventQuery(filters)
+	query, args := events.BuildEventQuery(filters)
 
 	_qStart := time.Now()
 	rows, err := db.Query(query, args...)
@@ -864,7 +865,7 @@ func getEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := ScanEvents(rows)
+	events := events.ScanEvents(rows)
 	span.SetAttributes(attribute.Int("event_count", len(events)))
 	c.JSON(http.StatusOK, events)
 	_ = ctx
@@ -877,7 +878,7 @@ func getEvents(c *gin.Context) {
 // @Success 200 {array} object "timeline events"
 // @Router /events/full [get]
 func getEventsFull(c *gin.Context) {
-	query, _ := BuildEventQuery(EventFilters{Sort: "asc"})
+	query, _ := events.BuildEventQuery(events.EventFilters{Sort: "asc"})
 	rows, err := db.Query(query)
 	if err != nil {
 		httpx.ServerError(c, err)
@@ -885,7 +886,7 @@ func getEventsFull(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := ScanEvents(rows)
+	events := events.ScanEvents(rows)
 	c.JSON(http.StatusOK, events)
 }
 
@@ -970,7 +971,7 @@ func getPublicEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := scanEventsWithPerson(rows)
+	events := events.ScanEventsWithPerson(rows)
 	c.JSON(http.StatusOK, events)
 }
 
@@ -1444,19 +1445,19 @@ func extractEXIFGPS(data []byte) (*float64, *float64) {
 // @Router /events/search [get]
 func searchEvents(c *gin.Context) {
 	query := c.Query("q")
-	filters := EventFilters{
+	filters := events.EventFilters{
 		Year: c.Query("year"), Month: c.Query("month"), Tag: c.Query("tag"),
 		Person: c.Query("person"), PersonID: c.Query("person_id"),
 		MediaType: c.Query("media_type"), Location: c.Query("location"),
 		UserID: c.Query("user_id"),
 	}
 
-	sqlStr := BuildEventQueryPrefix()
+	sqlStr := events.BuildEventQueryPrefix()
 	args := []any{}
 
 	if query != "" {
 		ftsOK := true
-		ftsQuery := SanitizeFTSQuery(query)
+		ftsQuery := events.SanitizeFTSQuery(query)
 		var ftsCount int
 		if err := db.QueryRow("SELECT COUNT(*) FROM events_fts WHERE events_fts MATCH ?", ftsQuery).Scan(&ftsCount); err != nil {
 			ftsOK = false
@@ -1469,8 +1470,8 @@ func searchEvents(c *gin.Context) {
 		}
 	}
 
-	sqlStr, args = appendEventFilters(sqlStr, args, filters)
-	sqlStr += buildEventOrder("asc")
+	sqlStr, args = events.AppendEventFilters(sqlStr, args, filters)
+	sqlStr += " ORDER BY e.event_date ASC"
 
 	rows, err := db.Query(sqlStr, args...)
 	if err != nil {
@@ -1479,7 +1480,7 @@ func searchEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := ScanEvents(rows)
+	events := events.ScanEvents(rows)
 	c.JSON(http.StatusOK, events)
 }
 
@@ -1590,10 +1591,10 @@ func globalSearchEvents(c *gin.Context) {
 		}
 	}
 
-	sqlStr := BuildEventQueryPrefix()
+	sqlStr := events.BuildEventQueryPrefix()
 	args := []any{}
 
-	ftsQuery := SanitizeFTSQuery(query)
+	ftsQuery := events.SanitizeFTSQuery(query)
 	var ftsCount int
 	if err := db.QueryRow("SELECT COUNT(*) FROM events_fts WHERE events_fts MATCH ?", ftsQuery).Scan(&ftsCount); err != nil || ftsCount == 0 {
 		sqlStr += " AND (e.title LIKE ? OR e.description LIKE ? OR e.location LIKE ? OR p.name LIKE ?)"
@@ -1614,47 +1615,8 @@ func globalSearchEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := ScanEvents(rows)
+	events := events.ScanEvents(rows)
 	c.JSON(http.StatusOK, events)
-}
-
-type StatsDistribution struct {
-	ByMonth        map[string]int  `json:"by_month"`
-	ByWeekday      map[string]int  `json:"by_weekday"`
-	ByTag          []TagCount      `json:"by_tag"`
-	ByPerson       []PersonCount   `json:"by_person"`
-	ByUser         []UserCount     `json:"by_user"`
-	ByLocation     []LocationCount `json:"by_location"`
-	GeoSpread      float64         `json:"geo_spread"`
-	EventCount     int             `json:"event_count"`
-	MediaBreakdown map[string]int  `json:"media_breakdown"`
-	DailyAvg       float64         `json:"daily_avg"`
-	MonthlyAvg     float64         `json:"monthly_avg"`
-	TopDay         string          `json:"top_day"`
-}
-
-type TagCount struct {
-	Name  string `json:"name"`
-	Count int    `json:"count"`
-}
-
-type PersonCount struct {
-	ID    int    `json:"id"`
-	Name  string `json:"name"`
-	Count int    `json:"count"`
-}
-
-type UserCount struct {
-	ID          int    `json:"id"`
-	DisplayName string `json:"display_name"`
-	Count       int    `json:"count"`
-}
-
-type LocationCount struct {
-	Location string  `json:"location"`
-	Count    int     `json:"count"`
-	Lat      float64 `json:"lat"`
-	Lng      float64 `json:"lng"`
 }
 
 func getStatsDistribution(c *gin.Context) {
@@ -1663,14 +1625,14 @@ func getStatsDistribution(c *gin.Context) {
 		year = fmt.Sprintf("%d", time.Now().Year())
 	}
 
-	dist := StatsDistribution{
+	dist := models.StatsDistribution{
 		ByMonth:        make(map[string]int),
 		ByWeekday:      make(map[string]int),
 		MediaBreakdown: make(map[string]int),
-		ByTag:          make([]TagCount, 0),
-		ByPerson:       make([]PersonCount, 0),
-		ByUser:         make([]UserCount, 0),
-		ByLocation:     make([]LocationCount, 0),
+		ByTag:          make([]models.TagCount, 0),
+		ByPerson:       make([]models.PersonCount, 0),
+		ByUser:         make([]models.UserCount, 0),
+		ByLocation:     make([]models.LocationCount, 0),
 	}
 
 	db.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&dist.EventCount)
@@ -1684,21 +1646,21 @@ func getStatsDistribution(c *gin.Context) {
 		dist.MonthlyAvg = float64(dist.EventCount) / 12.0
 	}
 
-	dist.ByMonth = QueryMonthlyCounts(db, year)
+	dist.ByMonth = events.QueryMonthlyCounts(db, year)
 
-	wdCounts := QueryWeekdayCounts(db, year)
+	wdCounts := events.QueryWeekdayCounts(db, year)
 	maps.Copy(dist.ByWeekday, wdCounts)
 
-	tagResult := QueryTagFrequency(db, year)
+	tagResult := events.QueryTagFrequency(db, year)
 	if tagResult != nil {
 		dist.ByTag = tagResult
 	}
 
-	dist.ByPerson = QueryPersonEventCounts(db, year)
-	dist.ByUser = QueryUserEventCounts(db, year)
-	dist.ByLocation = QueryLocationCounts(db, year, 20)
-	dist.MediaBreakdown = QueryMediaBreakdown(db, year)
-	dist.TopDay = QueryTopDay(db, year)
+	dist.ByPerson = events.QueryPersonEventCounts(db, year)
+	dist.ByUser = events.QueryUserEventCounts(db, year)
+	dist.ByLocation = events.QueryLocationCounts(db, year, 20)
+	dist.MediaBreakdown = events.QueryMediaBreakdown(db, year)
+	dist.TopDay = events.QueryTopDay(db, year)
 
 	if len(dist.ByLocation) >= 2 {
 		totalDist := 0.0
@@ -1763,7 +1725,7 @@ func getPersonEvents(c *gin.Context) {
 		return
 	}
 
-	query, args := BuildEventQuery(EventFilters{PersonID: idStr, Sort: "asc"})
+	query, args := events.BuildEventQuery(events.EventFilters{PersonID: idStr, Sort: "asc"})
 	rows, err := db.Query(query, args...)
 	if err != nil {
 		httpx.ServerError(c, err)
@@ -1771,7 +1733,7 @@ func getPersonEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := ScanEvents(rows)
+	events := events.ScanEvents(rows)
 	milestones := make([]PersonMilestone, 0, len(events))
 	for _, e := range events {
 		m := PersonMilestone{TimelineEvent: e, Group: LifeGroup(person.BirthDate, e.Date)}
@@ -1957,7 +1919,7 @@ func exportEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := scanEventsWithPerson(rows)
+	events := events.ScanEventsWithPerson(rows)
 
 	if format == "csv" {
 		c.Header("Content-Type", "text/csv")
@@ -2322,7 +2284,7 @@ func getCollectionEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := scanEventsWithPerson(rows)
+	events := events.ScanEventsWithPerson(rows)
 	c.JSON(http.StatusOK, events)
 }
 
@@ -2669,7 +2631,7 @@ func getEventStats(c *gin.Context) {
 	}
 	span.SetAttributes(attribute.String("year", year))
 
-	stats := QueryYearStats(db, year)
+	stats := events.QueryYearStats(db, year)
 	stats.TotalYears = len(stats.ByYear)
 
 	c.JSON(http.StatusOK, stats)
@@ -3165,10 +3127,6 @@ func getMapData(c *gin.Context) {
 	c.JSON(http.StatusOK, result)
 }
 
-func scanEventsWithPerson(rows *sql.Rows) []models.TimelineEvent {
-	return ScanEvents(rows)
-}
-
 // @Summary Get calendar data
 // @Description Returns events grouped by date for calendar view
 // @Tags Events
@@ -3211,7 +3169,7 @@ func getCalendar(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := scanEventsWithPerson(rows)
+	events := events.ScanEventsWithPerson(rows)
 
 	daysMap := make(map[string][]models.TimelineEvent)
 	for _, e := range events {
@@ -3551,7 +3509,7 @@ func getUserEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 
-	events := scanEventsWithPerson(rows)
+	events := events.ScanEventsWithPerson(rows)
 	c.JSON(http.StatusOK, events)
 }
 

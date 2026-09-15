@@ -7,6 +7,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"traces/internal/database"
+	"traces/internal/events"
 )
 
 func TestFTSSearch(t *testing.T) {
@@ -36,7 +37,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("Beach"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", events.SanitizeFTSQuery("Beach"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -56,7 +57,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("Malibu"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", events.SanitizeFTSQuery("Malibu"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -74,7 +75,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("hiking"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", events.SanitizeFTSQuery("hiking"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -92,7 +93,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("summer"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", events.SanitizeFTSQuery("summer"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -111,7 +112,7 @@ func TestFTSSearch(t *testing.T) {
 			t.Skip("FTS5 not available")
 		}
 		db.Exec("INSERT INTO timeline_events (title, description, event_date, location, tags) VALUES ('Ski Trip', 'Skiing in the Alps', '2026-01-15', 'Alps', 'skiing, winter')")
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("Skiing"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", events.SanitizeFTSQuery("Skiing"))
 		if err != nil {
 			t.Fatalf("FTS trigger query failed: %v", err)
 		}
@@ -130,7 +131,7 @@ func TestFTSSearch(t *testing.T) {
 			t.Skip("FTS5 not available")
 		}
 		db.Exec("DELETE FROM timeline_events WHERE title = 'Ski Trip'")
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("Skiing"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", events.SanitizeFTSQuery("Skiing"))
 		if err != nil {
 			t.Fatalf("FTS delete query failed: %v", err)
 		}
@@ -149,7 +150,7 @@ func TestFTSSearch(t *testing.T) {
 			t.Skip("FTS5 not available")
 		}
 		db.Exec("UPDATE timeline_events SET description = 'Live jazz concert in the park' WHERE title = 'Concert Night'")
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("jazz"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", events.SanitizeFTSQuery("jazz"))
 		if err != nil {
 			t.Fatalf("FTS update query failed: %v", err)
 		}
@@ -167,7 +168,7 @@ func TestFTSSearch(t *testing.T) {
 		if !ftsAvailable {
 			t.Skip("FTS5 not available")
 		}
-		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", SanitizeFTSQuery("zzzznotfound"))
+		rows, err := db.Query("SELECT title FROM timeline_events WHERE id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)", events.SanitizeFTSQuery("zzzznotfound"))
 		if err != nil {
 			t.Fatalf("FTS query failed: %v", err)
 		}
@@ -190,9 +191,9 @@ func TestFTSSearch(t *testing.T) {
 			{"it's", `"it''s"`},
 		}
 		for _, tc := range cases {
-			result := SanitizeFTSQuery(tc.input)
+			result := events.SanitizeFTSQuery(tc.input)
 			if result != tc.expected {
-				t.Errorf("SanitizeFTSQuery(%q) = %q, want %q", tc.input, result, tc.expected)
+				t.Errorf("events.SanitizeFTSQuery(%q) = %q, want %q", tc.input, result, tc.expected)
 			}
 		}
 	})
@@ -231,7 +232,7 @@ func TestGlobalSearch(t *testing.T) {
 		}
 		rows, err := db.Query(`SELECT e.title, e.event_date FROM timeline_events e
 			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-			ORDER BY e.event_date DESC LIMIT 10`, SanitizeFTSQuery("Party"))
+			ORDER BY e.event_date DESC LIMIT 10`, events.SanitizeFTSQuery("Party"))
 		if err != nil {
 			t.Fatalf("Global search query failed: %v", err)
 		}
@@ -279,7 +280,7 @@ func TestGlobalSearch(t *testing.T) {
 
 		rows, err := db.Query(`SELECT e.title FROM timeline_events e
 			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)
-			ORDER BY e.event_date DESC LIMIT 3`, SanitizeFTSQuery("Party"))
+			ORDER BY e.event_date DESC LIMIT 3`, events.SanitizeFTSQuery("Party"))
 		if err != nil {
 			t.Fatalf("Limit query failed: %v", err)
 		}
@@ -296,7 +297,7 @@ func TestGlobalSearch(t *testing.T) {
 	t.Run("global_search_empty_query", func(t *testing.T) {
 		rows, err := db.Query(`SELECT e.title FROM timeline_events e
 			WHERE e.id IN (SELECT rowid FROM events_fts WHERE events_fts MATCH ?)`,
-			SanitizeFTSQuery(""))
+			events.SanitizeFTSQuery(""))
 		if err == nil {
 			rows.Close()
 		}
