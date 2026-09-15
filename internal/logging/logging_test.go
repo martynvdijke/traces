@@ -1,4 +1,4 @@
-package main
+package logging
 
 import (
 	"database/sql"
@@ -10,13 +10,13 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	_ "github.com/mattn/go-sqlite3"
 )
 
 func init() {
 	gin.SetMode(gin.TestMode)
 }
 
-// setupTestDB creates an in-memory SQLite database with required log tables.
 func setupTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	db, err := sql.Open("sqlite3", ":memory:")
@@ -42,7 +42,7 @@ func TestLogServiceLogging(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	ls := &LogService{db: db}
+	ls := New(db, func() bool { return false })
 	if err := ls.Init(); err != nil {
 		t.Fatal(err)
 	}
@@ -69,7 +69,6 @@ func TestLogServiceLogging(t *testing.T) {
 	})
 
 	t.Run("severity_filtering", func(t *testing.T) {
-		// Clear and set minimum severity to warn
 		ls.Clear()
 		ls.SetMinSeverity("warn")
 		ls.Log("debug", "test", "debug message", nil)
@@ -167,7 +166,7 @@ func TestLogServiceMetadata(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	ls := &LogService{db: db}
+	ls := New(db, func() bool { return false })
 	ls.Init()
 	ls.SetMinSeverity("info")
 
@@ -215,7 +214,7 @@ func TestLogServiceDistinctSources(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	ls := &LogService{db: db}
+	ls := New(db, func() bool { return false })
 	ls.Init()
 	ls.SetMinSeverity("info")
 
@@ -248,7 +247,7 @@ func TestLogServiceMinSeverityPersistence(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	ls := &LogService{db: db}
+	ls := New(db, func() bool { return false })
 	ls.Init()
 
 	if sev := ls.GetMinSeverity(); sev != "warn" {
@@ -260,7 +259,7 @@ func TestLogServiceMinSeverityPersistence(t *testing.T) {
 		t.Errorf("min_severity after set = %q, want 'debug'", sev)
 	}
 
-	ls2 := &LogService{db: db}
+	ls2 := New(db, func() bool { return false })
 	ls2.Init()
 	if sev := ls2.GetMinSeverity(); sev != "debug" {
 		t.Errorf("persisted min_severity = %q, want 'debug'", sev)
@@ -271,7 +270,7 @@ func TestLogServicePruneLimit(t *testing.T) {
 	db := setupTestDB(t)
 	defer db.Close()
 
-	ls := &LogService{db: db}
+	ls := New(db, func() bool { return false })
 	ls.Init()
 	ls.SetMinSeverity("info")
 
@@ -291,26 +290,17 @@ func TestLogServicePruneLimit(t *testing.T) {
 	}
 }
 
-// --- Log API Handler Tests ---
-
 func TestHandleGetLogs(t *testing.T) {
-	origDB := db
-	origLogService := logService
-	t.Cleanup(func() {
-		db = origDB
-		logService = origLogService
-	})
+	db := setupTestDB(t)
+	defer db.Close()
 
-	db = setupTestDB(t)
-	t.Cleanup(func() { db.Close() })
-
-	logService = &LogService{db: db}
-	logService.Init()
-	logService.SetMinSeverity("info")
-	logService.Log("info", "handler-test", "test log entry", nil)
+	ls := New(db, func() bool { return false })
+	ls.Init()
+	ls.SetMinSeverity("info")
+	ls.Log("info", "handler-test", "test log entry", nil)
 
 	router := gin.New()
-	router.GET("/api/logs", handleGetLogs)
+	router.GET("/api/logs", ls.HandleGetLogs)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/api/logs?limit=10", nil)
@@ -333,23 +323,16 @@ func TestHandleGetLogs(t *testing.T) {
 }
 
 func TestHandleGetLogCount(t *testing.T) {
-	origDB := db
-	origLogService := logService
-	t.Cleanup(func() {
-		db = origDB
-		logService = origLogService
-	})
+	db := setupTestDB(t)
+	defer db.Close()
 
-	db = setupTestDB(t)
-	t.Cleanup(func() { db.Close() })
-
-	logService = &LogService{db: db}
-	logService.Init()
-	logService.SetMinSeverity("info")
-	logService.Log("info", "count-test", "test", nil)
+	ls := New(db, func() bool { return false })
+	ls.Init()
+	ls.SetMinSeverity("info")
+	ls.Log("info", "count-test", "test", nil)
 
 	router := gin.New()
-	router.GET("/api/logs/count", handleGetLogCount)
+	router.GET("/api/logs/count", ls.HandleGetLogCount)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/api/logs/count", nil)
@@ -369,23 +352,16 @@ func TestHandleGetLogCount(t *testing.T) {
 }
 
 func TestHandleClearLogs(t *testing.T) {
-	origDB := db
-	origLogService := logService
-	t.Cleanup(func() {
-		db = origDB
-		logService = origLogService
-	})
+	db := setupTestDB(t)
+	defer db.Close()
 
-	db = setupTestDB(t)
-	t.Cleanup(func() { db.Close() })
-
-	logService = &LogService{db: db}
-	logService.Init()
-	logService.SetMinSeverity("info")
-	logService.Log("info", "clear-test", "to be cleared", nil)
+	ls := New(db, func() bool { return false })
+	ls.Init()
+	ls.SetMinSeverity("info")
+	ls.Log("info", "clear-test", "to be cleared", nil)
 
 	router := gin.New()
-	router.DELETE("/api/logs", handleClearLogs)
+	router.DELETE("/api/logs", ls.HandleClearLogs)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("DELETE", "/api/logs", nil)
@@ -395,30 +371,22 @@ func TestHandleClearLogs(t *testing.T) {
 		t.Fatalf("status = %d, want %d", w.Code, http.StatusOK)
 	}
 
-	count, _ := logService.Count()
+	count, _ := ls.Count()
 	if count != 0 {
 		t.Errorf("expected 0 entries after clear, got %d", count)
 	}
 }
 
 func TestHandleGetLogSettings(t *testing.T) {
-	origDB := db
-	origLogService := logService
-	t.Cleanup(func() {
-		db = origDB
-		logService = origLogService
-	})
+	db := setupTestDB(t)
+	defer db.Close()
 
-	db = setupTestDB(t)
-	t.Cleanup(func() { db.Close() })
-
-	ls := &LogService{db: db}
+	ls := New(db, func() bool { return false })
 	ls.Init()
 	ls.SetMinSeverity("debug")
-	logService = ls
 
 	router := gin.New()
-	router.GET("/api/logs/settings", handleGetLogSettings)
+	router.GET("/api/logs/settings", ls.HandleGetLogSettings)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/api/logs/settings", nil)
@@ -438,22 +406,14 @@ func TestHandleGetLogSettings(t *testing.T) {
 }
 
 func TestHandleUpdateLogSettings(t *testing.T) {
-	origDB := db
-	origLogService := logService
-	t.Cleanup(func() {
-		db = origDB
-		logService = origLogService
-	})
+	db := setupTestDB(t)
+	defer db.Close()
 
-	db = setupTestDB(t)
-	t.Cleanup(func() { db.Close() })
-
-	ls := &LogService{db: db}
+	ls := New(db, func() bool { return false })
 	ls.Init()
-	logService = ls
 
 	router := gin.New()
-	router.POST("/api/logs/settings", handleUpdateLogSettings)
+	router.POST("/api/logs/settings", ls.HandleUpdateLogSettings)
 
 	body := `{"min_severity":"error"}`
 	w := httptest.NewRecorder()
@@ -471,22 +431,14 @@ func TestHandleUpdateLogSettings(t *testing.T) {
 }
 
 func TestHandleUpdateLogSettingsInvalid(t *testing.T) {
-	origDB := db
-	origLogService := logService
-	t.Cleanup(func() {
-		db = origDB
-		logService = origLogService
-	})
+	db := setupTestDB(t)
+	defer db.Close()
 
-	db = setupTestDB(t)
-	t.Cleanup(func() { db.Close() })
-
-	ls := &LogService{db: db}
+	ls := New(db, func() bool { return false })
 	ls.Init()
-	logService = ls
 
 	router := gin.New()
-	router.POST("/api/logs/settings", handleUpdateLogSettings)
+	router.POST("/api/logs/settings", ls.HandleUpdateLogSettings)
 
 	body := `{"min_severity":"invalid"}`
 	w := httptest.NewRecorder()
@@ -504,24 +456,17 @@ func TestHandleUpdateLogSettingsInvalid(t *testing.T) {
 }
 
 func TestHandleGetLogSources(t *testing.T) {
-	origDB := db
-	origLogService := logService
-	t.Cleanup(func() {
-		db = origDB
-		logService = origLogService
-	})
+	db := setupTestDB(t)
+	defer db.Close()
 
-	db = setupTestDB(t)
-	t.Cleanup(func() { db.Close() })
-
-	logService = &LogService{db: db}
-	logService.Init()
-	logService.SetMinSeverity("info")
-	logService.Log("info", "source-a", "test", nil)
-	logService.Log("warn", "source-b", "test", nil)
+	ls := New(db, func() bool { return false })
+	ls.Init()
+	ls.SetMinSeverity("info")
+	ls.Log("info", "source-a", "test", nil)
+	ls.Log("warn", "source-b", "test", nil)
 
 	router := gin.New()
-	router.GET("/api/logs/sources", handleGetLogSources)
+	router.GET("/api/logs/sources", ls.HandleGetLogSources)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("GET", "/api/logs/sources", nil)
@@ -548,5 +493,3 @@ func TestHandleGetLogSources(t *testing.T) {
 		t.Error("expected 'source-b' in sources")
 	}
 }
-
-// --- OTel Add-on Tests ---

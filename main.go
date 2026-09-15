@@ -68,6 +68,7 @@ import (
 
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
+	"traces/internal/logging"
 	"traces/internal/models"
 	"traces/internal/telemetry"
 )
@@ -117,7 +118,7 @@ var (
 	otelMetricsEnabled bool
 	otelLogsEnabled    bool
 	otelServiceName    = "traces"
-	logService         *LogService
+	logService         *logging.LogService
 	tel                *telemetry.Telemetry
 )
 
@@ -169,7 +170,7 @@ func main() {
 	initTemplates()
 
 	// Initialize the logging service
-	logService = &LogService{db: db}
+	logService = logging.New(db, func() bool { return otelLogsEnabled })
 	if err := logService.Init(); err != nil {
 		log.Printf("[LogService] Failed to initialize: %v", err)
 	}
@@ -364,12 +365,12 @@ func main() {
 			auth.GET("/wrapped", getWrapped)
 			auth.GET("/csrf-token", getCSRFToken)
 			// Log endpoints
-			auth.GET("/logs", handleGetLogs)
-			auth.GET("/logs/count", handleGetLogCount)
-			auth.DELETE("/logs", handleClearLogs)
-			auth.GET("/logs/settings", handleGetLogSettings)
-			auth.POST("/logs/settings", handleUpdateLogSettings)
-			auth.GET("/logs/sources", handleGetLogSources)
+			auth.GET("/logs", logService.HandleGetLogs)
+			auth.GET("/logs/count", logService.HandleGetLogCount)
+			auth.DELETE("/logs", logService.HandleClearLogs)
+			auth.GET("/logs/settings", logService.HandleGetLogSettings)
+			auth.POST("/logs/settings", logService.HandleUpdateLogSettings)
+			auth.GET("/logs/sources", logService.HandleGetLogSources)
 		}
 	}
 

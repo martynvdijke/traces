@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"github.com/gin-gonic/gin"
+	"traces/internal/logging"
 )
 
 // helpers
@@ -72,7 +73,7 @@ func TestGetOtelConfig(t *testing.T) {
 
 	db = setupOtelDB(t)
 	t.Cleanup(func() { db.Close() })
-	logService = &LogService{db: db}
+	logService = logging.New(db, func() bool { return otelLogsEnabled })
 	logService.Init()
 
 	// seed a config
@@ -124,7 +125,7 @@ func TestSaveOtelConfig(t *testing.T) {
 
 	db = setupOtelDB(t)
 	t.Cleanup(func() { db.Close() })
-	logService = &LogService{db: db}
+	logService = logging.New(db, func() bool { return otelLogsEnabled })
 	logService.Init()
 
 	router := gin.New()

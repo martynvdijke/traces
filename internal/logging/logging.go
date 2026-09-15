@@ -1,4 +1,4 @@
-package main
+package logging
 
 import (
 	"context"
@@ -34,9 +34,16 @@ var severityOrder = map[string]int{
 
 // LogService provides SQLite-backed structured logging with severity filtering.
 type LogService struct {
-	db          *sql.DB
-	mu          sync.RWMutex
-	minSeverity string
+	db              *sql.DB
+	mu              sync.RWMutex
+	minSeverity     string
+	otelLogsEnabled func() bool
+}
+
+// New creates a new LogService backed by db. otelLogsEnabled is called live
+// on each Log call to decide whether to mirror into the OTel log pipeline.
+func New(db *sql.DB, otelLogsEnabled func() bool) *LogService {
+	return &LogService{db: db, otelLogsEnabled: otelLogsEnabled}
 }
 
 // Init ensures the log_settings row exists and loads the current min_severity.
@@ -92,7 +99,7 @@ func (ls *LogService) Log(severity, source, message string, metadata map[string]
 	// Mirror the entry into the OTel log pipeline. Without this the slog bridge
 	// configured in initTelemetry has no producers and the OTLP logs exporter
 	// stays empty. Gated on the OTel logs setting to avoid noise when disabled.
-	if otelLogsEnabled {
+	if ls.otelLogsEnabled != nil && ls.otelLogsEnabled() {
 		slog.Default().Log(context.Background(), severityToSlog(severity), message,
 			"source", source, "metadata", metaJSON)
 	}
@@ -131,20 +138,12 @@ func (ls *LogService) GetMinSeverity() string {
 }
 
 // Query returns log entries matching the given filters, ordered by id DESC.
-//   - severity: minimum severity level (debug/info/warn/error)
-//   - source: exact source name match
-//   - q: text search in message (LIKE)
-//   - limit: max results (default 50, max 200)
-//   - offset: pagination offset
-//   - since: ISO 8601 timestamp, only entries after this time
 func (ls *LogService) Query(severity, source, q string, limit, offset int, since string) ([]LogEntry, error) {
 	query := "SELECT id, timestamp, severity, source, message, COALESCE(metadata,'') FROM app_logs WHERE 1=1"
 	args := []any{}
 
 	if severity != "" {
-		// Filter by minimum severity level
 		minOrd := severityOrder[severity]
-		// Build list of severities at or above the minimum
 		var sevs []string
 		for s, ord := range severityOrder {
 			if ord >= minOrd {
@@ -157,7 +156,7 @@ func (ls *LogService) Query(severity, source, q string, limit, offset int, since
 				placeholders[i] = "?"
 				args = append(args, s)
 			}
-			query += " AND severity IN (" + joinStrings(placeholders, ",") + ")"
+			query += " AND severity IN (" + strings.Join(placeholders, ",") + ")"
 		}
 	}
 	if source != "" {
@@ -248,24 +247,17 @@ func (ls *LogService) GetDistinctSources() ([]string, error) {
 
 // GetLogSeverityOrder returns the severity order map (for API reference).
 func GetLogSeverityOrder() map[string]int {
-	return severityOrder
-}
-
-func joinStrings(strs []string, sep string) string {
-	var result strings.Builder
-	for i, s := range strs {
-		if i > 0 {
-			result.WriteString(sep)
-		}
-		result.WriteString(s)
+	cp := make(map[string]int, len(severityOrder))
+	for k, v := range severityOrder {
+		cp[k] = v
 	}
-	return result.String()
+	return cp
 }
 
 // --- API Handlers ---
 
-// handleGetLogs returns log entries with optional filtering and pagination.
-func handleGetLogs(c *gin.Context) {
+// HandleGetLogs returns log entries with optional filtering and pagination.
+func (ls *LogService) HandleGetLogs(c *gin.Context) {
 	severity := c.Query("severity")
 	source := c.Query("source")
 	q := c.Query("q")
@@ -281,7 +273,7 @@ func handleGetLogs(c *gin.Context) {
 		offset = o
 	}
 
-	entries, err := logService.Query(severity, source, q, limit, offset, since)
+	entries, err := ls.Query(severity, source, q, limit, offset, since)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to query logs"})
 		return
@@ -289,9 +281,9 @@ func handleGetLogs(c *gin.Context) {
 	c.JSON(http.StatusOK, entries)
 }
 
-// handleGetLogCount returns the total number of log entries.
-func handleGetLogCount(c *gin.Context) {
-	count, err := logService.Count()
+// HandleGetLogCount returns the total number of log entries.
+func (ls *LogService) HandleGetLogCount(c *gin.Context) {
+	count, err := ls.Count()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to count logs"})
 		return
@@ -299,23 +291,23 @@ func handleGetLogCount(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"count": count})
 }
 
-// handleClearLogs deletes all log entries.
-func handleClearLogs(c *gin.Context) {
-	if err := logService.Clear(); err != nil {
+// HandleClearLogs deletes all log entries.
+func (ls *LogService) HandleClearLogs(c *gin.Context) {
+	if err := ls.Clear(); err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to clear logs"})
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// handleGetLogSettings returns the current log settings (min_severity).
-func handleGetLogSettings(c *gin.Context) {
-	sev := logService.GetMinSeverity()
+// HandleGetLogSettings returns the current log settings (min_severity).
+func (ls *LogService) HandleGetLogSettings(c *gin.Context) {
+	sev := ls.GetMinSeverity()
 	c.JSON(http.StatusOK, gin.H{"min_severity": sev})
 }
 
-// handleUpdateLogSettings updates the minimum severity level.
-func handleUpdateLogSettings(c *gin.Context) {
+// HandleUpdateLogSettings updates the minimum severity level.
+func (ls *LogService) HandleUpdateLogSettings(c *gin.Context) {
 	var input struct {
 		MinSeverity string `json:"min_severity"`
 	}
@@ -327,14 +319,14 @@ func handleUpdateLogSettings(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid severity level"})
 		return
 	}
-	logService.SetMinSeverity(input.MinSeverity)
-	logService.Log("info", "system", "Log verbosity changed to "+input.MinSeverity, nil)
+	ls.SetMinSeverity(input.MinSeverity)
+	ls.Log("info", "system", "Log verbosity changed to "+input.MinSeverity, nil)
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
-// handleGetLogSources returns a list of distinct source names from logs.
-func handleGetLogSources(c *gin.Context) {
-	sources, err := logService.GetDistinctSources()
+// HandleGetLogSources returns a list of distinct source names from logs.
+func (ls *LogService) HandleGetLogSources(c *gin.Context) {
+	sources, err := ls.GetDistinctSources()
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to get sources"})
 		return
