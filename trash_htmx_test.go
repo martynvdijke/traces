@@ -78,11 +78,12 @@ func TestRecycleBin(t *testing.T) {
 		}
 		c.Next()
 	})
-	auth.GET("/api/events", getEvents)
-	auth.GET("/api/events/trash", getTrashEvents)
-	auth.POST("/api/events/restore", restoreEvents)
-	auth.POST("/api/events/empty-trash", emptyTrash)
-	auth.POST("/api/events", saveEvent)
+	ensureEventsSvc(t)
+	auth.GET("/api/events", eventsSvc.GetEvents)
+	auth.GET("/api/events/trash", eventsSvc.GetTrashEvents)
+	auth.POST("/api/events/restore", eventsSvc.RestoreEvents)
+	auth.POST("/api/events/empty-trash", eventsSvc.EmptyTrash)
+	auth.POST("/api/events", eventsSvc.SaveEvent)
 
 	sessionID := "test-trash-session"
 	sessionStore[sessionID] = sessionInfo{userID: 0, expiresAt: time.Now().Add(24 * time.Hour).Unix()}

@@ -36,9 +36,8 @@ func TestHandleUploadHashing(t *testing.T) {
 	_ = writer
 
 	router := gin.New()
-	router.POST("/api/upload", func(c *gin.Context) {
-		handleUpload(c)
-	})
+	ensureEventsSvc(t)
+	router.POST("/api/upload", eventsSvc.HandleUpload)
 
 	w := httptest.NewRecorder()
 	req := httptest.NewRequest("POST", "/api/upload", bytes.NewReader(nil))
@@ -110,7 +109,7 @@ func TestHandleUploadCSRFFlow(t *testing.T) {
 		auth := api.Group("")
 		auth.Use(authMiddlewareGin(), csrfMiddleware())
 		{
-			auth.POST("/upload", handleUpload)
+			auth.POST("/upload", ensureEventsSvc(t).HandleUpload)
 		}
 	}
 

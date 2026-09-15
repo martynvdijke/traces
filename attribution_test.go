@@ -82,7 +82,8 @@ func TestSaveEventAttribution(t *testing.T) {
 
 	router := gin.New()
 	router.Use(authMiddlewareGin())
-	router.POST("/api/events", saveEvent)
+	ensureEventsSvc(t)
+	router.POST("/api/events", eventsSvc.SaveEvent)
 
 	familyCookie := "family-cookie"
 	sessionStore[familyCookie] = sessionInfo{userID: aliceID, expiresAt: time.Now().Add(time.Hour).Unix()}

@@ -643,8 +643,8 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 		}
 		c.Next()
 	})
-	auth.POST("/api/events", saveEvent)
-	auth.GET("/api/events", getEvents)
+	auth.POST("/api/events", ensureEventsSvc(t).SaveEvent)
+	auth.GET("/api/events", eventsSvc.GetEvents)
 
 	t.Run("create_and_find_event", func(t *testing.T) {
 		w := httptest.NewRecorder()
@@ -808,7 +808,7 @@ func TestGetPublicEvents(t *testing.T) {
 
 	t.Run("default_year_filter", func(t *testing.T) {
 		router := gin.New()
-		router.GET("/api/public", getPublicEvents)
+		router.GET("/api/public", ensureEventsSvc(t).GetPublicEvents)
 
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/api/public?year=2026", nil)
@@ -831,7 +831,7 @@ func TestGetPublicEvents(t *testing.T) {
 
 	t.Run("month_filter", func(t *testing.T) {
 		router := gin.New()
-		router.GET("/api/public", getPublicEvents)
+		router.GET("/api/public", ensureEventsSvc(t).GetPublicEvents)
 
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/api/public?year=2026&month=01", nil)
@@ -859,7 +859,7 @@ func TestGetPublicEvents(t *testing.T) {
 		defer func() { publicMode = false }()
 
 		router := gin.New()
-		router.GET("/api/public", getPublicEvents)
+		router.GET("/api/public", ensureEventsSvc(t).GetPublicEvents)
 
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/api/public?year=2026", nil)

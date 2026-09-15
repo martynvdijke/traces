@@ -54,7 +54,7 @@ func newTestDB(t *testing.T) *sql.DB {
 	}
 	db = newDB
 	integrationsSvc = integrations.New(newDB, logService, nil)
-	eventsSvc = events.New(events.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc})
+	eventsSvc = events.New(events.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc, Media: mediaSvc, PublicMode: func() bool { return publicMode }, Tracer: currentTracer})
 	t.Cleanup(func() {
 		db = origDB
 		integrationsSvc = origSvc
@@ -65,7 +65,7 @@ func newTestDB(t *testing.T) *sql.DB {
 }
 
 func newTestEventsSvc() *events.Service {
-	return events.New(events.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc})
+	return events.New(events.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc, Media: mediaSvc, PublicMode: func() bool { return publicMode }, Tracer: currentTracer})
 }
 
 func ensureEventsSvc(t *testing.T) *events.Service {

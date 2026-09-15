@@ -72,6 +72,8 @@ type Media struct{ cfg Config }
 // New creates a Media service from cfg.
 func New(cfg Config) *Media { return &Media{cfg: cfg} }
 
+func (m *Media) MediaPath() string { return m.cfg.MediaPath }
+
 // ResizeImage downscales img to fit within maxDim x maxDim using Lanczos3
 // resampling. Images already within the limit are returned unchanged
 // (no upscaling).
