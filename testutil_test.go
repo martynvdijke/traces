@@ -15,6 +15,7 @@ import (
 	"traces/internal/integrations"
 	"traces/internal/media"
 	"traces/internal/models"
+	"traces/internal/web"
 )
 
 func setupTestRouter() *gin.Engine {
@@ -32,7 +33,13 @@ func setupTestRouter() *gin.Engine {
 	} else {
 		r.POST("/api/logout", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	}
-	r.GET("/api/health", handleHealth)
+	if webSvc != nil {
+		r.GET("/api/health", webSvc.Health)
+	} else {
+		r.GET("/api/health", func(c *gin.Context) {
+			c.JSON(http.StatusOK, gin.H{"status": "ok", "version": models.CurrentVersion})
+		})
+	}
 
 	return r
 }
@@ -55,6 +62,7 @@ func newTestDB(t *testing.T) *sql.DB {
 	origEvents := eventsSvc
 	origAuthSvc := authSvc
 	origAuthSessions := authSessions
+	origWebSvc := webSvc
 	newDB, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatal(err)
@@ -64,12 +72,14 @@ func newTestDB(t *testing.T) *sql.DB {
 	eventsSvc = events.New(events.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc, Media: mediaSvc, PublicMode: func() bool { return publicMode }, Tracer: currentTracer})
 	authSessions = authpkg.NewSessionStore()
 	authSvc = authpkg.New(authpkg.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
+	webSvc = web.New(web.Deps{DB: newDB, Log: logService, Sessions: authSessions, BasePath: basePath, DBPath: dbPath, BackupPath: backupPath, Umami: integrationsSvc.UmamiSettings, OIDCReady: authSvc.OIDCReady})
 	t.Cleanup(func() {
 		db = origDB
 		integrationsSvc = origSvc
 		eventsSvc = origEvents
 		authSvc = origAuthSvc
 		authSessions = origAuthSessions
+		webSvc = origWebSvc
 		newDB.Close()
 	})
 	return newDB

@@ -855,11 +855,12 @@ func TestGetPublicEvents(t *testing.T) {
 	})
 
 	t.Run("public_mode_returns_all", func(t *testing.T) {
-		publicMode = true
-		defer func() { publicMode = false }()
+		orig := eventsSvc
+		eventsSvc = events.New(events.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc, Media: mediaSvc, PublicMode: func() bool { return true }, Tracer: currentTracer})
+		t.Cleanup(func() { eventsSvc = orig })
 
 		router := gin.New()
-		router.GET("/api/public", ensureEventsSvc(t).GetPublicEvents)
+		router.GET("/api/public", eventsSvc.GetPublicEvents)
 
 		w := httptest.NewRecorder()
 		req := httptest.NewRequest("GET", "/api/public?year=2026", nil)

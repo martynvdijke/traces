@@ -28,11 +28,9 @@ import (
 	"context"
 	"database/sql"
 	"errors"
-	"fmt"
 	"image"
 	"image/jpeg"
 	"image/png"
-	"io"
 	"log"
 	"net/http"
 	"os"
@@ -59,6 +57,7 @@ import (
 	"traces/internal/media"
 	"traces/internal/models"
 	"traces/internal/telemetry"
+	"traces/internal/web"
 )
 
 func init() {
@@ -89,6 +88,7 @@ var (
 	eventsSvc          *events.Service
 	authSvc            *auth.Service
 	authSessions       *auth.SessionStore
+	webSvc             *web.Service
 )
 
 func currentTracer() trace.Tracer {
@@ -209,6 +209,17 @@ func main() {
 	authSvc = auth.New(auth.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
 	authSvc.InitOIDCFromEnv()
 
+	webSvc = web.New(web.Deps{
+		DB:         db,
+		Log:        logService,
+		Sessions:   authSessions,
+		BasePath:   basePath,
+		DBPath:     dbPath,
+		BackupPath: backupPath,
+		Umami:      integrationsSvc.UmamiSettings,
+		OIDCReady:  authSvc.OIDCReady,
+	})
+
 	r := gin.Default()
 	r.MaxMultipartMemory = 32 << 20
 
@@ -249,7 +260,7 @@ func main() {
 		api.GET("/version", func(c *gin.Context) {
 			c.JSON(http.StatusOK, gin.H{"version": models.CurrentVersion})
 		})
-		api.GET("/check-setup", handleCheckSetup)
+		api.GET("/check-setup", webSvc.CheckSetup)
 		api.POST("/login", authSvc.HandleLogin)
 		api.POST("/logout", authSvc.HandleLogout)
 		api.GET("/auth/oidc/login", authSvc.HandleOIDCLogin)
@@ -257,12 +268,12 @@ func main() {
 		api.GET("/auth/oidc/logout", authSvc.HandleOIDCLogout)
 		api.GET("/public", eventsSvc.GetPublicEvents)
 		api.GET("/share", eventsSvc.GetShareLink)
-		api.GET("/config", getPublicConfig)
-		api.GET("/manifest.json", serveManifest)
-		api.GET("/health", handleHealth)
+		api.GET("/config", webSvc.PublicConfig)
+		api.GET("/manifest.json", webSvc.Manifest)
+		api.GET("/health", webSvc.Health)
 		api.GET("/trmnl/summary", integrationsSvc.GetTRMNLSummary)
 		r.GET("/metrics", gin.WrapH(promhttp.Handler()))
-		api.GET("/sw.js", serveServiceWorker)
+		api.GET("/sw.js", webSvc.ServiceWorker)
 
 		auth := api.Group("")
 		auth.Use(authSvc.AuthMiddlewareGin(), authSvc.CSRFMiddleware())
@@ -326,10 +337,10 @@ func main() {
 			auth.POST("/umami/config", integrationsSvc.SaveUmamiConfig)
 			auth.GET("/otel/config", integrationsSvc.GetOtelConfig)
 			auth.POST("/otel/config", integrationsSvc.SaveOtelConfig)
-			auth.POST("/backup", handleBackup)
-			auth.GET("/backups", handleListBackups)
-			auth.GET("/backup/config", getBackupConfig)
-			auth.POST("/backup/config", saveBackupConfig)
+			auth.POST("/backup", webSvc.HandleBackup)
+			auth.GET("/backups", webSvc.HandleListBackups)
+			auth.GET("/backup/config", webSvc.GetBackupConfig)
+			auth.POST("/backup/config", webSvc.SaveBackupConfig)
 			auth.GET("/events/trash", eventsSvc.GetTrashEvents)
 			auth.POST("/events/restore", eventsSvc.RestoreEvents)
 			auth.POST("/events/empty-trash", eventsSvc.EmptyTrash)
@@ -361,60 +372,18 @@ func main() {
 	adminHTMX.Use(authSvc.AuthMiddlewareGin(), authSvc.CSRFMiddleware())
 	eventsSvc.RegisterHTMXRoutes(adminHTMX)
 
-	r.GET("/sw.js", serveServiceWorker)
+	r.GET("/sw.js", webSvc.ServiceWorker)
 
-	r.GET("/admin.html", func(c *gin.Context) {
-		cookie, err := c.Cookie("session")
-		if err == nil {
-			if sess, ok := authSessions.Get(cookie); ok && time.Now().Unix() <= sess.ExpiresAt {
-				c.File(filepath.Join(basePath, "static/admin.html"))
-				return
-			}
-		}
-		c.Redirect(http.StatusFound, "/login.html")
-	})
-
-	r.GET("/login.html", func(c *gin.Context) {
-		cookie, err := c.Cookie("session")
-		if err == nil {
-			if sess, ok := authSessions.Get(cookie); ok && time.Now().Unix() <= sess.ExpiresAt {
-				c.Redirect(http.StatusFound, "/admin.html")
-				return
-			}
-		}
-		var count int
-		db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
-		if count == 0 {
-			c.Redirect(http.StatusFound, "/setup.html")
-			return
-		}
-		c.File(filepath.Join(basePath, "static/login.html"))
-	})
-
-	r.GET("/setup.html", func(c *gin.Context) {
-		var count int
-		db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
-		if count > 0 {
-			c.Redirect(http.StatusFound, "/login.html")
-			return
-		}
-		c.File(filepath.Join(basePath, "static/setup.html"))
-	})
-
-	r.GET("/api-docs", func(c *gin.Context) {
-		c.File(filepath.Join(basePath, "docs/swagger.json"))
-	})
+	r.GET("/admin.html", webSvc.AdminPage)
+	r.GET("/login.html", webSvc.LoginPage)
+	r.GET("/setup.html", webSvc.SetupPage)
+	r.GET("/api-docs", webSvc.APIDocs)
 
 	r.Static("/static", filepath.Join(basePath, "static"))
 	r.Static("/media", mediaPath)
 
-	r.GET("/map.html", func(c *gin.Context) {
-		c.File(filepath.Join(basePath, "static/map.html"))
-	})
-
-	r.GET("/", func(c *gin.Context) {
-		c.File(filepath.Join(basePath, "static/index.html"))
-	})
+	r.GET("/map.html", webSvc.MapPage)
+	r.GET("/", webSvc.IndexPage)
 
 	// Session cleanup goroutine
 	go func() {
@@ -438,8 +407,8 @@ func main() {
 			ticker := time.NewTicker(7 * 24 * time.Hour)
 			defer ticker.Stop()
 			for {
-				backupDatabase()
-				pruneBackups()
+				webSvc.BackupDatabase()
+				webSvc.PruneBackups()
 				<-ticker.C
 			}
 		}
@@ -481,250 +450,4 @@ func main() {
 		log.Printf("HTTP server shutdown error: %v", err)
 	}
 	shutdownTelemetry()
-}
-
-// @Summary Get public config
-// @Description Returns public configuration (umami analytics settings)
-// @Tags Info
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Router /config [get]
-func getPublicConfig(c *gin.Context) {
-	uURL, uSite, uEnabled := integrationsSvc.UmamiSettings()
-	oidcEnabled := false
-	if authSvc != nil {
-		oidcEnabled = authSvc.OIDCReady()
-	}
-	c.JSON(http.StatusOK, gin.H{
-		"umami_url":     uURL,
-		"umami_site":    uSite,
-		"umami_enabled": uEnabled,
-		"oidc_enabled":  oidcEnabled,
-	})
-}
-
-// @Summary Check setup status
-// @Description Check if admin has been configured
-// @Tags Info
-// @Produce json
-// @Success 200 {object} map[string]bool
-// @Router /check-setup [get]
-func handleCheckSetup(c *gin.Context) {
-	var count int
-	db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
-	c.JSON(http.StatusOK, gin.H{"setup": count > 0})
-}
-
-// @Summary Health check
-// @Description Returns server health status and version
-// @Tags System
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Router /health [get]
-func handleHealth(c *gin.Context) {
-	c.JSON(http.StatusOK, gin.H{
-		"status":  "ok",
-		"version": models.CurrentVersion,
-	})
-}
-
-func backupDatabase() {
-	name := fmt.Sprintf("traces-backup-%s.db", time.Now().Format("2006-01-02-150405"))
-	dst := filepath.Join(backupPath, name)
-	src, err := os.Open(dbPath)
-	if err != nil {
-		log.Printf("[Backup] Failed to open source database: %v", err)
-		return
-	}
-	defer src.Close()
-	out, err := os.Create(dst)
-	if err != nil {
-		log.Printf("[Backup] Failed to create backup file: %v", err)
-		return
-	}
-	defer out.Close()
-	_, err = io.Copy(out, src)
-	if err != nil {
-		log.Printf("[Backup] Failed to copy database: %v", err)
-		os.Remove(dst)
-		return
-	}
-	log.Printf("[Backup] Database backed up to %s", dst)
-}
-
-// @Summary Create backup
-// @Description Creates a database backup
-// @Tags System
-// @Produce json
-// @Success 200 {object} map[string]string
-// @Router /backup [post]
-func handleBackup(c *gin.Context) {
-	backupDatabase()
-	pruneBackups()
-	if logService != nil {
-		logService.Log("info", "backup", "Backup created", nil)
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-type BackupInfo struct {
-	Name string `json:"name"`
-	Size int64  `json:"size"`
-	Date string `json:"date"`
-}
-
-// @Summary List backups
-// @Description Lists all database backups
-// @Tags System
-// @Produce json
-// @Success 200 {array} object "backups"
-// @Router /backups [get]
-func handleListBackups(c *gin.Context) {
-	entries, err := os.ReadDir(backupPath)
-	if err != nil {
-		c.JSON(http.StatusOK, []BackupInfo{})
-		return
-	}
-	var backups []BackupInfo
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), "traces-backup-") {
-			info, err := e.Info()
-			if err != nil {
-				continue
-			}
-			backups = append(backups, BackupInfo{
-				Name: e.Name(),
-				Size: info.Size(),
-				Date: info.ModTime().Format(time.RFC3339),
-			})
-		}
-	}
-	if backups == nil {
-		backups = []BackupInfo{}
-	}
-	c.JSON(http.StatusOK, backups)
-}
-
-func pruneBackups() {
-	var cfg models.BackupConfig
-	var autoPruneInt int
-	err := db.QueryRow("SELECT retention_days, auto_prune FROM backup_settings WHERE id = 1").Scan(&cfg.RetentionDays, &autoPruneInt)
-	if err != nil {
-		log.Printf("[Backup] No backup config found, skipping prune")
-		return
-	}
-	cfg.AutoPrune = autoPruneInt == 1
-	if !cfg.AutoPrune {
-		return
-	}
-	if cfg.RetentionDays <= 0 {
-		cfg.RetentionDays = 7
-	}
-	threshold := time.Now().AddDate(0, 0, -cfg.RetentionDays)
-	entries, err := os.ReadDir(backupPath)
-	if err != nil {
-		log.Printf("[Backup] Failed to read backup directory: %v", err)
-		return
-	}
-	pruned := 0
-	for _, e := range entries {
-		if !e.IsDir() && strings.HasPrefix(e.Name(), "traces-backup-") {
-			info, err := e.Info()
-			if err != nil {
-				continue
-			}
-			if info.ModTime().Before(threshold) {
-				path := filepath.Join(backupPath, e.Name())
-				if err := os.Remove(path); err != nil {
-					log.Printf("[Backup] Failed to prune backup %s: %v", e.Name(), err)
-				} else {
-					log.Printf("[Backup] Pruned old backup: %s", e.Name())
-					pruned++
-				}
-			}
-		}
-	}
-	if pruned > 0 {
-		log.Printf("[Backup] Pruned %d old backup(s)", pruned)
-	}
-}
-
-// @Summary Get backup config
-// @Description Gets the backup configuration
-// @Tags System
-// @Produce json
-// @Success 200 {object} models.BackupConfig
-// @Router /backup/config [get]
-func getBackupConfig(c *gin.Context) {
-	var cfg models.BackupConfig
-	var autoPruneInt int
-	err := db.QueryRow("SELECT retention_days, auto_prune FROM backup_settings WHERE id = 1").Scan(&cfg.RetentionDays, &autoPruneInt)
-	if err != nil {
-		c.JSON(http.StatusOK, models.BackupConfig{RetentionDays: 7, AutoPrune: true})
-		return
-	}
-	cfg.AutoPrune = autoPruneInt == 1
-	c.JSON(http.StatusOK, cfg)
-}
-
-// @Summary Save backup config
-// @Description Saves the backup configuration
-// @Tags System
-// @Accept json
-// @Produce json
-// @Param config body object true "Backup config"
-// @Success 200 {object} map[string]string
-// @Failure 400 {object} map[string]string
-// @Router /backup/config [post]
-func saveBackupConfig(c *gin.Context) {
-	var cfg models.BackupConfig
-	if err := c.ShouldBindJSON(&cfg); err != nil {
-		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
-		return
-	}
-	if cfg.RetentionDays < 1 {
-		cfg.RetentionDays = 7
-	}
-	autoPruneInt := 0
-	if cfg.AutoPrune {
-		autoPruneInt = 1
-	}
-	_, err := db.Exec(`UPDATE backup_settings SET retention_days=?, auto_prune=? WHERE id=1`, cfg.RetentionDays, autoPruneInt)
-	if err != nil {
-		httpx.ServerError(c, err)
-		return
-	}
-	if logService != nil {
-		logService.Log("info", "backup", "Backup settings saved", nil)
-	}
-	c.JSON(http.StatusOK, gin.H{"status": "ok"})
-}
-
-func serveManifest(c *gin.Context) {
-	c.Header("Content-Type", "application/json")
-	c.String(http.StatusOK, `{
-		"name": "TRACES - Your Year in Review",
-		"short_name": "TRACES",
-		"description": "Personal timeline management system for capturing everyday moments",
-		"start_url": "/",
-		"display": "standalone",
-		"background_color": "#0f172a",
-		"theme_color": "`+models.DefaultColor+`",
-		"icons": [
-			{"src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml"},
-			{"src": "/static/logo.svg", "sizes": "any", "type": "image/svg+xml"}
-		]
-	}`)
-}
-
-func serveServiceWorker(c *gin.Context) {
-	c.Header("Content-Type", "application/javascript")
-	c.String(http.StatusOK, `const CACHE = 'traces-v1';
-self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/','/static/style.css','/static/js/index.js']))); self.skipWaiting(); });
-self.addEventListener('activate', e => { e.waitUntil(clients.claim()); });
-self.addEventListener('fetch', e => {
-	e.respondWith(
-		fetch(e.request).catch(() => caches.match(e.request))
-	);
-});`)
 }

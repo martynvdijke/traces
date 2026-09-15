@@ -11,6 +11,8 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+
+	"traces/internal/web"
 )
 
 func TestTypeScriptBuildOutput(t *testing.T) {
@@ -23,7 +25,11 @@ func TestTypeScriptBuildOutput(t *testing.T) {
 
 	basePath := "."
 	router.Static("/static", filepath.Join(basePath, "static"))
-	router.GET("/sw.js", serveServiceWorker)
+	sw := web.New(web.Deps{}).ServiceWorker
+	if webSvc != nil {
+		sw = webSvc.ServiceWorker
+	}
+	router.GET("/sw.js", sw)
 
 	jsFiles := []string{
 		"/static/js/index.js",
@@ -90,10 +96,11 @@ func TestTypeScriptBuildOutput(t *testing.T) {
 
 func TestManifestAndServiceWorker(t *testing.T) {
 	gin.SetMode(gin.TestMode)
+	newTestDB(t)
 	router := setupTestRouter()
 
-	router.GET("/api/manifest.json", serveManifest)
-	router.GET("/sw.js", serveServiceWorker)
+	router.GET("/api/manifest.json", webSvc.Manifest)
+	router.GET("/sw.js", webSvc.ServiceWorker)
 
 	t.Run("manifest_endpoint", func(t *testing.T) {
 		w := httptest.NewRecorder()

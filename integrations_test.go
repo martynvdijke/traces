@@ -15,6 +15,7 @@ import (
 	_ "github.com/mattn/go-sqlite3"
 
 	"traces/internal/models"
+	"traces/internal/web"
 )
 
 func TestPruneBackups(t *testing.T) {
@@ -38,6 +39,7 @@ func TestPruneBackups(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 	backupPath = tmpDir
+	webSvc = web.New(web.Deps{DB: db, Log: logService, Sessions: authSessions, BasePath: basePath, DBPath: dbPath, BackupPath: tmpDir, Umami: integrationsSvc.UmamiSettings, OIDCReady: authSvc.OIDCReady})
 
 	oldTime := time.Now().AddDate(0, 0, -15)
 	for i := range 3 {
@@ -55,7 +57,7 @@ func TestPruneBackups(t *testing.T) {
 		os.Chtimes(path, recentTime, recentTime)
 	}
 
-	pruneBackups()
+	webSvc.PruneBackups()
 
 	entries, _ := os.ReadDir(tmpDir)
 	if len(entries) != 2 {
@@ -84,6 +86,7 @@ func TestPruneBackupsDisabled(t *testing.T) {
 	}
 	defer os.RemoveAll(tmpDir)
 	backupPath = tmpDir
+	webSvc = web.New(web.Deps{DB: db, Log: logService, Sessions: authSessions, BasePath: basePath, DBPath: dbPath, BackupPath: tmpDir, Umami: integrationsSvc.UmamiSettings, OIDCReady: authSvc.OIDCReady})
 
 	oldTime := time.Now().AddDate(0, 0, -15)
 	for i := range 3 {
@@ -93,7 +96,7 @@ func TestPruneBackupsDisabled(t *testing.T) {
 		os.Chtimes(path, oldTime, oldTime)
 	}
 
-	pruneBackups()
+	webSvc.PruneBackups()
 
 	entries, _ := os.ReadDir(tmpDir)
 	if len(entries) != 3 {
@@ -152,8 +155,8 @@ func TestBackupConfigAPI(t *testing.T) {
 	db.Exec("INSERT OR IGNORE INTO backup_settings (id, retention_days, auto_prune) VALUES (1, 7, 1)")
 
 	r := setupTestRouter()
-	r.GET("/api/backup/config", getBackupConfig)
-	r.POST("/api/backup/config", saveBackupConfig)
+	r.GET("/api/backup/config", webSvc.GetBackupConfig)
+	r.POST("/api/backup/config", webSvc.SaveBackupConfig)
 
 	t.Run("get_config", func(t *testing.T) {
 		req := httptest.NewRequest("GET", "/api/backup/config", nil)
