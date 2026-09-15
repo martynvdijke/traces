@@ -69,6 +69,7 @@ import (
 	"github.com/prometheus/client_golang/prometheus/promhttp"
 
 	"traces/internal/models"
+	"traces/internal/telemetry"
 )
 
 func init() {
@@ -115,7 +116,9 @@ var (
 	otelTracesEnabled  bool
 	otelMetricsEnabled bool
 	otelLogsEnabled    bool
+	otelServiceName    = "traces"
 	logService         *LogService
+	tel                *telemetry.Telemetry
 )
 
 func main() {
@@ -227,16 +230,19 @@ func main() {
 	r := gin.Default()
 	r.MaxMultipartMemory = 32 << 20
 
-	tp, err := initTelemetry()
-	if err != nil {
-		log.Printf("Failed to initialize telemetry: %v", err)
+	var tpErr error
+	tel, tpErr = telemetry.New(telemetry.Config{Endpoint: otelEndpoint, ServiceName: otelServiceName, TracesEnabled: otelTracesEnabled, MetricsEnabled: otelMetricsEnabled, LogsEnabled: otelLogsEnabled})
+	if tpErr != nil {
+		log.Printf("Failed to initialize telemetry: %v", tpErr)
 	} else {
-		// otelgin middleware for automatic request tracing with semantic conventions
-		r.Use(otelgin.Middleware(otelServiceName))
-		// Metrics middleware records Prometheus/OTel metrics (no span creation - otelgin handles that)
-		r.Use(prometheusMetricsMiddleware())
+		r.Use(otelgin.Middleware(tel.ServiceName()))
+		r.Use(tel.MetricsMiddleware())
 	}
-	shutdownTelemetry := initShutdownTelemetry(tp)
+	shutdownTelemetry := func() {
+		if tel != nil {
+			tel.Shutdown()
+		}
+	}
 
 	r.Use(func(c *gin.Context) {
 		c.Header("X-Frame-Options", "DENY")
@@ -625,7 +631,10 @@ func getCSRFToken(c *gin.Context) {
 // startSpan creates a child span from the request context and returns the context + span.
 // Use it in handlers to add trace instrumentation.
 func startSpan(c *gin.Context, name string, opts ...trace.SpanStartOption) (context.Context, trace.Span) {
-	return tracer.Start(c.Request.Context(), name, opts...)
+	if tel != nil && tel.Tracer() != nil {
+		return tel.Tracer().Start(c.Request.Context(), name, opts...)
+	}
+	return c.Request.Context(), trace.SpanFromContext(c.Request.Context())
 }
 
 func serverError(c *gin.Context, err error) {
@@ -864,7 +873,7 @@ func getEvents(c *gin.Context) {
 
 	_qStart := time.Now()
 	rows, err := db.Query(query, args...)
-	RecordDBQuery("getEvents", time.Since(_qStart))
+	tel.RecordDBQuery("getEvents", time.Since(_qStart))
 	if err != nil {
 		serverError(c, err)
 		return
@@ -1062,7 +1071,7 @@ func saveEvent(c *gin.Context) {
 			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, is_favorite, person_id, latitude, longitude, recurring, weather_data, event_start_time, event_end_time, user_id) 
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
-		RecordDBQuery("saveEvent-insert", time.Since(_qStart))
+		tel.RecordDBQuery("saveEvent-insert", time.Since(_qStart))
 		if err != nil {
 			serverError(c, err)
 			return
@@ -1074,7 +1083,7 @@ func saveEvent(c *gin.Context) {
 			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, is_favorite=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, event_start_time=?, event_end_time=?, user_id=?
 			WHERE id=?`,
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID, e.ID)
-		RecordDBQuery("saveEvent-update", time.Since(_qStart))
+		tel.RecordDBQuery("saveEvent-update", time.Since(_qStart))
 		if err != nil {
 			serverError(c, err)
 			return
@@ -1082,7 +1091,7 @@ func saveEvent(c *gin.Context) {
 		action = "updated"
 	}
 
-	RecordEventOperation(action)
+	tel.RecordEventOperation(action)
 	span.SetAttributes(attribute.String("action", action))
 
 	sendGotifyNotification(fmt.Sprintf("Event %s: %s (%s)", action, e.Title, e.Date), e.Description)
@@ -1115,13 +1124,13 @@ func deleteEvent(c *gin.Context) {
 
 	_qStart := time.Now()
 	_, err = db.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=?", id)
-	RecordDBQuery("deleteEvent", time.Since(_qStart))
+	tel.RecordDBQuery("deleteEvent", time.Since(_qStart))
 	if err != nil {
 		serverError(c, err)
 		return
 	}
 
-	RecordEventOperation("delete")
+	tel.RecordEventOperation("delete")
 	sendGotifyNotification(fmt.Sprintf("Event deleted: %s", title), "")
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
