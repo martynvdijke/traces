@@ -14,6 +14,8 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
+
+	"traces/internal/models"
 )
 
 func registerHTMXRoutes(r *gin.Engine) {
@@ -245,7 +247,7 @@ func htmxSaveEvent(c *gin.Context) {
 	if personName != "" {
 		db.QueryRow("SELECT id FROM persons WHERE name = ?", personName).Scan(&personID)
 		if personID == 0 {
-			result, err := db.Exec("INSERT INTO persons (name, color) VALUES (?, ?)", personName, defaultColor)
+			result, err := db.Exec("INSERT INTO persons (name, color) VALUES (?, ?)", personName, models.DefaultColor)
 			if err == nil {
 				lid, _ := result.LastInsertId()
 				personID = int(lid)
@@ -404,7 +406,7 @@ func htmxSavePerson(c *gin.Context) {
 	birthDate := data["birth_date"]
 	color := data["color"]
 	if color == "" {
-		color = defaultColor
+		color = models.DefaultColor
 	}
 
 	if id == 0 {
@@ -515,7 +517,7 @@ func htmxSaveCollection(c *gin.Context) {
 	description := data["description"]
 	color := data["color"]
 	if color == "" {
-		color = defaultColor
+		color = models.DefaultColor
 	}
 
 	if id == 0 {
@@ -550,7 +552,7 @@ func htmxEditCollectionForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		renderTemplate(c.Writer, "collection-form", CollectionRow{Color: defaultColor})
+		renderTemplate(c.Writer, "collection-form", CollectionRow{Color: models.DefaultColor})
 		return
 	}
 
@@ -670,7 +672,7 @@ func htmxSaveUser(c *gin.Context) {
 	email := data["email"]
 	color := data["color"]
 	if color == "" {
-		color = defaultColor
+		color = models.DefaultColor
 	}
 
 	if id == 0 {
@@ -705,7 +707,7 @@ func htmxEditUserForm(c *gin.Context) {
 	}
 
 	if id == 0 {
-		renderTemplate(c.Writer, "user-form", UserRow{Color: defaultColor})
+		renderTemplate(c.Writer, "user-form", UserRow{Color: models.DefaultColor})
 		return
 	}
 

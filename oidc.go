@@ -22,6 +22,8 @@ import (
 	"github.com/coreos/go-oidc/v3/oidc"
 	"github.com/gin-gonic/gin"
 	"golang.org/x/oauth2"
+
+	"traces/internal/models"
 )
 
 type oidcConfig struct {
@@ -358,7 +360,7 @@ func oidcLinkOrProvision(sub, email, name string, groups []string) (int64, error
 		display = username
 	}
 	res, err := db.Exec(`INSERT INTO users (username, display_name, email, color, oidc_sub, auth_method, is_admin)
-		VALUES (?, ?, ?, ?, ?, 'oidc', ?)`, username, display, email, defaultColor, sub, isAdmin)
+		VALUES (?, ?, ?, ?, ?, 'oidc', ?)`, username, display, email, models.DefaultColor, sub, isAdmin)
 	if err != nil {
 		return 0, err
 	}

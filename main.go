@@ -59,7 +59,6 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 	"github.com/rwcarlsen/goexif/exif"
-	"github.com/yuin/goldmark"
 	"go.opentelemetry.io/contrib/instrumentation/github.com/gin-gonic/gin/otelgin"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -79,8 +78,6 @@ func init() {
 	image.RegisterFormat("png", "png", png.Decode, png.DecodeConfig)
 	image.RegisterFormat("jpeg", "\xff\xd8", jpeg.Decode, jpeg.DecodeConfig)
 }
-
-const defaultColor = "#7c3aed"
 
 var (
 	publicMode    bool = false
@@ -551,12 +548,12 @@ func getCurrentUser(c *gin.Context) currentUser {
 func resolveSessionUser(userID int64) currentUser {
 	if userID != 0 {
 		var name, color string
-		err := db.QueryRow("SELECT COALESCE(NULLIF(display_name,''), username), COALESCE(color, ?) FROM users WHERE id = ?", defaultColor, userID).Scan(&name, &color)
+		err := db.QueryRow("SELECT COALESCE(NULLIF(display_name,''), username), COALESCE(color, ?) FROM users WHERE id = ?", models.DefaultColor, userID).Scan(&name, &color)
 		if err == nil {
 			return currentUser{ID: userID, Name: name, Color: color}
 		}
 	}
-	return currentUser{ID: 0, Name: "Admin", Color: defaultColor}
+	return currentUser{ID: 0, Name: "Admin", Color: models.DefaultColor}
 }
 
 func authMiddlewareGin() gin.HandlerFunc {
@@ -740,7 +737,7 @@ func handleLogin(c *gin.Context) {
 			return
 		}
 
-		db.Exec("INSERT OR IGNORE INTO users (id, username, display_name, email, color) VALUES (1, ?, ?, '', ?)", input.Username, input.Username, defaultColor)
+		db.Exec("INSERT OR IGNORE INTO users (id, username, display_name, email, color) VALUES (1, ?, ?, '', ?)", input.Username, input.Username, models.DefaultColor)
 
 		sessionID, err := generateSessionID()
 		if err != nil {
@@ -2271,7 +2268,7 @@ func saveCollection(c *gin.Context) {
 		return
 	}
 	if col.Color == "" {
-		col.Color = defaultColor
+		col.Color = models.DefaultColor
 	}
 
 	if col.ID == 0 {
@@ -5015,7 +5012,7 @@ func serveManifest(c *gin.Context) {
 		"start_url": "/",
 		"display": "standalone",
 		"background_color": "#0f172a",
-		"theme_color": "`+defaultColor+`",
+		"theme_color": "`+models.DefaultColor+`",
 		"icons": [
 			{"src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml"},
 			{"src": "/static/logo.svg", "sizes": "any", "type": "image/svg+xml"}
@@ -5078,17 +5075,4 @@ func sendGotifyNotification(title, message string) {
 			log.Printf("[GOTIFY] Notification sent: %s", title)
 		}
 	}()
-}
-
-var mdRenderer = goldmark.New()
-
-func RenderMarkdown(text string) string {
-	if text == "" {
-		return ""
-	}
-	var buf bytes.Buffer
-	if err := mdRenderer.Convert([]byte(text), &buf); err != nil {
-		return models.EscapeHtml(text)
-	}
-	return buf.String()
 }
