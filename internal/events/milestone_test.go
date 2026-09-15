@@ -1,6 +1,7 @@
-package main
+package events
 
 import (
+	"database/sql"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
@@ -8,13 +9,16 @@ import (
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
+	"traces/internal/integrations"
 )
 
-func setupMilestoneTestDB(t *testing.T) func() {
+func newTestDBForMilestone(t *testing.T) (*sql.DB, *Service) {
 	t.Helper()
 	gin.SetMode(gin.TestMode)
-
-	newTestDB(t)
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		name TEXT NOT NULL,
@@ -51,16 +55,15 @@ func setupMilestoneTestDB(t *testing.T) func() {
 		source TEXT DEFAULT '',
 		source_ref TEXT DEFAULT ''
 	)`)
-
-	return func() {}
+	t.Cleanup(func() { db.Close() })
+	svc := New(Deps{DB: db, Integrations: integrations.New(db, nil, nil)})
+	return db, svc
 }
 
 func TestGetPersonEventsMilestones(t *testing.T) {
-	cleanup := setupMilestoneTestDB(t)
-	defer cleanup()
-
+	db, svc := newTestDBForMilestone(t)
 	r := gin.New()
-	r.GET("/api/persons/:id/events", getPersonEvents)
+	r.GET("/api/persons/:id/events", svc.GetPersonEvents)
 
 	t.Run("person_not_found", func(t *testing.T) {
 		w := httptest.NewRecorder()
@@ -136,6 +139,8 @@ func TestGetPersonEventsMilestones(t *testing.T) {
 	})
 
 	t.Run("without_birth_date_calendar_groups", func(t *testing.T) {
+		db.Exec(`DELETE FROM timeline_events`)
+		db.Exec(`DELETE FROM persons`)
 		db.Exec(`INSERT INTO persons (id, name, birth_date) VALUES (2, 'Anna', '')`)
 		db.Exec(`INSERT INTO timeline_events (title, description, event_date, location, media_type, tags, person_id) VALUES
 			('Trip', '', '2019-07-04', '', 'image', '', 2),

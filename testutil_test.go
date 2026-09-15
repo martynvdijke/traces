@@ -10,6 +10,7 @@ import (
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
 
+	"traces/internal/events"
 	"traces/internal/integrations"
 	"traces/internal/media"
 	"traces/internal/models"
@@ -46,18 +47,33 @@ func newTestDB(t *testing.T) *sql.DB {
 	t.Helper()
 	origDB := db
 	origSvc := integrationsSvc
+	origEvents := eventsSvc
 	newDB, err := sql.Open("sqlite3", ":memory:")
 	if err != nil {
 		t.Fatal(err)
 	}
 	db = newDB
 	integrationsSvc = integrations.New(newDB, logService, nil)
+	eventsSvc = events.New(events.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc})
 	t.Cleanup(func() {
 		db = origDB
 		integrationsSvc = origSvc
+		eventsSvc = origEvents
 		newDB.Close()
 	})
 	return newDB
+}
+
+func newTestEventsSvc() *events.Service {
+	return events.New(events.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc})
+}
+
+func ensureEventsSvc(t *testing.T) *events.Service {
+	t.Helper()
+	orig := eventsSvc
+	eventsSvc = newTestEventsSvc()
+	t.Cleanup(func() { eventsSvc = orig })
+	return eventsSvc
 }
 
 // setupTestMediaSvc points mediaPath at a temp dir and wires the composition

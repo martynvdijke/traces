@@ -1,4 +1,4 @@
-package main
+package events
 
 import (
 	"strconv"
@@ -9,7 +9,6 @@ import (
 )
 
 // parseLenientDate parses dates in YYYY-MM-DD, YYYY-MM, or YYYY form.
-// It returns false when the value is empty or unparseable.
 func parseLenientDate(value string) (time.Time, bool) {
 	value = strings.TrimSpace(value)
 	if value == "" {
@@ -24,15 +23,13 @@ func parseLenientDate(value string) (time.Time, bool) {
 }
 
 // AgeAt computes whole years and remaining months between birthDate and
-// eventDate using lenient date parsing. It returns ok=false when either date
-// cannot be parsed or the event precedes the birth date.
+// eventDate using lenient date parsing.
 func AgeAt(birthDate, eventDate string) (years, months int, ok bool) {
 	b, okB := parseLenientDate(birthDate)
 	e, okE := parseLenientDate(eventDate)
 	if !okB || !okE || e.Before(b) {
 		return 0, 0, false
 	}
-
 	years = e.Year() - b.Year()
 	months = int(e.Month()) - int(b.Month())
 	if e.Day() < b.Day() {
@@ -45,13 +42,7 @@ func AgeAt(birthDate, eventDate string) (years, months int, ok bool) {
 	return years, months, true
 }
 
-// LifeGroup returns the display group for a milestone entry:
-//   - "Year N" (year-of-life, 1-based) when the birth date parses and the
-//     event is on/after birth ("Year 1" runs from birth to the first birthday)
-//   - "Before" when the event precedes a parseable birth date
-//   - calendar year ("2015") when there is no usable birth date but the event
-//     date parses
-//   - "Undated" when the event date does not parse
+// LifeGroup returns the display group for a milestone entry.
 func LifeGroup(birthDate, eventDate string) string {
 	e, okE := parseLenientDate(eventDate)
 	if !okE {
