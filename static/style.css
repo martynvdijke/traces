@@ -1006,6 +1006,11 @@ footer::before {
     .year-selector .d-flex {
         justify-content: center;
     }
+    /* Centering an overflowing flex scroller clips the leading items out of
+       scroll reach, so the scroll rows must start at flex-start. */
+    .year-selector .toolbar-scroll .d-flex {
+        justify-content: flex-start;
+    }
     .year-selector .btn {
         font-size: 0.8rem;
         padding: 0.4rem 0.6rem;
