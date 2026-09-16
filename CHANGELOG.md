@@ -1,3 +1,25 @@
+# [2.0.0](https://github.com/martynvdijke/traces/compare/v1.32.3...v2.0.0) (2026-09-16)
+
+
+* refactor!: remove broken Swagger UI and consolidate OpenAPI spec ([14aa351](https://github.com/martynvdijke/traces/commit/14aa351d52693727e8867ab94f416701fc7303ea))
+
+
+### Bug Fixes
+
+* keep mobile month/year filter rows scrollable ([10a2a03](https://github.com/martynvdijke/traces/commit/10a2a030bd6384c40829cbd9e21741dccc24a66b))
+
+
+### Features
+
+* redesign web UI and merge board game plays into the timeline ([4047c57](https://github.com/martynvdijke/traces/commit/4047c579ceec7c6f10aed4a1611aa5c1e2a24519))
+
+
+### BREAKING CHANGES
+
+* /swagger/*any and /docs are removed, and GET /api-docs
+now returns the current docs/swagger.json (94KB) instead of the stale
+static/swagger.json (23KB).
+
 ## [1.32.3](https://github.com/martynvdijke/traces/compare/v1.32.2...v1.32.3) (2026-09-14)
 
 
