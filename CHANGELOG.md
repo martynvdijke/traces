@@ -1,3 +1,5 @@
+## [2.0.6](https://github.com/martynvdijke/traces/compare/v2.0.5...v2.0.6) (2026-09-22)
+
 ## [2.0.5](https://github.com/martynvdijke/traces/compare/v2.0.4...v2.0.5) (2026-09-21)
 
 ## [2.0.4](https://github.com/martynvdijke/traces/compare/v2.0.3...v2.0.4) (2026-09-19)
