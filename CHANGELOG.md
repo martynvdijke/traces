@@ -1,3 +1,10 @@
+## [2.0.11](https://github.com/martynvdijke/traces/compare/v2.0.10...v2.0.11) (2026-10-02)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#95](https://github.com/martynvdijke/traces/issues/95)) ([b946862](https://github.com/martynvdijke/traces/commit/b94686231667dfc53cd22a5f735d9221a97661aa))
+
 ## [2.0.10](https://github.com/martynvdijke/traces/compare/v2.0.9...v2.0.10) (2026-09-29)
 
 ## [2.0.9](https://github.com/martynvdijke/traces/compare/v2.0.8...v2.0.9) (2026-09-28)
