@@ -8,7 +8,7 @@ test.describe('TRACES Authentication', () => {
     await expect(page.locator('form#login-form')).toBeVisible();
     await expect(page.locator('input[name="username"]')).toBeVisible();
     await expect(page.locator('input[name="password"]')).toBeVisible();
-    await expect(page.locator('button[type="submit"]')).toBeVisible();
+    await expect(page.locator('#login-form button[type="submit"]')).toBeVisible();
     await expect(page.locator('h1')).toContainText('TRACES');
   });
 
@@ -187,7 +187,7 @@ test.describe('TRACES Browser Auth Flow', () => {
 
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'wrong_password_xyz');
-    await page.click('button[type="submit"]');
+    await page.click('#login-form button[type="submit"]');
 
     // Wait for the error message in DOM
     const errorEl = page.locator('#login-error');
@@ -203,7 +203,7 @@ test.describe('TRACES Browser Auth Flow', () => {
 
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');
-    await page.click('button[type="submit"]');
+    await page.click('#login-form button[type="submit"]');
 
     // Should redirect to admin page
     await page.waitForURL('**/admin.html', { timeout: 5000 });
@@ -216,7 +216,7 @@ test.describe('TRACES Browser Auth Flow', () => {
     await page.goto('/login.html');
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');
-    await page.click('button[type="submit"]');
+    await page.click('#login-form button[type="submit"]');
     await page.waitForURL('**/admin.html', { timeout: 5000 });
 
     // Look for the logout button/link
@@ -238,7 +238,7 @@ test.describe('TRACES Browser Auth Flow', () => {
     await page.goto('/login.html');
     await page.fill('input[name="username"]', 'admin');
     await page.fill('input[name="password"]', 'admin123');
-    await page.click('button[type="submit"]');
+    await page.click('#login-form button[type="submit"]');
     await page.waitForURL('**/admin.html', { timeout: 5000 });
 
     // Click logout
