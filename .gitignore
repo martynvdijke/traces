@@ -46,3 +46,6 @@ static/js/
 openspec/
 .opencode/
 .superpowers/
+
+# Zensical build output
+site/
