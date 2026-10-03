@@ -263,6 +263,9 @@ func main() {
 		api.GET("/check-setup", webSvc.CheckSetup)
 		api.POST("/login", authSvc.HandleLogin)
 		api.POST("/logout", authSvc.HandleLogout)
+		api.POST("/request-password-reset", authSvc.HandleRequestPasswordReset)
+		api.POST("/reset-password", authSvc.HandleResetPassword)
+		api.GET("/reset-password/validate", authSvc.HandleValidateResetToken)
 		api.GET("/auth/oidc/login", authSvc.HandleOIDCLogin)
 		api.GET("/auth/oidc/callback", authSvc.HandleOIDCCallback)
 		api.GET("/auth/oidc/logout", authSvc.HandleOIDCLogout)
@@ -377,6 +380,7 @@ func main() {
 	r.GET("/admin.html", webSvc.AdminPage)
 	r.GET("/login.html", webSvc.LoginPage)
 	r.GET("/setup.html", webSvc.SetupPage)
+	r.GET("/reset.html", webSvc.ResetPage)
 	r.GET("/api-docs", webSvc.APIDocs)
 
 	r.Static("/static", filepath.Join(basePath, "static"))

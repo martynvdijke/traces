@@ -71,6 +71,7 @@ type Service struct {
 	sessions     *SessionStore
 	integrations *integrations.Service
 	publicMode   func() bool
+	sendEmail    func(cfg models.EmailConfig, to, subject, body string) error
 
 	oidcCfg      oidcConfig
 	oidcMu       sync.Mutex
@@ -82,6 +83,7 @@ type Service struct {
 func New(d Deps) *Service {
 	return &Service{
 		db:           d.DB,
+		sendEmail:    integrations.SendEmail,
 		log:          d.Log,
 		renderer:     d.Renderer,
 		sessions:     d.Sessions,

@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRACES - Reset Password</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/7.3.1/css/all.min.css">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script>(function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();</script>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        :root { --card-bg: var(--bg-card); --card-text: var(--text); --input-bg: var(--bg-card); --input-border: var(--border); --input-text: var(--text); --muted: var(--text-muted); }
+        body { background: var(--gradient-hero); min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: var(--space-xl) var(--space-md); }
+        .login-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--elevation-lg); padding: 2.2rem 2rem 1.9rem; width: 100%; max-width: 400px; color: var(--card-text); }
+        .login-logo { text-align: center; margin-bottom: 1.6rem; }
+        .login-logo img { width: 60px; height: 60px; border-radius: 14px; box-shadow: 0 4px 16px var(--shadow-md), 0 1px 4px var(--shadow-sm); display: block; margin: 0 auto; }
+        .login-logo h1 { font-family: var(--font-sans); font-weight: 800; font-size: 1.55rem; letter-spacing: -0.04em; line-height: 1; color: var(--text); margin: 0.85rem 0 0.2rem; }
+        .login-logo h1::after { content: ''; display: block; width: 28px; height: 3px; border-radius: 999px; background: var(--gradient); margin: 0.55rem auto 0; opacity: 0.9; }
+        .login-logo .text-muted { font-family: var(--font-mono); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted) !important; margin-top: 0.65rem; }
+        .form-label { font-size: 0.78rem; font-weight: 650; letter-spacing: 0.02em; color: var(--card-text); margin-bottom: 0.35rem; font-family: var(--font-sans); }
+        .form-control { background: var(--input-bg); border: 1px solid var(--input-border); border-radius: var(--radius-sm); color: var(--input-text); font-size: 0.93rem; font-family: var(--font-sans); min-height: 44px; padding: 0.62rem 0.9rem; }
+        .form-control:focus { border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-glow); }
+        .btn-primary { background: var(--primary); border-color: var(--primary); border-radius: 999px; min-height: 44px; padding: 0.62rem 1.1rem; font-weight: 700; font-size: 0.92rem; }
+        .btn-primary:hover { background: var(--primary-dark); border-color: var(--primary-dark); }
+        .alert-danger { background: var(--bs-primary-bg-subtle); border: 1px solid var(--bs-primary-border-subtle); color: var(--bs-primary-text-emphasis); border-radius: var(--radius-sm); font-size: 0.84rem; }
+    </style>
+</head>
+<body>
+    <div class="login-card">
+        <div class="login-logo">
+            <img src="/static/logo.svg" alt="TRACES">
+            <h1>TRACES</h1>
+            <p class="text-muted">Reset your password</p>
+        </div>
+        <div id="reset-msg" class="alert d-none" role="alert"></div>
+        <form id="reset-form">
+            <div class="mb-3">
+                <label class="form-label">New Password</label>
+                <input type="password" class="form-control" name="password" required minlength="8" autocomplete="new-password">
+                <small class="text-muted">Minimum 8 characters</small>
+            </div>
+            <div class="mb-3">
+                <label class="form-label">Confirm Password</label>
+                <input type="password" class="form-control" name="confirm" required minlength="8" autocomplete="new-password">
+            </div>
+            <button type="submit" class="btn btn-primary w-100">Reset Password</button>
+        </form>
+        <p style="text-align:center;margin-top:1rem;font-size:0.85rem"><a href="/login.html">Back to login</a></p>
+    </div>
+    <script>
+    (function(){
+      const params=new URLSearchParams(location.search);
+      const token=params.get('token')||'';
+      const msg=document.getElementById('reset-msg');
+      const form=document.getElementById('reset-form');
+      if(!token){
+        msg.textContent='Missing token. Please use the link from your email.';
+        msg.className='alert alert-danger';
+        msg.classList.remove('d-none');
+        form.style.display='none';
+        return;
+      }
+      fetch('/api/reset-password/validate?token='+encodeURIComponent(token)).then(r=>r.json()).then(d=>{
+        if(!d.valid){
+          msg.textContent='This reset link is invalid or expired.';
+          msg.className='alert alert-danger';
+          msg.classList.remove('d-none');
+          form.style.display='none';
+        }
+      }).catch(()=>{});
+      form.addEventListener('submit', async (e)=>{
+        e.preventDefault();
+        const fd=new FormData(form);
+        const pw=fd.get('password');
+        const cf=fd.get('confirm');
+        if(pw!==cf){msg.textContent='Passwords do not match.';msg.className='alert alert-danger';msg.classList.remove('d-none');return;}
+        if(pw.length<8){msg.textContent='Password must be at least 8 characters.';msg.className='alert alert-danger';msg.classList.remove('d-none');return;}
+        try{
+          const res=await fetch('/api/reset-password',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({token:token,password:pw})});
+          const data=await res.json();
+          if(res.ok){msg.textContent='Password reset successful. Redirecting to login...';msg.className='alert alert-success';msg.classList.remove('d-none');form.style.display='none';setTimeout(()=>location.href='/login.html',1500);}
+          else{msg.textContent=data.error||'Reset failed';msg.className='alert alert-danger';msg.classList.remove('d-none');}
+        }catch(err){msg.textContent='Reset failed: '+err.message;msg.className='alert alert-danger';msg.classList.remove('d-none');}
+      });
+    })();
+    </script>
+</body>
+</html>

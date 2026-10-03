@@ -101,7 +101,7 @@ func CreateTables(db *sql.DB) {
 			avatar_url TEXT DEFAULT '',
 			bio TEXT DEFAULT '',
 			birth_date TEXT DEFAULT '',
-			color TEXT DEFAULT '#7c3aed',
+			color TEXT DEFAULT '#B5452B',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS share_tokens (
@@ -138,7 +138,7 @@ func CreateTables(db *sql.DB) {
 			username TEXT UNIQUE,
 			display_name TEXT DEFAULT '',
 			email TEXT DEFAULT '',
-			color TEXT DEFAULT '#7c3aed',
+			color TEXT DEFAULT '#B5452B',
 			avatar_url TEXT DEFAULT '',
 			password_hash TEXT DEFAULT '',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -197,7 +197,7 @@ func CreateTables(db *sql.DB) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			description TEXT DEFAULT '',
-			color TEXT DEFAULT '#7c3aed',
+			color TEXT DEFAULT '#B5452B',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`,
 		`CREATE TABLE IF NOT EXISTS collection_events (
@@ -214,6 +214,15 @@ func CreateTables(db *sql.DB) {
 			message TEXT NOT NULL DEFAULT '',
 			metadata TEXT DEFAULT ''
 		)`,
+		`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			token_hash TEXT UNIQUE NOT NULL,
+			expires_at INTEGER NOT NULL,
+			used_at INTEGER,
+			created_at INTEGER DEFAULT (unixepoch())
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id)`,
 		`CREATE TABLE IF NOT EXISTS log_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			min_severity TEXT NOT NULL DEFAULT 'warn'
@@ -248,7 +257,7 @@ func seedDefaults(db *sql.DB) {
 
 	db.QueryRow("SELECT COUNT(*) FROM users").Scan(&count)
 	if count == 0 {
-		db.Exec("INSERT INTO users (id, username, display_name, email, color) VALUES (1, 'default', 'Default User', '', '#7c3aed')")
+		db.Exec("INSERT INTO users (id, username, display_name, email, color) VALUES (1, 'default', 'Default User', '', '#B5452B')")
 	}
 
 	db.QueryRow("SELECT COUNT(*) FROM ollama_settings").Scan(&count)
@@ -348,7 +357,7 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			avatar_url TEXT DEFAULT '',
 			bio TEXT DEFAULT '',
 			birth_date TEXT DEFAULT '',
-			color TEXT DEFAULT '#7c3aed',
+			color TEXT DEFAULT '#B5452B',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`)
 		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS gotify_settings (
@@ -391,11 +400,11 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT UNIQUE,
 			display_name TEXT DEFAULT '',
-			color TEXT DEFAULT '#7c3aed',
+			color TEXT DEFAULT '#B5452B',
 			avatar_url TEXT DEFAULT '',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO users (id, username, display_name, color) VALUES (1, 'default', 'Default User', '#7c3aed')`)
+		_, _ = db.Exec(`INSERT OR IGNORE INTO users (id, username, display_name, color) VALUES (1, 'default', 'Default User', '#B5452B')`)
 	case 6:
 		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS ollama_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -425,7 +434,7 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			description TEXT DEFAULT '',
-			color TEXT DEFAULT '#7c3aed',
+			color TEXT DEFAULT '#B5452B',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`)
 		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS collection_events (
@@ -484,6 +493,16 @@ func RunMigration(db *sql.DB, fromVersion int) {
 		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`)
 		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(oidc_sub) WHERE oidc_sub <> ''`)
 		_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`)
+	case 22:
+		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+			id INTEGER PRIMARY KEY AUTOINCREMENT,
+			user_id INTEGER NOT NULL,
+			token_hash TEXT UNIQUE NOT NULL,
+			expires_at INTEGER NOT NULL,
+			used_at INTEGER,
+			created_at INTEGER DEFAULT (unixepoch())
+		)`)
+		_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id)`)
 	}
 }
 

@@ -109,7 +109,7 @@ func (s *Service) Manifest(c *gin.Context) {
 
 func (s *Service) ServiceWorker(c *gin.Context) {
 	c.Header("Content-Type", "application/javascript")
-	c.String(http.StatusOK, `const CACHE = 'traces-v1';
+	c.String(http.StatusOK, `const CACHE = 'traces-v2';
 self.addEventListener('install', e => { e.waitUntil(caches.open(CACHE).then(c => c.addAll(['/','/static/style.css','/static/js/index.js']))); self.skipWaiting(); });
 self.addEventListener('activate', e => { e.waitUntil(clients.claim()); });
 self.addEventListener('fetch', e => {
@@ -303,6 +303,10 @@ func (s *Service) SetupPage(c *gin.Context) {
 		return
 	}
 	c.File(filepath.Join(s.basePath, "static/setup.html"))
+}
+
+func (s *Service) ResetPage(c *gin.Context) {
+	c.File(filepath.Join(s.basePath, "static/reset.html"))
 }
 
 func (s *Service) MapPage(c *gin.Context) {

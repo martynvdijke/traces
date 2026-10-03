@@ -159,6 +159,15 @@ type EventTemplate struct {
 	CreatedAt   string `json:"created_at"`
 }
 
+type PasswordResetToken struct {
+	ID        int64  `json:"id"`
+	UserID    int64  `json:"user_id"`
+	TokenHash string `json:"token_hash"`
+	ExpiresAt int64  `json:"expires_at"`
+	UsedAt    *int64 `json:"used_at"`
+	CreatedAt int64  `json:"created_at"`
+}
+
 type Collection struct {
 	ID          int    `json:"id"`
 	Name        string `json:"name"`
@@ -237,7 +246,7 @@ type LocationCount struct {
 // Constants
 const (
 	DefaultColor         = "#7c3aed"
-	CurrentSchemaVersion = 22
+	CurrentSchemaVersion = 23
 	CurrentVersion       = "2.0.11"
 )
 
