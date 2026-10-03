@@ -1,3 +1,10 @@
+# [2.1.0](https://github.com/martynvdijke/traces/compare/v2.0.11...v2.1.0) (2026-10-03)
+
+
+### Features
+
+* **auth:** add email password reset flow ([22df3dc](https://github.com/martynvdijke/traces/commit/22df3dc594db522421556ac60c5741aa8e5c0a80))
+
 ## [2.0.11](https://github.com/martynvdijke/traces/compare/v2.0.10...v2.0.11) (2026-10-02)
 
 
