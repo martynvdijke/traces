@@ -7,7 +7,8 @@ import (
 	"strings"
 	"time"
 
-	"github.com/yuin/goldmark"
+	"github.com/yuin/goldmark/v2/parser"
+	"github.com/yuin/goldmark/v2/renderer/html"
 )
 
 // Domain types
@@ -243,7 +244,10 @@ const (
 
 // Helper functions
 
-var mdRenderer = goldmark.New()
+var (
+	mdParser   = parser.New()
+	mdRenderer = html.New()
+)
 
 func EscapeHtml(text string) string {
 	if text == "" {
@@ -261,8 +265,10 @@ func RenderMarkdown(text string) string {
 	if text == "" {
 		return ""
 	}
+	src := []byte(text)
+	doc := mdParser.Parse(src)
 	var buf bytes.Buffer
-	if err := mdRenderer.Convert([]byte(text), &buf); err != nil {
+	if err := mdRenderer.Render(&buf, src, doc); err != nil {
 		return EscapeHtml(text)
 	}
 	return buf.String()
