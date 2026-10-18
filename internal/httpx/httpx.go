@@ -183,7 +183,7 @@ const htmxTemplateSource = `
   <td class="ps-1 fw-bold font-monospace" style="font-size:0.85rem">{{.Date}}</td>
   <td><span class="fw-medium">{{escapeHtml .Title}}</span></td>
   <td>{{if .Location}}<i class="fa-solid fa-location-dot me-1 text-muted" style="font-size:0.7rem"></i>{{escapeHtml .Location}}{{else}}<span class="text-muted">&mdash;</span>{{end}}</td>
-  <td>{{if .PersonName}}<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:{{if .PersonColor}}{{.PersonColor}}{{else}}#7c3aed{{end}};width:8px;height:8px"></span>{{escapeHtml .PersonName}}</span>{{else}}<span class="text-muted">&mdash;</span>{{end}}</td>
+  <td>{{if .PersonName}}<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:{{if .PersonColor}}{{.PersonColor}}{{else}}#B5452B{{end}};width:8px;height:8px"></span>{{escapeHtml .PersonName}}</span>{{else}}<span class="text-muted">&mdash;</span>{{end}}</td>
   <td>{{if or .MediaURL (eq .MediaType "boardgame")}}<span class="media-type-badge {{.MediaType}}"><i class="fa-solid {{getMediaIcon .MediaType}} me-1"></i>{{.MediaType}}</span>{{else}}<span class="text-muted">&mdash;</span>{{end}}</td>
   <td class="text-center"><i class="{{if .IsFavorite}}fa-solid{{else}}fa-regular{{end}} fa-star text-warning" style="cursor:pointer" onclick="toggleFav({{.ID}})" title="Toggle favorite"></i></td>
   <td class="text-end pe-3">
@@ -275,7 +275,7 @@ const htmxTemplateSource = `
 {{define "person-card"}}
 <div class="col-md-6 col-lg-4">
   <div class="person-card" hx-get="/api/admin/persons/{{.ID}}/events" hx-target="#event-list" hx-trigger="click" hx-swap="innerHTML">
-    {{if .AvatarURL}}<img src="{{.AvatarURL}}" class="person-avatar" alt="">{{else}}<div class="person-avatar-placeholder" style="background:{{if .Color}}{{.Color}}{{else}}#7c3aed{{end}}">{{upper .Name}}</div>{{end}}
+    {{if .AvatarURL}}<img src="{{.AvatarURL}}" class="person-avatar" alt="">{{else}}<div class="person-avatar-placeholder" style="background:{{if .Color}}{{.Color}}{{else}}#B5452B{{end}}">{{upper .Name}}</div>{{end}}
     <div class="person-info">
       <div class="name">{{escapeHtml .Name}}</div>
       <div class="meta">{{if .Bio}}{{truncate .Bio 50}}{{end}}</div>

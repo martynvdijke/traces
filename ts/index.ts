@@ -1082,7 +1082,7 @@ function storyCardHtml(e: TimelineEvent): string {
   if (e.user_id && users.length) {
     const u = users.find(u => u.id === e.user_id);
     if (u) {
-      userHtml = `<span class="user-badge ms-1" style="background:${u.color || '#7c3aed'}"><i class="fa-solid fa-user"></i> ${escapeHtml(u.display_name || u.username)}</span>`;
+      userHtml = `<span class="user-badge ms-1" style="background:${u.color || '#B5452B'}"><i class="fa-solid fa-user"></i> ${escapeHtml(u.display_name || u.username)}</span>`;
     }
   }
 
@@ -1181,7 +1181,7 @@ function createMiniMap(el: HTMLElement): void {
   L.marker([lat, lng], {
     icon: L.divIcon({
       className: 'custom-marker',
-      html: '<i class="fa-solid fa-map-pin" style="color:#7c3aed;font-size:20px;"></i>',
+      html: '<i class="fa-solid fa-map-pin" style="color:#B5452B;font-size:20px;"></i>',
       iconSize: [20, 20],
       iconAnchor: [10, 20],
       popupAnchor: [0, -20]
@@ -1353,7 +1353,7 @@ function renderMapInstance(): void {
   const bounds: [number, number][] = [];
   const markerIcon = L.divIcon({
     className: 'custom-marker',
-    html: '<i class="fa-solid fa-map-pin" style="color:#7c3aed;font-size:24px;"></i>',
+    html: '<i class="fa-solid fa-map-pin" style="color:#B5452B;font-size:24px;"></i>',
     iconSize: [24, 24],
     iconAnchor: [12, 24],
     popupAnchor: [0, -24]
@@ -1399,7 +1399,7 @@ function renderMapInstance(): void {
     const sorted = [...geoEvents].sort((a, b) => a.date.localeCompare(b.date));
     const latlngs: [number, number][] = sorted.map(e => [e.latitude!, e.longitude!]);
     mapPathLine = L.polyline(latlngs, {
-      color: '#7c3aed',
+      color: '#B5452B',
       weight: 3,
       opacity: 0.6,
       dashArray: '8, 8'

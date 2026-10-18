@@ -368,7 +368,7 @@ func (s *Service) htmxEditEventForm(c *gin.Context) {
 
 func (s *Service) htmxListPersons(c *gin.Context) {
 	q := c.Query("q")
-	query := `SELECT p.id, p.name, COALESCE(p.avatar_url,''), COALESCE(p.bio,''), COALESCE(p.birth_date,''), COALESCE(p.color,'#7c3aed'),
+	query := `SELECT p.id, p.name, COALESCE(p.avatar_url,''), COALESCE(p.bio,''), COALESCE(p.birth_date,''), COALESCE(p.color,'#B5452B'),
 		(SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count
 		FROM persons p`
 	args := []any{}
@@ -488,7 +488,7 @@ func (s *Service) htmxRenameTag(c *gin.Context) {
 }
 
 func (s *Service) htmxListCollections(c *gin.Context) {
-	rows, err := s.DB.Query(`SELECT c.id, c.name, COALESCE(c.description,''), COALESCE(c.color,'#7c3aed'),
+	rows, err := s.DB.Query(`SELECT c.id, c.name, COALESCE(c.description,''), COALESCE(c.color,'#B5452B'),
 		(SELECT COUNT(*) FROM collection_events WHERE collection_id = c.id) as event_count
 		FROM collections c ORDER BY c.name ASC`)
 	if err != nil {
@@ -555,7 +555,7 @@ func (s *Service) htmxEditCollectionForm(c *gin.Context) {
 	}
 
 	var col httpx.CollectionRow
-	err = s.DB.QueryRow("SELECT id, name, COALESCE(description,''), COALESCE(color,'#7c3aed'), 0 FROM collections WHERE id=?", id).Scan(
+	err = s.DB.QueryRow("SELECT id, name, COALESCE(description,''), COALESCE(color,'#B5452B'), 0 FROM collections WHERE id=?", id).Scan(
 		&col.ID, &col.Name, &col.Description, &col.Color, &col.EventCount)
 	if err != nil {
 		c.String(http.StatusNotFound, "Collection not found")
@@ -639,7 +639,7 @@ func (s *Service) htmxEditTemplateForm(c *gin.Context) {
 }
 
 func (s *Service) htmxListUsers(c *gin.Context) {
-	rows, err := s.DB.Query(`SELECT u.id, u.username, COALESCE(u.display_name,''), COALESCE(u.email,''), COALESCE(u.color,'#7c3aed'),
+	rows, err := s.DB.Query(`SELECT u.id, u.username, COALESCE(u.display_name,''), COALESCE(u.email,''), COALESCE(u.color,'#B5452B'),
 		(SELECT COUNT(*) FROM timeline_events WHERE user_id = u.id) as event_count
 		FROM users u ORDER BY u.display_name ASC`)
 	if err != nil {
@@ -710,7 +710,7 @@ func (s *Service) htmxEditUserForm(c *gin.Context) {
 	}
 
 	var u httpx.UserRow
-	err = s.DB.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(email,''), COALESCE(color,'#7c3aed'), 0 FROM users WHERE id=?", id).Scan(
+	err = s.DB.QueryRow("SELECT id, username, COALESCE(display_name,''), COALESCE(email,''), COALESCE(color,'#B5452B'), 0 FROM users WHERE id=?", id).Scan(
 		&u.ID, &u.Username, &u.DisplayName, &u.Email, &u.Color, &u.EventCount)
 	if err != nil {
 		c.String(http.StatusNotFound, "User not found")

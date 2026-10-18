@@ -173,7 +173,7 @@ function getUserAttribution(userId: any): string {
   if (!userId) return '';
   const u = adminUsers.find((u: any) => u.id === userId);
   if (!u) return '';
-  return '<span class="d-inline-flex align-items-center gap-1 added-by"><span class="color-dot" style="background:' + (u.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(u.display_name || u.username) + '</span>';
+  return '<span class="d-inline-flex align-items-center gap-1 added-by"><span class="color-dot" style="background:' + (u.color || '#B5452B') + ';width:8px;height:8px"></span>' + escapeHtml(u.display_name || u.username) + '</span>';
 }
 
 function renderEventList(): void {
@@ -194,7 +194,7 @@ function renderEventList(): void {
       <td class="ps-1 fw-bold font-monospace" style="font-size:0.85rem">${e.date}</td>
       <td><span class="fw-medium">${escapeHtml(e.title)}</span>${attribution ? '<div class="text-muted small">' + attribution + '</div>' : ''}</td>
       <td>${e.location ? '<i class="fa-solid fa-location-dot me-1 text-muted" style="font-size:0.7rem"></i>' + escapeHtml(e.location) : '<span class="text-muted">—</span>'}</td>
-      <td>${p ? '<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (p.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(p.name) + '</span>' : '<span class="text-muted">—</span>'}</td>
+      <td>${p ? '<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (p.color || '#B5452B') + ';width:8px;height:8px"></span>' + escapeHtml(p.name) + '</span>' : '<span class="text-muted">—</span>'}</td>
       <td>${e.media_url ? '<span class="media-type-badge ' + e.media_type + '"><i class="' + getMediaIcon(e.media_type) + ' me-1"></i>' + e.media_type + '</span>' : '<span class="text-muted">—</span>'}</td>
       <td class="text-center"><i class="${favIcon}" style="cursor:pointer" onclick="toggleFav(${e.id})" title="Toggle favorite"></i></td>
       <td class="text-end pe-3">
@@ -222,7 +222,7 @@ function renderPersonList(): void {
       <div class="person-card" onclick="showPersonEvents(${p.id})">
         ${p.avatar_url
         ? '<img src="' + p.avatar_url + '" class="person-avatar" alt="">'
-        : '<div class="person-avatar-placeholder" style="background:' + (p.color || '#7c3aed') + '">' + initial + '</div>'
+        : '<div class="person-avatar-placeholder" style="background:' + (p.color || '#B5452B') + '">' + initial + '</div>'
       }
         <div class="person-info">
           <div class="name">${escapeHtml(p.name)}</div>
@@ -378,7 +378,7 @@ function showPersonEvents(personId: number): void {
         <div class="person-detail-header animate-in">
           ${person.avatar_url
       ? '<img src="' + person.avatar_url + '" class="avatar-lg" alt="">'
-      : '<div class="avatar-placeholder-lg" style="background:' + (person.color || '#7c3aed') + '">' + initial + '</div>'
+      : '<div class="avatar-placeholder-lg" style="background:' + (person.color || '#B5452B') + '">' + initial + '</div>'
     }
           <div class="info">
             <h2>${escapeHtml(person.name)}</h2>
@@ -454,7 +454,7 @@ function renderMilestones(data: any): void {
   header.innerHTML = `
     ${person.avatar_url
       ? '<img src="' + person.avatar_url + '" class="avatar-lg" alt="">'
-      : '<div class="avatar-placeholder-lg" style="background:' + (person.color || '#7c3aed') + '">' + initial + '</div>'
+      : '<div class="avatar-placeholder-lg" style="background:' + (person.color || '#B5452B') + '">' + initial + '</div>'
     }
     <div class="info">
       <h2>${escapeHtml(person.name || '')}</h2>
@@ -497,7 +497,7 @@ function renderMilestoneCard(ev: any): string {
   }
   const metaBits: string[] = [];
   if (ev.location) metaBits.push('<i class="fa-solid fa-location-dot me-1"></i>' + escapeHtml(ev.location));
-  if (ev.person && ev.person.name) metaBits.push('<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (ev.person.color || '#7c3aed') + ';width:8px;height:8px"></span>' + escapeHtml(ev.person.name) + '</span>');
+  if (ev.person && ev.person.name) metaBits.push('<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (ev.person.color || '#B5452B') + ';width:8px;height:8px"></span>' + escapeHtml(ev.person.name) + '</span>');
   const attribution = getUserAttribution(ev.user_id);
   if (attribution) metaBits.push(attribution);
   return `
@@ -636,7 +636,7 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
 function openPersonModal(person?: any): void {
   (document.getElementById('person-form') as HTMLFormElement).reset();
   (document.getElementById('person-id') as HTMLInputElement).value = '0';
-  (document.getElementById('person-color') as HTMLInputElement).value = '#7c3aed';
+  (document.getElementById('person-color') as HTMLInputElement).value = '#B5452B';
   document.getElementById('personModalLabel')!.textContent = 'Add Person';
   clearPersonAvatar();
 
@@ -647,7 +647,7 @@ function openPersonModal(person?: any): void {
     (document.getElementById('person-avatar') as HTMLInputElement).value = person.avatar_url || '';
     (document.getElementById('person-bio') as HTMLTextAreaElement).value = person.bio || '';
     (document.getElementById('person-birth') as HTMLInputElement).value = person.birth_date || '';
-    (document.getElementById('person-color') as HTMLInputElement).value = person.color || '#7c3aed';
+    (document.getElementById('person-color') as HTMLInputElement).value = person.color || '#B5452B';
     if (person.avatar_url) {
       (document.getElementById('person-avatar-img') as HTMLImageElement).src = person.avatar_url;
       document.getElementById('person-avatar-preview')!.style.display = 'block';
@@ -743,7 +743,7 @@ let inlinePersonSavedCallback: (() => void) | null = null;
 
 function showInlinePersonForm(): void {
   (document.getElementById('inline-person-name') as HTMLInputElement).value = '';
-  (document.getElementById('inline-person-color') as HTMLInputElement).value = '#7c3aed';
+  (document.getElementById('inline-person-color') as HTMLInputElement).value = '#B5452B';
   document.getElementById('inline-person-result')!.innerHTML = '';
   document.getElementById('inline-person-form')!.style.display = '';
   document.getElementById('inline-person-name')!.focus();
@@ -1355,7 +1355,7 @@ function renderUserList(): void {
   container.innerHTML = adminUsers.map((u: any) => `
     <div class="col-md-6 col-lg-4">
       <div class="person-card">
-        <div class="person-avatar-placeholder" style="background:${u.color || '#7c3aed'}">
+        <div class="person-avatar-placeholder" style="background:${u.color || '#B5452B'}">
           <i class="fa-solid fa-user" style="color:white;font-size:1.2rem"></i>
         </div>
         <div class="person-info">
@@ -1382,7 +1382,7 @@ function updateUserSelect(): void {
 function openUserModal(userId?: number): void {
   (document.getElementById('user-form') as HTMLFormElement).reset();
   (document.getElementById('user-id') as HTMLInputElement).value = '0';
-  (document.getElementById('user-color') as HTMLInputElement).value = '#7c3aed';
+  (document.getElementById('user-color') as HTMLInputElement).value = '#B5452B';
   (document.getElementById('user-email') as HTMLInputElement).value = '';
   document.getElementById('userModalLabel')!.textContent = 'Add User';
   if (userId) {
@@ -1393,7 +1393,7 @@ function openUserModal(userId?: number): void {
       (document.getElementById('user-username') as HTMLInputElement).value = u.username;
       (document.getElementById('user-display-name') as HTMLInputElement).value = u.display_name || '';
       (document.getElementById('user-email') as HTMLInputElement).value = u.email || '';
-      (document.getElementById('user-color') as HTMLInputElement).value = u.color || '#7c3aed';
+      (document.getElementById('user-color') as HTMLInputElement).value = u.color || '#B5452B';
     }
   }
   new bootstrap.Modal(document.getElementById('userModal')).show();
@@ -1917,7 +1917,7 @@ function renderCollectionList(): void {
   container.innerHTML = collections.map((c: any) => {
     const initial = c.name ? c.name[0].toUpperCase() : '?';
     return `<div class="col-md-6 col-lg-4">
-      <div class="card h-100" style="border-left:4px solid ${c.color || '#7c3aed'}">
+      <div class="card h-100" style="border-left:4px solid ${c.color || '#B5452B'}">
         <div class="card-body">
           <div class="d-flex justify-content-between align-items-start mb-2">
             <div>
@@ -1954,7 +1954,7 @@ function updateCollectionEventSelect(): void {
 function openCollectionModal(collection?: any): void {
   (document.getElementById('collection-form') as HTMLFormElement).reset();
   (document.getElementById('collection-id') as HTMLInputElement).value = '0';
-  (document.getElementById('collection-color') as HTMLInputElement).value = '#7c3aed';
+  (document.getElementById('collection-color') as HTMLInputElement).value = '#B5452B';
   document.getElementById('collectionModalLabel')!.textContent = 'Add Collection';
   document.getElementById('collection-result')!.innerHTML = '';
   if (collection) {
@@ -1962,7 +1962,7 @@ function openCollectionModal(collection?: any): void {
     (document.getElementById('collection-id') as HTMLInputElement).value = collection.id;
     (document.getElementById('collection-name') as HTMLInputElement).value = collection.name;
     (document.getElementById('collection-desc') as HTMLTextAreaElement).value = collection.description || '';
-    (document.getElementById('collection-color') as HTMLInputElement).value = collection.color || '#7c3aed';
+    (document.getElementById('collection-color') as HTMLInputElement).value = collection.color || '#B5452B';
   }
   new bootstrap.Modal(document.getElementById('collectionModal')).show();
 }

@@ -53,7 +53,7 @@ function renderMarkers(): void {
   if (visibleEvents.length === 0) return;
 
   const mediaIcons: Record<string, any> = {
-    image: L.divIcon({ className: 'map-marker-icon', html: '<div style="background:#7c3aed;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3)"><i class="fa-solid fa-image"></i></div>', iconSize: [28, 28], iconAnchor: [14, 14] }),
+    image: L.divIcon({ className: 'map-marker-icon', html: '<div style="background:#B5452B;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3)"><i class="fa-solid fa-image"></i></div>', iconSize: [28, 28], iconAnchor: [14, 14] }),
     video: L.divIcon({ className: 'map-marker-icon', html: '<div style="background:#ef4444;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3)"><i class="fa-solid fa-video"></i></div>', iconSize: [28, 28], iconAnchor: [14, 14] }),
     audio: L.divIcon({ className: 'map-marker-icon', html: '<div style="background:#f59e0b;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3)"><i class="fa-solid fa-music"></i></div>', iconSize: [28, 28], iconAnchor: [14, 14] }),
     default: L.divIcon({ className: 'map-marker-icon', html: '<div style="background:#6b7280;color:white;width:28px;height:28px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;box-shadow:0 2px 6px rgba(0,0,0,0.3)"><i class="fa-solid fa-location-dot"></i></div>', iconSize: [28, 28], iconAnchor: [14, 14] })
@@ -77,7 +77,7 @@ function renderMarkers(): void {
         mediaHtml = '<audio controls style="margin-top:8px" src="' + event.media_url + '"></audio>';
       }
     }
-    marker.bindPopup('<div style="min-width:150px"><strong>' + event.title + '</strong><br><small style="color:#7c3aed">' + event.date + '</small><br><small>' + (event.location || '') + '</small>' + (event.description ? '<p style="margin-top:4px;font-size:0.85rem">' + event.description + '</p>' : '') + mediaHtml + '</div>');
+    marker.bindPopup('<div style="min-width:150px"><strong>' + event.title + '</strong><br><small style="color:#B5452B">' + event.date + '</small><br><small>' + (event.location || '') + '</small>' + (event.description ? '<p style="margin-top:4px;font-size:0.85rem">' + event.description + '</p>' : '') + mediaHtml + '</div>');
     markers.push(marker);
     markerList.push(marker);
     bounds.push([event.latitude, event.longitude]);
