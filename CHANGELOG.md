@@ -1,3 +1,10 @@
+## [2.2.2](https://github.com/martynvdijke/traces/compare/v2.2.1...v2.2.2) (2026-10-18)
+
+
+### Bug Fixes
+
+* **deps:** update dependency cupertino_icons to v2 ([#116](https://github.com/martynvdijke/traces/issues/116)) ([06973f7](https://github.com/martynvdijke/traces/commit/06973f797216abc32be844c676364b5c6ba1826d))
+
 ## [2.2.1](https://github.com/martynvdijke/traces/compare/v2.2.0...v2.2.1) (2026-10-18)
 
 # [2.2.0](https://github.com/martynvdijke/traces/compare/v2.1.14...v2.2.0) (2026-10-18)
