@@ -89,6 +89,59 @@ jobs:
           docker push ghcr.io/martynvdijke/traces:latest
           docker push ghcr.io/martynvdijke/traces:$VERSION
 
+  android:
+    needs: [release]
+    if: needs.release.result == 'success' && needs.release.outputs.new_release_published == 'true'
+    name: Android APK
+    runs-on: ubuntu-latest
+    continue-on-error: true
+
+    permissions:
+      contents: write
+
+    defaults:
+      run:
+        working-directory: mobile
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          ref: v${{ needs.release.outputs.new_release_version }}
+          persist-credentials: false
+
+      - name: Set up Java
+        uses: actions/setup-java@cf277c60eb25467037889841efdb72551f06f6c3 # v4.9.1
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@1a449444c387b1966244ae4d4f8c696479add0b2 # v2.23.0
+        with:
+          channel: stable
+          flutter-version: 3.47.7
+          cache: true
+
+      - name: Install dependencies
+        run: flutter pub get
+
+      - name: Build release APK
+        run: flutter build apk --release
+
+      - name: Prepare APK
+        working-directory: ${{ github.workspace }}
+        env:
+          VERSION: ${{ needs.release.outputs.new_release_version }}
+        run: cp mobile/build/app/outputs/flutter-apk/app-release.apk "traces-${VERSION}-android.apk"
+
+      - name: Upload APK to GitHub Release
+        working-directory: ${{ github.workspace }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          VERSION: ${{ needs.release.outputs.new_release_version }}
+        run: gh release upload "v${VERSION}" "traces-${VERSION}-android.apk" --clobber
+
   trml:
     needs: [ci, release]
     if: needs.release.result == 'success' && needs.release.outputs.new_release_published == 'true'
