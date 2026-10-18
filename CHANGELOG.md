@@ -1,3 +1,11 @@
+# [2.2.0](https://github.com/martynvdijke/traces/compare/v2.1.14...v2.2.0) (2026-10-18)
+
+
+### Features
+
+* add Flutter Android mobile app ([865d30c](https://github.com/martynvdijke/traces/commit/865d30c3bdff31b0e99ed94c8f8b28f3d43d7eb1))
+* **ui:** overhaul web interface with terracotta palette ([e2ffde9](https://github.com/martynvdijke/traces/commit/e2ffde9bd0434e18d16e1ef2ebc0abb9c412232d)), closes [#B5452B](https://github.com/martynvdijke/traces/issues/B5452B)
+
 ## [2.1.14](https://github.com/martynvdijke/traces/compare/v2.1.13...v2.1.14) (2026-10-16)
 
 ## [2.1.13](https://github.com/martynvdijke/traces/compare/v2.1.12...v2.1.13) (2026-10-15)
