@@ -216,6 +216,18 @@ func (s *Service) SaveEvent(c *gin.Context) {
 		id, _ := result.LastInsertId()
 		e.ID = int(id)
 	} else {
+		cu := auth.GetCurrentUser(c)
+		if !cu.IsAdmin {
+			var ownerID int
+			if err := s.DB.QueryRow("SELECT COALESCE(user_id, 0) FROM timeline_events WHERE id = ?", e.ID).Scan(&ownerID); err != nil {
+				c.JSON(http.StatusForbidden, gin.H{"error": "You may only edit your own events"})
+				return
+			}
+			if int64(ownerID) != cu.ID {
+				c.JSON(http.StatusForbidden, gin.H{"error": "You may only edit your own events"})
+				return
+			}
+		}
 		_, err := s.DB.Exec(`UPDATE timeline_events SET
 			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, is_favorite=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, event_start_time=?, event_end_time=?, user_id=?
 			WHERE id=?`,
@@ -243,8 +255,17 @@ func (s *Service) DeleteEvent(c *gin.Context) {
 		return
 	}
 	span.SetAttributes(attribute.Int("event.id", id))
+	cu := auth.GetCurrentUser(c)
 	var title string
-	s.DB.QueryRow("SELECT title FROM timeline_events WHERE id=?", id).Scan(&title)
+	var ownerID int
+	if err := s.DB.QueryRow("SELECT title, COALESCE(user_id, 0) FROM timeline_events WHERE id=?", id).Scan(&title, &ownerID); err != nil {
+		c.JSON(http.StatusNotFound, gin.H{"error": "Event not found"})
+		return
+	}
+	if !cu.IsAdmin && int64(ownerID) != cu.ID {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You may only delete your own events"})
+		return
+	}
 	_, err = s.DB.Exec("UPDATE timeline_events SET deleted_at=datetime('now') WHERE id=?", id)
 	if err != nil {
 		httpx.ServerError(c, err)
@@ -329,6 +350,31 @@ func (s *Service) GetTrashEvents(c *gin.Context) {
 	c.JSON(http.StatusOK, events)
 }
 
+// ownsAllEvents reports whether every id belongs to the current user, or the
+// current user is an administrator. Used by batch/multi-row mutations so a
+// family member cannot touch another account's rows by guessing IDs.
+func (s *Service) ownsAllEvents(c *gin.Context, ids []int) bool {
+	cu := auth.GetCurrentUser(c)
+	if cu.IsAdmin {
+		return true
+	}
+	if len(ids) == 0 {
+		return false
+	}
+	placeholders := make([]string, len(ids))
+	args := make([]any, 0, len(ids)+1)
+	for i, id := range ids {
+		placeholders[i] = "?"
+		args = append(args, id)
+	}
+	args = append(args, cu.ID)
+	var foreign int
+	err := s.DB.QueryRow(
+		"SELECT COUNT(*) FROM timeline_events WHERE id IN ("+strings.Join(placeholders, ",")+") AND COALESCE(user_id, 0) <> ?",
+		args...).Scan(&foreign)
+	return err == nil && foreign == 0
+}
+
 func (s *Service) RestoreEvents(c *gin.Context) {
 	var input struct {
 		IDs []int `json:"ids"`
@@ -348,6 +394,10 @@ func (s *Service) RestoreEvents(c *gin.Context) {
 		args[i] = id
 	}
 	inClause := strings.Join(placeholders, ",")
+	if !s.ownsAllEvents(c, input.IDs) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You may only restore your own events"})
+		return
+	}
 	_, err := s.DB.Exec("UPDATE timeline_events SET deleted_at='' WHERE id IN ("+inClause+")", args...)
 	if err != nil {
 		httpx.ServerError(c, err)
@@ -785,6 +835,10 @@ func (s *Service) BatchEvents(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "No event IDs provided"})
 		return
 	}
+	if !s.ownsAllEvents(c, input.IDs) {
+		c.JSON(http.StatusForbidden, gin.H{"error": "You may only modify your own events"})
+		return
+	}
 	placeholders := make([]string, len(input.IDs))
 	args := make([]any, len(input.IDs))
 	for i, id := range input.IDs {
@@ -801,6 +855,10 @@ func (s *Service) BatchEvents(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "deleted": len(input.IDs)})
 	case "permanent_delete":
+		if !auth.IsAdmin(c) {
+			c.JSON(http.StatusForbidden, gin.H{"error": "Administrator access required"})
+			return
+		}
 		_, err := s.DB.Exec("DELETE FROM timeline_events WHERE id IN ("+inClause+")", args...)
 		if err != nil {
 			httpx.ServerError(c, err)

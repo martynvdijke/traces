@@ -20,6 +20,8 @@ func (s *Service) GetEmailConfig(c *gin.Context) {
 		return
 	}
 	cfg.SMTPPort = port
+	// Never return the SMTP password; blank/masked input means unchanged.
+	cfg.SMTPPass = MaskSecret(cfg.SMTPPass)
 	c.JSON(http.StatusOK, cfg)
 }
 
@@ -31,6 +33,9 @@ func (s *Service) SaveEmailConfig(c *gin.Context) {
 	}
 	if cfg.SMTPPort == 0 {
 		cfg.SMTPPort = 587
+	}
+	if secretUnchanged(cfg.SMTPPass) {
+		cfg.SMTPPass = s.existingSecret("SELECT COALESCE(smtp_pass, '') FROM email_settings WHERE id = 1")
 	}
 	_, err := s.db.Exec(`UPDATE email_settings SET smtp_host=?, smtp_port=?, smtp_user=?, smtp_pass=?, from_addr=?, to_addr=? WHERE id=1`,
 		cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPUser, cfg.SMTPPass, cfg.FromAddr, cfg.ToAddr)

@@ -7,7 +7,9 @@ import (
 	"encoding/hex"
 	"fmt"
 	"net/http"
+	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -25,15 +27,17 @@ import (
 // CurrentUser is the resolved identity of the logged-in account.
 // ID 0 is the admin; any other value is a users.id from a family login.
 type CurrentUser struct {
-	ID    int64
-	Name  string
-	Color string
+	ID      int64
+	Name    string
+	Color   string
+	IsAdmin bool
 }
 
 const (
-	CtxKeyUserID    = "current_user_id"
-	CtxKeyUserName  = "current_user_name"
-	CtxKeyUserColor = "current_user_color"
+	CtxKeyUserID      = "current_user_id"
+	CtxKeyUserName    = "current_user_name"
+	CtxKeyUserColor   = "current_user_color"
+	CtxKeyUserIsAdmin = "current_user_is_admin"
 )
 
 // GetCurrentUser returns the identity resolved by AuthMiddlewareGin.
@@ -44,7 +48,27 @@ func GetCurrentUser(c *gin.Context) CurrentUser {
 	uname, _ := name.(string)
 	color, _ := c.Get(CtxKeyUserColor)
 	ucolor, _ := color.(string)
-	return CurrentUser{ID: uid, Name: uname, Color: ucolor}
+	admin, _ := c.Get(CtxKeyUserIsAdmin)
+	isAdmin, _ := admin.(bool)
+	return CurrentUser{ID: uid, Name: uname, Color: ucolor, IsAdmin: isAdmin}
+}
+
+// IsAdmin reports whether the request identity has administrative rights.
+// The legacy admin session (UserID 0) is always an administrator.
+func IsAdmin(c *gin.Context) bool {
+	return GetCurrentUser(c).IsAdmin
+}
+
+// IsAdminDB resolves admin status for a user id outside a request context.
+func IsAdminDB(db *sql.DB, userID int64) bool {
+	if userID == 0 {
+		return true
+	}
+	var isAdmin int
+	if err := db.QueryRow("SELECT COALESCE(is_admin, 0) FROM users WHERE id = ?", userID).Scan(&isAdmin); err != nil {
+		return false
+	}
+	return isAdmin == 1
 }
 
 func GenerateSessionID() (string, error) {
@@ -53,6 +77,71 @@ func GenerateSessionID() (string, error) {
 		return "", err
 	}
 	return hex.EncodeToString(b), nil
+}
+
+// loginKeyBlocked reports whether a key has exceeded the failure budget.
+func (s *Service) loginKeyBlocked(key string, now int64) bool {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	a, ok := s.loginAttempts[key]
+	if !ok {
+		return false
+	}
+	if now-a.first > int64(loginWindow.Seconds()) {
+		delete(s.loginAttempts, key)
+		return false
+	}
+	return a.count >= loginMaxFailures
+}
+
+func (s *Service) recordLoginFailure(key string, now int64) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	a, ok := s.loginAttempts[key]
+	if !ok || now-a.first > int64(loginWindow.Seconds()) {
+		s.loginAttempts[key] = &loginAttempt{count: 1, first: now}
+		return
+	}
+	a.count++
+}
+
+func (s *Service) clearLoginFailures(keys ...string) {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	for _, k := range keys {
+		delete(s.loginAttempts, k)
+	}
+}
+
+// ResetLoginLimiter clears throttling state (test seam).
+func (s *Service) ResetLoginLimiter() {
+	s.loginMu.Lock()
+	defer s.loginMu.Unlock()
+	s.loginAttempts = make(map[string]*loginAttempt)
+}
+
+// clientIsSecure decides whether the session cookie should be Secure.
+func clientIsSecure(c *gin.Context) bool {
+	if c.Request.TLS != nil {
+		return true
+	}
+	if os.Getenv("COOKIE_SECURE") == "true" {
+		return true
+	}
+	proto := c.GetHeader("X-Forwarded-Proto")
+	return strings.EqualFold(proto, "https")
+}
+
+func (s *Service) setSessionCookie(c *gin.Context, value string, maxAge int) {
+	http.SetCookie(c.Writer, &http.Cookie{
+		Name:     "session",
+		Value:    value,
+		Path:     "/",
+		MaxAge:   maxAge,
+		HttpOnly: true,
+		Secure:   clientIsSecure(c),
+		SameSite: http.SameSiteLaxMode,
+	})
 }
 
 type Deps struct {
@@ -78,17 +167,31 @@ type Service struct {
 	oidcProvider *oidc.Provider
 	oidcVerifier *oidc.IDTokenVerifier
 	oidcOAuth2   *oauth2.Config
+
+	loginMu       sync.Mutex
+	loginAttempts map[string]*loginAttempt
+}
+
+const (
+	loginMaxFailures = 10
+	loginWindow      = 15 * time.Minute
+)
+
+type loginAttempt struct {
+	count int
+	first int64
 }
 
 func New(d Deps) *Service {
 	return &Service{
-		db:           d.DB,
-		sendEmail:    integrations.SendEmail,
-		log:          d.Log,
-		renderer:     d.Renderer,
-		sessions:     d.Sessions,
-		integrations: d.Integrations,
-		publicMode:   d.PublicMode,
+		db:            d.DB,
+		sendEmail:     integrations.SendEmail,
+		log:           d.Log,
+		renderer:      d.Renderer,
+		sessions:      d.Sessions,
+		integrations:  d.Integrations,
+		publicMode:    d.PublicMode,
+		loginAttempts: make(map[string]*loginAttempt),
 	}
 }
 
@@ -98,12 +201,20 @@ func (s *Service) SessionsStore() *SessionStore { return s.sessions }
 func (s *Service) resolveSessionUser(userID int64) CurrentUser {
 	if userID != 0 {
 		var name, color string
-		err := s.db.QueryRow("SELECT COALESCE(NULLIF(display_name,''), username), COALESCE(color, ?) FROM users WHERE id = ?", models.DefaultColor, userID).Scan(&name, &color)
+		var isAdmin int
+		err := s.db.QueryRow("SELECT COALESCE(NULLIF(display_name,''), username), COALESCE(color, ?), COALESCE(is_admin, 0) FROM users WHERE id = ?", models.DefaultColor, userID).Scan(&name, &color, &isAdmin)
+		if err != nil {
+			// Pre-migration databases (or minimal test schemas) may not have
+			// the is_admin column yet. Resolve the identity without it and
+			// treat the account as non-admin.
+			isAdmin = 0
+			err = s.db.QueryRow("SELECT COALESCE(NULLIF(display_name,''), username), COALESCE(color, ?) FROM users WHERE id = ?", models.DefaultColor, userID).Scan(&name, &color)
+		}
 		if err == nil {
-			return CurrentUser{ID: userID, Name: name, Color: color}
+			return CurrentUser{ID: userID, Name: name, Color: color, IsAdmin: isAdmin == 1}
 		}
 	}
-	return CurrentUser{ID: 0, Name: "Admin", Color: models.DefaultColor}
+	return CurrentUser{ID: 0, Name: "Admin", Color: models.DefaultColor, IsAdmin: true}
 }
 
 func (s *Service) AuthMiddlewareGin() gin.HandlerFunc {
@@ -127,7 +238,20 @@ func (s *Service) AuthMiddlewareGin() gin.HandlerFunc {
 		c.Set(CtxKeyUserID, cu.ID)
 		c.Set(CtxKeyUserName, cu.Name)
 		c.Set(CtxKeyUserColor, cu.Color)
+		c.Set(CtxKeyUserIsAdmin, cu.IsAdmin)
 		c.Set("session_id", cookie)
+		c.Next()
+	}
+}
+
+// RequireAdmin must be installed after AuthMiddlewareGin. It rejects
+// authenticated users without administrative rights.
+func (s *Service) RequireAdmin() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		if !IsAdmin(c) {
+			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{"error": "Administrator access required"})
+			return
+		}
 		c.Next()
 	}
 }
@@ -178,6 +302,19 @@ func (s *Service) HandleLogin(c *gin.Context) {
 		return
 	}
 
+	now := time.Now().Unix()
+	ipKey := "ip:" + c.ClientIP()
+	userKey := "user:" + strings.ToLower(input.Username)
+	if s.loginKeyBlocked(ipKey, now) || s.loginKeyBlocked(userKey, now) {
+		c.Header("Retry-After", strconv.Itoa(int(loginWindow.Seconds())))
+		c.JSON(http.StatusTooManyRequests, gin.H{"error": "Too many login attempts. Try again later."})
+		return
+	}
+	fail := func() {
+		s.recordLoginFailure(ipKey, now)
+		s.recordLoginFailure(userKey, now)
+	}
+
 	var count int
 	s.db.QueryRow("SELECT COUNT(*) FROM admin_users").Scan(&count)
 
@@ -209,14 +346,8 @@ func (s *Service) HandleLogin(c *gin.Context) {
 		}
 		s.sessions.Set(sessionID, SessionInfo{UserID: 0, ExpiresAt: time.Now().Add(24 * time.Hour).Unix()})
 		s.sessions.SetCSRF(sessionID, fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf"))))
-		http.SetCookie(c.Writer, &http.Cookie{
-			Name:     "session",
-			Value:    sessionID,
-			Path:     "/",
-			MaxAge:   86400,
-			HttpOnly: true,
-			SameSite: http.SameSiteLaxMode,
-		})
+		s.setSessionCookie(c, sessionID, 86400)
+		s.clearLoginFailures(ipKey, userKey)
 		c.JSON(http.StatusOK, gin.H{"status": "ok"})
 		return
 	}
@@ -226,9 +357,11 @@ func (s *Service) HandleLogin(c *gin.Context) {
 	err := s.db.QueryRow("SELECT id, password FROM admin_users WHERE username = ?", input.Username).Scan(&adminID, &adminHash)
 	if err == nil {
 		if bcryptErr := bcrypt.CompareHashAndPassword([]byte(adminHash), []byte(input.Password)); bcryptErr != nil {
+			fail()
 			c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 			return
 		}
+		s.clearLoginFailures(ipKey, userKey)
 		s.createSession(c, 0)
 		return
 	}
@@ -237,13 +370,16 @@ func (s *Service) HandleLogin(c *gin.Context) {
 	var familyHash string
 	famErr := s.db.QueryRow("SELECT id, COALESCE(password_hash, '') FROM users WHERE username = ?", input.Username).Scan(&familyID, &familyHash)
 	if famErr != nil || familyHash == "" {
+		fail()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
 	if bcryptErr := bcrypt.CompareHashAndPassword([]byte(familyHash), []byte(input.Password)); bcryptErr != nil {
+		fail()
 		c.JSON(http.StatusUnauthorized, gin.H{"error": "Invalid credentials"})
 		return
 	}
+	s.clearLoginFailures(ipKey, userKey)
 	s.createSession(c, familyID)
 }
 
@@ -255,14 +391,7 @@ func (s *Service) createSession(c *gin.Context, userID int64) {
 	}
 	s.sessions.Set(sessionID, SessionInfo{UserID: userID, ExpiresAt: time.Now().Add(24 * time.Hour).Unix()})
 	s.sessions.SetCSRF(sessionID, fmt.Sprintf("%x", sha256.Sum256([]byte(sessionID+"-csrf"))))
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session",
-		Value:    sessionID,
-		Path:     "/",
-		MaxAge:   86400,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	s.setSessionCookie(c, sessionID, 86400)
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 
@@ -271,14 +400,7 @@ func (s *Service) HandleLogout(c *gin.Context) {
 	if err == nil {
 		s.sessions.Delete(cookie)
 	}
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session",
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	s.setSessionCookie(c, "", -1)
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})
 }
 

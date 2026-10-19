@@ -251,14 +251,7 @@ func (s *Service) HandleOIDCCallback(c *gin.Context) {
 	}
 	s.sessions.Set(sessionID, SessionInfo{UserID: userID, ExpiresAt: time.Now().Add(24 * time.Hour).Unix()})
 	s.sessions.SetCSRF(sessionID, oidcCSRFToken(sessionID))
-	http.SetCookie(c.Writer, &http.Cookie{
-		Name:     "session",
-		Value:    sessionID,
-		Path:     "/",
-		MaxAge:   86400,
-		HttpOnly: true,
-		SameSite: http.SameSiteLaxMode,
-	})
+	s.setSessionCookie(c, sessionID, 86400)
 	c.Redirect(http.StatusFound, "/admin.html")
 }
 

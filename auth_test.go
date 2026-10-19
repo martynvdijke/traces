@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	_ "github.com/mattn/go-sqlite3"
@@ -300,4 +301,79 @@ func TestMultiUser(t *testing.T) {
 			t.Errorf("expected 1 user after delete, got %d", count)
 		}
 	})
+}
+
+func TestLoginRateLimit(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	newTestDB(t)
+	db.Exec(`CREATE TABLE IF NOT EXISTS admin_users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE,
+		password TEXT
+	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE,
+		display_name TEXT DEFAULT '',
+		color TEXT DEFAULT '#7c3aed'
+	)`)
+	hash, err := bcrypt.GenerateFromPassword([]byte("correct_password"), bcrypt.MinCost)
+	if err != nil {
+		t.Fatal(err)
+	}
+	db.Exec("INSERT INTO admin_users (username, password) VALUES (?, ?)", "alice", string(hash))
+
+	router := gin.New()
+	router.POST("/api/login", authSvc.HandleLogin)
+	authSvc.ResetLoginLimiter()
+
+	body := `{"username":"alice","password":"wrong_password"}`
+	for i := 0; i < 10; i++ {
+		w := doJSON(router, "POST", "/api/login", body)
+		if w.Code != http.StatusUnauthorized {
+			t.Fatalf("attempt %d = %d, want 401", i+1, w.Code)
+		}
+	}
+	w := doJSON(router, "POST", "/api/login", body)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("blocked attempt = %d, want 429", w.Code)
+	}
+	if w.Header().Get("Retry-After") == "" {
+		t.Error("expected Retry-After header")
+	}
+	// A correct password is also rejected while the key is blocked.
+	w = doJSON(router, "POST", "/api/login", `{"username":"alice","password":"correct_password"}`)
+	if w.Code != http.StatusTooManyRequests {
+		t.Fatalf("correct password while blocked = %d, want 429", w.Code)
+	}
+}
+
+func TestRequireAdminMiddleware(t *testing.T) {
+	gin.SetMode(gin.TestMode)
+	newTestDB(t)
+	db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		username TEXT UNIQUE,
+		display_name TEXT DEFAULT '',
+		color TEXT DEFAULT '#7c3aed'
+	)`)
+	res, err := db.Exec("INSERT INTO users (username, display_name) VALUES ('bob', 'Bob')")
+	if err != nil {
+		t.Fatal(err)
+	}
+	bobID, _ := res.LastInsertId()
+
+	router := gin.New()
+	router.Use(authSvc.AuthMiddlewareGin(), authSvc.RequireAdmin())
+	router.GET("/admin", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
+
+	authSessions.Set("family", authpkg.SessionInfo{UserID: bobID, ExpiresAt: time.Now().Add(time.Hour).Unix()})
+	authSessions.Set("admin", authpkg.SessionInfo{UserID: 0, ExpiresAt: time.Now().Add(time.Hour).Unix()})
+
+	if w := doJSON(router, "GET", "/admin", "", "session=family"); w.Code != http.StatusForbidden {
+		t.Errorf("family user = %d, want 403", w.Code)
+	}
+	if w := doJSON(router, "GET", "/admin", "", "session=admin"); w.Code != http.StatusOK {
+		t.Errorf("admin = %d, want 200", w.Code)
+	}
 }

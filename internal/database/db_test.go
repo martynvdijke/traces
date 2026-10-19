@@ -35,7 +35,9 @@ func TestMigrateFreshDBAddsPasswordHash(t *testing.T) {
 	}
 	defer db.Close()
 
-	Migrate(db)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 
 	cols := usersColumns(t, db)
 	if !cols["password_hash"] {
@@ -78,8 +80,20 @@ func TestMigrateUpgradedDBAddsPasswordHash(t *testing.T) {
 	if _, err := db.Exec(`INSERT INTO users (id, username, display_name) VALUES (1, 'default', 'Default User')`); err != nil {
 		t.Fatal(err)
 	}
+	// Later migrations ALTER timeline_events, so this partial pre-19 database
+	// needs the base table present.
+	if _, err := db.Exec(`CREATE TABLE timeline_events (
+		id INTEGER PRIMARY KEY AUTOINCREMENT,
+		title TEXT,
+		event_date TEXT,
+		media_type TEXT
+	)`); err != nil {
+		t.Fatal(err)
+	}
 
-	Migrate(db)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 
 	cols := usersColumns(t, db)
 	if !cols["password_hash"] {
@@ -136,7 +150,9 @@ func TestMigrateFreshDBHasBGGColumns(t *testing.T) {
 	}
 	defer db.Close()
 
-	Migrate(db)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 
 	cols := timelineEventsColumns(t, db)
 	if !cols["source"] {
@@ -217,7 +233,9 @@ func TestMigrateUpgradedDBAddsBGGColumns(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	Migrate(db)
+	if err := Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 
 	cols := timelineEventsColumns(t, db)
 	if !cols["source"] {
@@ -248,5 +266,36 @@ func TestMigrateUpgradedDBAddsBGGColumns(t *testing.T) {
 	var version int
 	if err := db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&version); err != nil || version < 21 {
 		t.Errorf("schema version not advanced: got %d err=%v", version, err)
+	}
+}
+
+func TestMigrateDoesNotRecordFailedVersion(t *testing.T) {
+	db, err := sql.Open("sqlite3", ":memory:")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+
+	if _, err := db.Exec(`CREATE TABLE schema_version (version INTEGER PRIMARY KEY)`); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := db.Exec(`INSERT INTO schema_version (version) VALUES (23)`); err != nil {
+		t.Fatal(err)
+	}
+	// Make the migration-23 CREATE TABLE fail without touching schema_version.
+	if _, err := db.Exec(`CREATE VIEW sessions AS SELECT 1 AS id`); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := Migrate(db); err == nil {
+		t.Fatal("expected migration failure")
+	}
+
+	var version int
+	if err := db.QueryRow("SELECT MAX(version) FROM schema_version").Scan(&version); err != nil {
+		t.Fatal(err)
+	}
+	if version != 23 {
+		t.Errorf("schema version = %d, want 23 (failed step must not be recorded)", version)
 	}
 }

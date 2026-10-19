@@ -22,6 +22,7 @@ func (s *Service) GetGotifyConfig(c *gin.Context) {
 	if err == nil {
 		cfg.Enabled = enabledInt == 1
 	}
+	cfg.Token = MaskSecret(cfg.Token)
 	c.JSON(http.StatusOK, cfg)
 }
 
@@ -35,6 +36,9 @@ func (s *Service) SaveGotifyConfig(c *gin.Context) {
 	enabledInt := 0
 	if cfg.Enabled {
 		enabledInt = 1
+	}
+	if secretUnchanged(cfg.Token) {
+		cfg.Token = s.existingSecret("SELECT COALESCE(token, '') FROM gotify_settings WHERE id = 1")
 	}
 	_, err := s.db.Exec(`UPDATE gotify_settings SET url=?, token=?, enabled=? WHERE id=1`, cfg.URL, cfg.Token, enabledInt)
 	if err != nil {

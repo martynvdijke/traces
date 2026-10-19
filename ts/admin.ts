@@ -996,7 +996,9 @@ async function loadGotifyConfig(): Promise<void> {
     const res = await fetch('/api/gotify/config');
     const cfg = await res.json();
     (document.getElementById('gotify-url') as HTMLInputElement).value = cfg.url || '';
-    (document.getElementById('gotify-token') as HTMLInputElement).value = cfg.token || '';
+    const gotifyToken = document.getElementById('gotify-token') as HTMLInputElement;
+    gotifyToken.value = '';
+    if (cfg.token) gotifyToken.placeholder = '•••• configured — leave blank to keep';
     (document.getElementById('gotify-enabled') as HTMLInputElement).checked = cfg.enabled || false;
   } catch (e) { }
 }
@@ -1112,7 +1114,9 @@ async function loadImmichConfig(): Promise<void> {
     const res = await fetch('/api/immich/config');
     const cfg = await res.json();
     (document.getElementById('immich-url') as HTMLInputElement).value = cfg.url || '';
-    (document.getElementById('immich-api-key') as HTMLInputElement).value = cfg.api_key || '';
+    const immichKey = document.getElementById('immich-api-key') as HTMLInputElement;
+    immichKey.value = '';
+    if (cfg.api_key) immichKey.placeholder = '•••• configured — leave blank to keep';
   } catch (e) { }
 }
 
@@ -1295,7 +1299,9 @@ async function loadEmailConfig(): Promise<void> {
     (document.getElementById('email-host') as HTMLInputElement).value = cfg.smtp_host || '';
     (document.getElementById('email-port') as HTMLInputElement).value = cfg.smtp_port || 587;
     (document.getElementById('email-user') as HTMLInputElement).value = cfg.smtp_user || '';
-    (document.getElementById('email-pass') as HTMLInputElement).value = cfg.smtp_pass || '';
+    const emailPass = document.getElementById('email-pass') as HTMLInputElement;
+    emailPass.value = '';
+    if (cfg.smtp_pass) emailPass.placeholder = '•••• configured — leave blank to keep';
     (document.getElementById('email-from') as HTMLInputElement).value = cfg.from_addr || '';
     (document.getElementById('email-to') as HTMLInputElement).value = cfg.to_addr || '';
   } catch (e) { }

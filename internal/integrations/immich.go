@@ -20,6 +20,7 @@ func (s *Service) GetImmichConfig(c *gin.Context) {
 	if err == nil {
 		cfg.Enabled = enabledInt == 1
 	}
+	cfg.APIKey = MaskSecret(cfg.APIKey)
 	c.JSON(http.StatusOK, cfg)
 }
 
@@ -32,6 +33,9 @@ func (s *Service) SaveImmichConfig(c *gin.Context) {
 	enabledInt := 0
 	if cfg.Enabled {
 		enabledInt = 1
+	}
+	if secretUnchanged(cfg.APIKey) {
+		cfg.APIKey = s.existingSecret("SELECT COALESCE(api_key, '') FROM immich_settings WHERE id = 1")
 	}
 	_, err := s.db.Exec(`UPDATE immich_settings SET url=?, api_key=?, enabled=? WHERE id=1`, cfg.URL, cfg.APIKey, enabledInt)
 	if err != nil {

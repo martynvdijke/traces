@@ -35,15 +35,20 @@ func Init(cfg Config) (*sql.DB, error) {
 	return db, nil
 }
 
-// Migrate runs schema initialization and migrations.
-func Migrate(db *sql.DB) {
+// Migrate runs schema initialization and migrations. A migration version is
+// recorded only after every statement in that step succeeds, so a failure
+// leaves the database at the last good version instead of silently skipping
+// half-applied changes.
+func Migrate(db *sql.DB) error {
 	var schemaVersion int
 	err := db.QueryRow("SELECT COALESCE(MAX(version), -1) FROM schema_version").Scan(&schemaVersion)
 	if err != nil {
 		schemaVersion = -1
 	}
 	if schemaVersion == -1 {
-		_, _ = db.Exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)")
+		if _, err := db.Exec("CREATE TABLE IF NOT EXISTS schema_version (version INTEGER PRIMARY KEY)"); err != nil {
+			return fmt.Errorf("create schema_version: %w", err)
+		}
 	}
 
 	if schemaVersion < 0 {
@@ -54,11 +59,16 @@ func Migrate(db *sql.DB) {
 	}
 
 	for v := schemaVersion; v < models.CurrentSchemaVersion; v++ {
-		RunMigration(db, v)
-		_, _ = db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", v+1)
+		if err := RunMigration(db, v); err != nil {
+			return fmt.Errorf("migration %d: %w", v, err)
+		}
+		if _, err := db.Exec("INSERT OR REPLACE INTO schema_version (version) VALUES (?)", v+1); err != nil {
+			return fmt.Errorf("record migration %d: %w", v+1, err)
+		}
 	}
 
 	CreateFTS5Table(db)
+	return nil
 }
 
 func CreateTables(db *sql.DB) {
@@ -146,6 +156,13 @@ func CreateTables(db *sql.DB) {
 			auth_method TEXT DEFAULT '',
 			is_admin INTEGER DEFAULT 0
 		)`,
+		`CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL DEFAULT 0,
+			expires_at INTEGER NOT NULL,
+			csrf TEXT DEFAULT ''
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`,
 		`CREATE TABLE IF NOT EXISTS ollama_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			url TEXT DEFAULT 'http://localhost:11434',
@@ -327,10 +344,21 @@ func CreateFTS5Table(db *sql.DB) {
 }
 
 // RunMigration applies a single schema migration step.
-func RunMigration(db *sql.DB, fromVersion int) {
+func RunMigration(db *sql.DB, fromVersion int) error {
+	var migErr error
+	migExec := func(query string, args ...any) {
+		if migErr != nil {
+			return
+		}
+		if _, err := db.Exec(query, args...); err != nil && !strings.Contains(err.Error(), "duplicate column name") {
+			migErr = err
+			return
+		}
+	}
+
 	switch fromVersion {
 	case 0:
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
+		migExec(`CREATE TABLE IF NOT EXISTS timeline_events (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT,
 			description TEXT,
@@ -342,8 +370,8 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`)
 	case 1:
-		runMigrateAddColumns(db, "media_caption", "tags", "sort_order", "is_public")
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS share_tokens (
+		migExecAddColumns(migExec, "media_caption", "tags", "sort_order", "is_public")
+		migExec(`CREATE TABLE IF NOT EXISTS share_tokens (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			token TEXT UNIQUE,
 			event_ids TEXT,
@@ -351,7 +379,7 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			expires_at TEXT
 		)`)
 	case 2:
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS persons (
+		migExec(`CREATE TABLE IF NOT EXISTS persons (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			avatar_url TEXT DEFAULT '',
@@ -360,24 +388,24 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			color TEXT DEFAULT '#B5452B',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`)
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS gotify_settings (
+		migExec(`CREATE TABLE IF NOT EXISTS gotify_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			url TEXT DEFAULT '',
 			token TEXT DEFAULT '',
 			enabled INTEGER DEFAULT 0
 		)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO gotify_settings (id, url, token, enabled) VALUES (1, '', '', 0)`)
-		runMigrateAddColumns(db, "person_id", "latitude", "longitude")
+		migExec(`INSERT OR IGNORE INTO gotify_settings (id, url, token, enabled) VALUES (1, '', '', 0)`)
+		migExecAddColumns(migExec, "person_id", "latitude", "longitude")
 	case 3:
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS memories_settings (
+		migExec(`CREATE TABLE IF NOT EXISTS memories_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			enabled INTEGER DEFAULT 1,
 			days_window INTEGER DEFAULT 3,
 			email_enabled INTEGER DEFAULT 0,
 			last_sent_date TEXT DEFAULT ''
 		)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO memories_settings (id, enabled, days_window, email_enabled) VALUES (1, 1, 3, 0)`)
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS email_settings (
+		migExec(`INSERT OR IGNORE INTO memories_settings (id, enabled, days_window, email_enabled) VALUES (1, 1, 3, 0)`)
+		migExec(`CREATE TABLE IF NOT EXISTS email_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			smtp_host TEXT DEFAULT '',
 			smtp_port INTEGER DEFAULT 587,
@@ -386,17 +414,14 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			from_addr TEXT DEFAULT '',
 			to_addr TEXT DEFAULT ''
 		)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)`)
+		migExec(`INSERT OR IGNORE INTO email_settings (id, smtp_host, smtp_port) VALUES (1, '', 587)`)
 	case 4:
 		for _, col := range []string{"person_id", "latitude", "longitude", "media_caption", "tags", "sort_order", "is_public"} {
-			_, err := db.Exec(fmt.Sprintf("ALTER TABLE timeline_events ADD COLUMN %s", col))
-			if err == nil {
-				log.Printf("[DB] Added missing column: %s", col)
-			}
+			migExec(fmt.Sprintf("ALTER TABLE timeline_events ADD COLUMN %s", col))
 		}
 	case 5:
-		runMigrateAddColumns(db, "recurring", "weather_data", "user_id")
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS users (
+		migExecAddColumns(migExec, "recurring", "weather_data", "user_id")
+		migExec(`CREATE TABLE IF NOT EXISTS users (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			username TEXT UNIQUE,
 			display_name TEXT DEFAULT '',
@@ -404,21 +429,21 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			avatar_url TEXT DEFAULT '',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO users (id, username, display_name, color) VALUES (1, 'default', 'Default User', '#B5452B')`)
+		migExec(`INSERT OR IGNORE INTO users (id, username, display_name, color) VALUES (1, 'default', 'Default User', '#B5452B')`)
 	case 6:
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS ollama_settings (
+		migExec(`CREATE TABLE IF NOT EXISTS ollama_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			url TEXT DEFAULT 'http://localhost:11434',
 			model TEXT DEFAULT 'llama3.2',
 			enabled INTEGER DEFAULT 0
 		)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO ollama_settings (id, url, model, enabled) VALUES (1, 'http://localhost:11434', 'llama3.2', 0)`)
+		migExec(`INSERT OR IGNORE INTO ollama_settings (id, url, model, enabled) VALUES (1, 'http://localhost:11434', 'llama3.2', 0)`)
 	case 7:
 		CreateFTS5Table(db)
 	case 8:
-		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN is_favorite INTEGER DEFAULT 0`)
+		migExec(`ALTER TABLE timeline_events ADD COLUMN is_favorite INTEGER DEFAULT 0`)
 	case 9:
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS event_templates (
+		migExec(`CREATE TABLE IF NOT EXISTS event_templates (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			title TEXT NOT NULL,
 			description TEXT DEFAULT '',
@@ -430,14 +455,14 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`)
 	case 10:
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS collections (
+		migExec(`CREATE TABLE IF NOT EXISTS collections (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			name TEXT NOT NULL,
 			description TEXT DEFAULT '',
 			color TEXT DEFAULT '#B5452B',
 			created_at TEXT DEFAULT CURRENT_TIMESTAMP
 		)`)
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS collection_events (
+		migExec(`CREATE TABLE IF NOT EXISTS collection_events (
 			collection_id INTEGER NOT NULL,
 			event_id INTEGER NOT NULL,
 			added_at TEXT DEFAULT CURRENT_TIMESTAMP,
@@ -448,53 +473,41 @@ func RunMigration(db *sql.DB, fromVersion int) {
 	case 13:
 	case 14:
 	case 15:
-		runMigrateAddColumns(db, "event_start_time", "event_end_time")
+		migExecAddColumns(migExec, "event_start_time", "event_end_time")
 	case 16:
-		_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN deleted_at TEXT DEFAULT ''`)
+		migExec(`ALTER TABLE timeline_events ADD COLUMN deleted_at TEXT DEFAULT ''`)
 	case 17:
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS umami_settings (
+		migExec(`CREATE TABLE IF NOT EXISTS umami_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			url TEXT DEFAULT '',
 			site_id TEXT DEFAULT '',
 			enabled INTEGER DEFAULT 0
 		)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO umami_settings (id, url, site_id, enabled) VALUES (1, '', '', 0)`)
+		migExec(`INSERT OR IGNORE INTO umami_settings (id, url, site_id, enabled) VALUES (1, '', '', 0)`)
 	case 18:
-		_, err := db.Exec(`ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''`)
-		if err == nil {
-			log.Printf("[DB] Added column: email to users")
-		}
+		migExec(`ALTER TABLE users ADD COLUMN email TEXT DEFAULT ''`)
 	case 19:
-		_, err := db.Exec(`ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''`)
-		if err == nil {
-			log.Printf("[DB] Added column: password_hash to users")
-		}
+		migExec(`ALTER TABLE users ADD COLUMN password_hash TEXT DEFAULT ''`)
 	case 20:
-		_, err := db.Exec(`ALTER TABLE timeline_events ADD COLUMN source TEXT DEFAULT ''`)
-		if err == nil {
-			log.Printf("[DB] Added column: source to timeline_events")
-		}
-		_, err = db.Exec(`ALTER TABLE timeline_events ADD COLUMN source_ref TEXT DEFAULT ''`)
-		if err == nil {
-			log.Printf("[DB] Added column: source_ref to timeline_events")
-		}
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS bgg_settings (
+		migExec(`ALTER TABLE timeline_events ADD COLUMN source TEXT DEFAULT ''`)
+		migExec(`ALTER TABLE timeline_events ADD COLUMN source_ref TEXT DEFAULT ''`)
+		migExec(`CREATE TABLE IF NOT EXISTS bgg_settings (
 			id INTEGER PRIMARY KEY CHECK (id = 1),
 			username TEXT DEFAULT '',
 			enabled INTEGER DEFAULT 0,
 			last_sync TEXT DEFAULT ''
 		)`)
-		_, _ = db.Exec(`INSERT OR IGNORE INTO bgg_settings (id, username, enabled, last_sync) VALUES (1, '', 0, '')`)
-		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_events_bgg_ref ON timeline_events(source_ref) WHERE source='bgg'`)
-		_, _ = db.Exec(`UPDATE timeline_events SET media_type='boardgame' WHERE source='bgg' AND (media_type IS NULL OR media_type='')`)
+		migExec(`INSERT OR IGNORE INTO bgg_settings (id, username, enabled, last_sync) VALUES (1, '', 0, '')`)
+		migExec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_timeline_events_bgg_ref ON timeline_events(source_ref) WHERE source='bgg'`)
+		migExec(`UPDATE timeline_events SET media_type='boardgame' WHERE source='bgg' AND (media_type IS NULL OR media_type='')`)
 	case 21:
-		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN oidc_sub TEXT DEFAULT ''`)
-		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN auth_method TEXT DEFAULT ''`)
-		_, _ = db.Exec(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`)
-		_, _ = db.Exec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(oidc_sub) WHERE oidc_sub <> ''`)
-		_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`)
+		migExec(`ALTER TABLE users ADD COLUMN oidc_sub TEXT DEFAULT ''`)
+		migExec(`ALTER TABLE users ADD COLUMN auth_method TEXT DEFAULT ''`)
+		migExec(`ALTER TABLE users ADD COLUMN is_admin INTEGER DEFAULT 0`)
+		migExec(`CREATE UNIQUE INDEX IF NOT EXISTS idx_users_oidc_sub ON users(oidc_sub) WHERE oidc_sub <> ''`)
+		migExec(`CREATE INDEX IF NOT EXISTS idx_users_email ON users(email)`)
 	case 22:
-		_, _ = db.Exec(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
+		migExec(`CREATE TABLE IF NOT EXISTS password_reset_tokens (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			user_id INTEGER NOT NULL,
 			token_hash TEXT UNIQUE NOT NULL,
@@ -502,16 +515,22 @@ func RunMigration(db *sql.DB, fromVersion int) {
 			used_at INTEGER,
 			created_at INTEGER DEFAULT (unixepoch())
 		)`)
-		_, _ = db.Exec(`CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id)`)
+		migExec(`CREATE INDEX IF NOT EXISTS idx_password_reset_tokens_user_id ON password_reset_tokens(user_id)`)
+	case 23:
+		migExec(`CREATE TABLE IF NOT EXISTS sessions (
+			id TEXT PRIMARY KEY,
+			user_id INTEGER NOT NULL DEFAULT 0,
+			expires_at INTEGER NOT NULL,
+			csrf TEXT DEFAULT ''
+		)`)
+		migExec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`)
 	}
+	return migErr
 }
 
-func runMigrateAddColumns(db *sql.DB, cols ...string) {
+func migExecAddColumns(exec func(string, ...any), cols ...string) {
 	for _, col := range cols {
-		_, err := db.Exec(fmt.Sprintf("ALTER TABLE timeline_events ADD COLUMN %s", col))
-		if err == nil {
-			log.Printf("[DB] Added column: %s", col)
-		}
+		exec(fmt.Sprintf("ALTER TABLE timeline_events ADD COLUMN %s", col))
 	}
 }
 

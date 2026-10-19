@@ -246,8 +246,26 @@ func TestImmichConfigRoundTrip(t *testing.T) {
 	r.ServeHTTP(w2, req2)
 	var got models.ImmichConfig
 	json.Unmarshal(w2.Body.Bytes(), &got)
-	if got.URL != cfg.URL || got.APIKey != cfg.APIKey || !got.Enabled {
+	if got.URL != cfg.URL || !got.Enabled {
 		t.Errorf("roundtrip got %+v want %+v", got, cfg)
+	}
+	if got.APIKey != MaskedSecret {
+		t.Errorf("API key should be masked, got %q", got.APIKey)
+	}
+	// Submitting the mask (or a blank value) must keep the stored secret.
+	cfg.APIKey = MaskedSecret
+	body, _ = json.Marshal(cfg)
+	req3 := httptest.NewRequest("POST", "/api/immich/config", bytes.NewReader(body))
+	req3.Header.Set("Content-Type", "application/json")
+	w3 := httptest.NewRecorder()
+	r.ServeHTTP(w3, req3)
+	if w3.Code != 200 {
+		t.Fatalf("masked save %d %s", w3.Code, w3.Body.String())
+	}
+	var stored string
+	db.QueryRow("SELECT api_key FROM immich_settings WHERE id=1").Scan(&stored)
+	if stored != "k" {
+		t.Errorf("masked save overwrote secret: %q", stored)
 	}
 	_ = db
 }
@@ -530,4 +548,58 @@ func TestTRMNLSummaryStatsAggregation(t *testing.T) {
 		t.Errorf("event_count %d", summary.Stats.EventCount)
 	}
 	_ = pid
+}
+
+func TestSecretMaskingAndBlankKeepsValue(t *testing.T) {
+	svc, db := newTestService(t)
+	db.Exec(`CREATE TABLE IF NOT EXISTS gotify_settings (id INTEGER PRIMARY KEY CHECK (id = 1), url TEXT DEFAULT '', token TEXT DEFAULT '', enabled INTEGER DEFAULT 0)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS email_settings (id INTEGER PRIMARY KEY CHECK (id = 1), smtp_host TEXT DEFAULT '', smtp_port INTEGER DEFAULT 587, smtp_user TEXT DEFAULT '', smtp_pass TEXT DEFAULT '', from_addr TEXT DEFAULT '', to_addr TEXT DEFAULT '')`)
+	db.Exec(`INSERT INTO gotify_settings (id, url, token, enabled) VALUES (1, 'https://gotify.example', 'gotify-secret', 1)`)
+	db.Exec(`INSERT INTO email_settings (id, smtp_host, smtp_port, smtp_user, smtp_pass, from_addr, to_addr) VALUES (1, 'smtp.example', 587, 'u', 'smtp-secret', 'a@b', 'c@d')`)
+
+	r := gin.New()
+	r.GET("/gotify", svc.GetGotifyConfig)
+	r.POST("/gotify", svc.SaveGotifyConfig)
+	r.GET("/email", svc.GetEmailConfig)
+	r.POST("/email", svc.SaveEmailConfig)
+
+	w := httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/gotify", nil))
+	var gotify models.GotifyConfig
+	json.Unmarshal(w.Body.Bytes(), &gotify)
+	if gotify.Token != MaskedSecret {
+		t.Errorf("gotify token = %q, want mask", gotify.Token)
+	}
+	w = httptest.NewRecorder()
+	r.ServeHTTP(w, httptest.NewRequest("GET", "/email", nil))
+	var email models.EmailConfig
+	json.Unmarshal(w.Body.Bytes(), &email)
+	if email.SMTPPass != MaskedSecret {
+		t.Errorf("smtp pass = %q, want mask", email.SMTPPass)
+	}
+
+	// Saving the mask/blank keeps the existing secret.
+	gotify.Token = MaskedSecret
+	body, _ := json.Marshal(gotify)
+	w = httptest.NewRecorder()
+	req := httptest.NewRequest("POST", "/gotify", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	var token string
+	db.QueryRow("SELECT token FROM gotify_settings WHERE id=1").Scan(&token)
+	if token != "gotify-secret" {
+		t.Errorf("gotify secret overwritten: %q", token)
+	}
+
+	email.SMTPPass = ""
+	body, _ = json.Marshal(email)
+	w = httptest.NewRecorder()
+	req = httptest.NewRequest("POST", "/email", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	r.ServeHTTP(w, req)
+	var pass string
+	db.QueryRow("SELECT smtp_pass FROM email_settings WHERE id=1").Scan(&pass)
+	if pass != "smtp-secret" {
+		t.Errorf("smtp secret overwritten: %q", pass)
+	}
 }

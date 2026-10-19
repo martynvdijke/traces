@@ -137,7 +137,9 @@ func TestMigrationFromV8ToCurrent(t *testing.T) {
 	}
 
 	for version < models.CurrentSchemaVersion {
-		database.RunMigration(db, version)
+		if err := database.RunMigration(db, version); err != nil {
+			t.Fatalf("migration %d: %v", version, err)
+		}
 		version++
 		db.Exec("DELETE FROM schema_version")
 		db.Exec("INSERT INTO schema_version (version) VALUES (?)", version)
