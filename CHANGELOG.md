@@ -1,3 +1,10 @@
+## [2.2.3](https://github.com/martynvdijke/traces/compare/v2.2.2...v2.2.3) (2026-10-20)
+
+
+### Bug Fixes
+
+* keep user directory available for shared admin attribution ([ae28931](https://github.com/martynvdijke/traces/commit/ae28931f5104c14f8f02a442a8c02772695d8bae))
+
 ## [2.2.2](https://github.com/martynvdijke/traces/compare/v2.2.1...v2.2.2) (2026-10-18)
 
 
