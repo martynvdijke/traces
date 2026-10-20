@@ -1,3 +1,10 @@
+## [2.2.5](https://github.com/martynvdijke/traces/compare/v2.2.4...v2.2.5) (2026-10-20)
+
+
+### Bug Fixes
+
+* **android:** add release signing and derive versionCode ([876c3b2](https://github.com/martynvdijke/traces/commit/876c3b2f6a6ea282967e8ee82a8ca06d2b62ade5))
+
 ## [2.2.4](https://github.com/martynvdijke/traces/compare/v2.2.3...v2.2.4) (2026-10-20)
 
 ## [2.2.3](https://github.com/martynvdijke/traces/compare/v2.2.2...v2.2.3) (2026-10-20)
