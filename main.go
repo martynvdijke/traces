@@ -301,7 +301,10 @@ func main() {
 			auth.GET("/persons", eventsSvc.GetPersons)
 			auth.GET("/autocomplete", eventsSvc.GetAutocomplete)
 			auth.GET("/calendar", eventsSvc.GetCalendar)
-			auth.GET("/users", authSvc.RequireAdmin(), authSvc.GetUsers)
+			// The shared admin UI uses this directory for attributions and
+			// person filters for every signed-in family member. Mutations and
+			// per-user event listings remain admin-only below.
+			auth.GET("/users", authSvc.GetUsers)
 			auth.POST("/events", eventsSvc.SaveEvent)
 			auth.DELETE("/events", eventsSvc.DeleteEvent)
 			auth.POST("/upload", eventsSvc.HandleUpload)
