@@ -5,7 +5,9 @@ on:
     branches: ["main"]
 
 concurrency:
-  group: ${{ github.workflow }}-${{ github.ref }}
+  # Include the commit SHA so a new release is never blocked behind a stale
+  # queued run that GitHub has not reaped yet.
+  group: ${{ github.workflow }}-${{ github.ref }}-${{ github.sha }}
   cancel-in-progress: true
 
 jobs:
