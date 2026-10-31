@@ -2,7 +2,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:traces/src/app.dart';
+import 'package:traces/src/config.dart';
 import 'package:traces/src/data/models/timeline_event.dart';
+import 'package:traces/src/data/storage/app_storage.dart';
 import 'package:traces/src/data/storage/key_value_store.dart';
 import 'package:traces/src/features/timeline/event_card.dart';
 import 'package:traces/src/features/timeline/media_lightbox.dart';
@@ -12,11 +14,17 @@ import 'package:traces/src/widgets/year_selector.dart';
 
 /// Pumps [child] inside a ProviderScope whose storage is a fresh in-memory
 /// store (so no secure-storage platform channel is touched).
-Future<void> pumpWithStore(WidgetTester tester, Widget child) async {
+Future<void> pumpWithStore(
+  WidgetTester tester,
+  Widget child, {
+  KeyValueStore? store,
+}) async {
   await tester.pumpWidget(
     ProviderScope(
       overrides: [
-        keyValueStoreProvider.overrideWithValue(InMemoryKeyValueStore()),
+        keyValueStoreProvider.overrideWithValue(
+          store ?? InMemoryKeyValueStore(),
+        ),
       ],
       child: child,
     ),
@@ -30,6 +38,26 @@ void main() {
 
     expect(find.byKey(const Key('server-url-field')), findsOneWidget);
     expect(find.text('TRACES'), findsOneWidget);
+  });
+
+  testWidgets('onboarding prefills the default hosted server', (tester) async {
+    await pumpWithStore(tester, const TracesApp());
+
+    final field = tester.widget<TextField>(
+      find.byKey(const Key('server-url-field')),
+    );
+    expect(field.controller?.text, defaultServerUrl);
+  });
+
+  testWidgets('a saved server address wins over the default', (tester) async {
+    const savedUrl = 'https://memories.example.org';
+    final store = InMemoryKeyValueStore()
+      ..values[AppStorage.serverUrlKey] = savedUrl;
+
+    await pumpWithStore(tester, const TracesApp(), store: store);
+
+    expect(find.byKey(const Key('server-url-field')), findsNothing);
+    expect(find.text(savedUrl), findsOneWidget);
   });
 
   testWidgets('onboarding rejects a malformed server address', (tester) async {

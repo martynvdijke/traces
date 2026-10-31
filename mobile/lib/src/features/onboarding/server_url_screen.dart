@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../config.dart';
 import '../../state/providers.dart';
 
 /// First-run onboarding: enter the self-hosted TRACES server address.
@@ -17,8 +18,9 @@ class _ServerUrlScreenState extends ConsumerState<ServerUrlScreen> {
   @override
   void initState() {
     super.initState();
+    final savedUrl = ref.read(authControllerProvider).serverUrl;
     _controller = TextEditingController(
-      text: ref.read(authControllerProvider).serverUrl,
+      text: savedUrl.isEmpty ? defaultServerUrl : savedUrl,
     );
   }
 
@@ -63,7 +65,8 @@ class _ServerUrlScreenState extends ConsumerState<ServerUrlScreen> {
                   ),
                   const SizedBox(height: 8),
                   Text(
-                    'Connect to your self-hosted memories server',
+                    'Use the default instance below, or enter another '
+                    'self-hosted Traces server.',
                     textAlign: TextAlign.center,
                     style: Theme.of(context).textTheme.bodyMedium,
                   ),

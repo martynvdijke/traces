@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../config.dart';
 import '../data/api/api_client.dart';
 import '../data/api/api_exception.dart';
 import '../data/api/server_url.dart';
@@ -37,7 +38,12 @@ class AuthController extends Notifier<AuthState> {
   Future<void> _restore() async {
     final url = await _storage.readServerUrl();
     if (url == null || url.isEmpty) {
-      state = const AuthState(status: AuthStatus.needsServer);
+      // First run: prefill the hosted instance. Nothing is persisted until the
+      // user explicitly connects, so a saved URL always wins.
+      state = const AuthState(
+        status: AuthStatus.needsServer,
+        serverUrl: defaultServerUrl,
+      );
       return;
     }
 
@@ -121,7 +127,10 @@ class AuthController extends Notifier<AuthState> {
   Future<void> forgetServer() async {
     client.applySession(null);
     await _storage.clearSessionCookie();
-    state = const AuthState(status: AuthStatus.needsServer);
+    state = const AuthState(
+      status: AuthStatus.needsServer,
+      serverUrl: defaultServerUrl,
+    );
   }
 
   /// Username/password login (also performs first-run admin creation when the
