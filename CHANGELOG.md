@@ -1,3 +1,19 @@
+# [2.3.0](https://github.com/martynvdijke/traces/compare/v2.2.5...v2.3.0) (2026-10-31)
+
+
+### Bug Fixes
+
+* **ci:** add root fvmrc and point flutter setup at it ([355353b](https://github.com/martynvdijke/traces/commit/355353b95b638563bb63725b94cd3202e7e17f4b))
+* **ci:** key release concurrency on commit sha ([6492960](https://github.com/martynvdijke/traces/commit/6492960f1c5d6d9064c4eb5fdf2299e657b068e1))
+* **deps:** update all non-major dependencies ([c04579d](https://github.com/martynvdijke/traces/commit/c04579d2bd80cf4b7a6f0d373fa85713f1de952f))
+* **release:** expand version placeholders during semantic-release ([66f2197](https://github.com/martynvdijke/traces/commit/66f2197123a1d84e932a52c4e1d207d14afbe9a8))
+
+
+### Features
+
+* **mobile:** default to traces.vandijke.xyz and offer self-hosted option ([72289f8](https://github.com/martynvdijke/traces/commit/72289f89ed15dd5fe59c5de53234404174cb8610))
+* **release:** publish android bundles to google play and add emulator e2e ([1c786cc](https://github.com/martynvdijke/traces/commit/1c786cc7570189683b811b0349a5c4095de68657))
+
 ## [2.2.5](https://github.com/martynvdijke/traces/compare/v2.2.4...v2.2.5) (2026-10-20)
 
 
