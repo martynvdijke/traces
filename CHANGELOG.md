@@ -1,3 +1,10 @@
+## [2.3.1](https://github.com/martynvdijke/traces/compare/v2.3.0...v2.3.1) (2026-11-01)
+
+
+### Bug Fixes
+
+* **ci:** skip Play Store publish when credentials are missing ([4d4dafc](https://github.com/martynvdijke/traces/commit/4d4dafcc12ef9cbcefa23fea0b3f1a3e2e3a8220))
+
 # [2.3.0](https://github.com/martynvdijke/traces/compare/v2.2.5...v2.3.0) (2026-10-31)
 
 
