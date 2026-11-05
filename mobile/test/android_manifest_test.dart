@@ -20,4 +20,30 @@ void main() {
     expect(gradle, contains('releaseSigningConfig'));
     expect(gradle, contains('signingConfigs.getByName("debug")'));
   });
+
+  test('launcher activity source is committed and correctly packaged', () {
+    final activity = RegExp(r'android:name="\.([A-Za-z0-9_]+)"')
+        .firstMatch(manifest)
+        ?.group(1);
+    expect(activity, isNotNull,
+        reason: 'AndroidManifest must declare a launcher activity');
+
+    final namespace = RegExp(r'namespace\s*=\s*"([^"]+)"')
+        .firstMatch(gradle)
+        ?.group(1);
+    expect(namespace, isNotNull, reason: 'build.gradle.kts must set a namespace');
+
+    final source = File(
+      'android/app/src/main/kotlin/${namespace!.replaceAll('.', '/')}/$activity.kt',
+    );
+    expect(
+      source.existsSync(),
+      isTrue,
+      reason: 'The launcher Activity source must be committed; a missing '
+          '$activity.kt builds fine but crashes on launch with '
+          'ActivityNotFoundException (an unanchored "traces" entry in the root '
+          '.gitignore used to hide it from git).',
+    );
+    expect(source.readAsStringSync(), contains('class $activity'));
+  });
 }

@@ -1,4 +1,3 @@
-import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:integration_test/integration_test.dart';
 import 'package:traces/main.dart' as app;
@@ -6,14 +5,18 @@ import 'package:traces/main.dart' as app;
 void main() {
   IntegrationTestWidgetsFlutterBinding.ensureInitialized();
 
-  testWidgets('app boots and renders its first screen', (tester) async {
+  testWidgets('app boots into the TRACES onboarding flow', (tester) async {
     await Future<void>(() => app.main());
 
-    final root = find.byWidgetPredicate((widget) => widget is WidgetsApp);
-    await _pumpUntil(tester, root, const Duration(seconds: 30));
+    // The real app always renders its brand; the Flutter template counter demo
+    // does not. Waiting for this also fails if the entry point regresses to the
+    // template, which a plain WidgetsApp check would happily accept.
+    final branded = find.text('TRACES');
+    await _pumpUntil(tester, branded, const Duration(seconds: 30));
 
-    expect(root, findsWidgets,
-        reason: 'The app must mount a WidgetsApp after launch');
+    expect(branded, findsWidgets,
+        reason: 'The app must render the TRACES UI after launch');
+    expect(find.text('Flutter Demo Home Page'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

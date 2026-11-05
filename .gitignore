@@ -35,7 +35,11 @@ coverage.out
 *_test
 
 tmp/*
-traces
+# Compiled Go binary at the repo root only. Unanchored, this pattern also
+# matched the Flutter package directory mobile/android/.../xyz/vandijke/traces,
+# which silently hid MainActivity.kt from git and made release APKs crash on
+# launch with ActivityNotFoundException.
+/traces
 nodemodules/
 node_modules/
 playwright-report/
