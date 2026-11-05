@@ -1,3 +1,10 @@
+## [2.3.3](https://github.com/martynvdijke/traces/compare/v2.3.2...v2.3.3) (2026-11-05)
+
+
+### Bug Fixes
+
+* **mobile:** ship MainActivity and boot the real app ([d3b2ea1](https://github.com/martynvdijke/traces/commit/d3b2ea1753dbd184cf48692e401c68ac2edd1605))
+
 ## [2.3.2](https://github.com/martynvdijke/traces/compare/v2.3.1...v2.3.2) (2026-11-03)
 
 
