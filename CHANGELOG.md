@@ -1,3 +1,10 @@
+# [2.4.0](https://github.com/martynvdijke/traces/compare/v2.3.5...v2.4.0) (2026-11-08)
+
+
+### Features
+
+* **mobile:** add OpenTelemetry tracing with runtime endpoint from API ([2e924c2](https://github.com/martynvdijke/traces/commit/2e924c230e2ef795dd24597f3b9bb3c5ed34d75a))
+
 ## [2.3.5](https://github.com/martynvdijke/traces/compare/v2.3.4...v2.3.5) (2026-11-07)
 
 ## [2.3.4](https://github.com/martynvdijke/traces/compare/v2.3.3...v2.3.4) (2026-11-06)
