@@ -203,7 +203,9 @@ func TestHTMXEndpoints(t *testing.T) {
 	setupTestMediaSvc(t)
 	newTestDB(t)
 
-	if err := database.Migrate(db); err != nil { t.Fatalf("migrate: %v", err) }
+	if err := database.Migrate(db); err != nil {
+		t.Fatalf("migrate: %v", err)
+	}
 	database.SeedEvents(db, basePath)
 	var err error
 	htmxRenderer, err = httpx.NewRenderer()

@@ -55,6 +55,11 @@ func newTestDBForMilestone(t *testing.T) (*sql.DB, *Service) {
 		source TEXT DEFAULT '',
 		source_ref TEXT DEFAULT ''
 	)`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS event_people (
+		event_id INTEGER NOT NULL,
+		person_id INTEGER NOT NULL,
+		PRIMARY KEY (event_id, person_id)
+	)`)
 	t.Cleanup(func() { db.Close() })
 	svc := New(Deps{DB: db, Integrations: integrations.New(db, nil, nil)})
 	return db, svc

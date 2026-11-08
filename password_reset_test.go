@@ -46,7 +46,9 @@ func TestPasswordReset(t *testing.T) {
 
 	t.Run("enumeration_safe_unknown_email", func(t *testing.T) {
 		newTestDB(t)
-		if err := database.Migrate(db); err != nil { t.Fatalf("migrate: %v", err) }
+		if err := database.Migrate(db); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
 		authpkg.ResetRateLimitForTest()
 		var captured string
 		router := setupPasswordResetRouter2(t, &captured)
@@ -74,7 +76,9 @@ func TestPasswordReset(t *testing.T) {
 
 	t.Run("successful_reset", func(t *testing.T) {
 		newTestDB(t)
-		if err := database.Migrate(db); err != nil { t.Fatalf("migrate: %v", err) }
+		if err := database.Migrate(db); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
 		hash, _ := bcrypt.GenerateFromPassword([]byte("oldpassword"), bcrypt.DefaultCost)
 		if _, err := db.Exec("INSERT INTO users (username, display_name, email, password_hash) VALUES (?, ?, ?, ?)", "alice", "Alice", "alice@example.com", string(hash)); err != nil {
 			t.Fatalf("insert alice: %v", err)
@@ -129,7 +133,9 @@ func TestPasswordReset(t *testing.T) {
 
 	t.Run("expired_token_rejected", func(t *testing.T) {
 		newTestDB(t)
-		if err := database.Migrate(db); err != nil { t.Fatalf("migrate: %v", err) }
+		if err := database.Migrate(db); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
 		hash, _ := bcrypt.GenerateFromPassword([]byte("oldpass123"), bcrypt.DefaultCost)
 		db.Exec("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)", "bob", "bob@example.com", string(hash))
 		var uid int64
@@ -159,7 +165,9 @@ func TestPasswordReset(t *testing.T) {
 
 	t.Run("reused_token_rejected", func(t *testing.T) {
 		newTestDB(t)
-		if err := database.Migrate(db); err != nil { t.Fatalf("migrate: %v", err) }
+		if err := database.Migrate(db); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
 		hash, _ := bcrypt.GenerateFromPassword([]byte("oldpass123"), bcrypt.DefaultCost)
 		if _, err := db.Exec("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)", "carol", "carol@example.com", string(hash)); err != nil {
 			t.Fatalf("insert carol: %v", err)
@@ -192,7 +200,9 @@ func TestPasswordReset(t *testing.T) {
 
 	t.Run("weak_password_rejected", func(t *testing.T) {
 		newTestDB(t)
-		if err := database.Migrate(db); err != nil { t.Fatalf("migrate: %v", err) }
+		if err := database.Migrate(db); err != nil {
+			t.Fatalf("migrate: %v", err)
+		}
 		hash, _ := bcrypt.GenerateFromPassword([]byte("oldpass123"), bcrypt.DefaultCost)
 		if _, err := db.Exec("INSERT INTO users (username, email, password_hash) VALUES (?, ?, ?)", "dave", "dave@example.com", string(hash)); err != nil {
 			t.Fatalf("insert dave: %v", err)

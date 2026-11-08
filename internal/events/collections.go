@@ -98,6 +98,7 @@ func (s *Service) GetCollectionEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 	evs := ScanEventsWithPerson(rows)
+	AttachPeople(s.DB, evs)
 	c.JSON(http.StatusOK, evs)
 }
 

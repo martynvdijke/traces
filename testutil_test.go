@@ -71,8 +71,8 @@ func newTestDB(t *testing.T) *sql.DB {
 	integrationsSvc = integrations.New(newDB, logService, nil)
 	eventsSvc = events.New(events.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Integrations: integrationsSvc, Media: mediaSvc, PublicMode: func() bool { return publicMode }, Tracer: currentTracer})
 	authSessions = authpkg.NewSessionStore()
-	authSvc = authpkg.New(authpkg.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
-	webSvc = web.New(web.Deps{DB: newDB, Log: logService, Sessions: authSessions, BasePath: basePath, DBPath: dbPath, BackupPath: backupPath, Umami: integrationsSvc.UmamiSettings, OIDCReady: authSvc.OIDCReady})
+	authSvc = authpkg.New(authpkg.Deps{DB: newDB, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }, MediaPath: func() string { return mediaPath }})
+	webSvc = web.New(web.Deps{DB: newDB, Log: logService, Sessions: authSessions, BasePath: basePath, DBPath: dbPath, BackupPath: backupPath, Umami: integrationsSvc.UmamiSettings, OIDCReady: authSvc.OIDCReady, Demo: web.DemoInfo{}})
 	t.Cleanup(func() {
 		db = origDB
 		integrationsSvc = origSvc

@@ -64,6 +64,7 @@ func (s *Service) GetEvents(c *gin.Context) {
 	defer rows.Close()
 
 	evs := ScanEvents(rows)
+	AttachPeople(s.DB, evs)
 	span.SetAttributes(attribute.Int("event_count", len(evs)))
 	c.JSON(http.StatusOK, evs)
 	_ = ctx
@@ -78,6 +79,7 @@ func (s *Service) GetEventsFull(c *gin.Context) {
 	}
 	defer rows.Close()
 	evs := ScanEvents(rows)
+	AttachPeople(s.DB, evs)
 	c.JSON(http.StatusOK, evs)
 }
 
@@ -154,6 +156,7 @@ func (s *Service) GetPublicEvents(c *gin.Context) {
 	defer rows.Close()
 
 	evs := ScanEventsWithPerson(rows)
+	AttachPeople(s.DB, evs)
 	c.JSON(http.StatusOK, evs)
 }
 
@@ -203,19 +206,17 @@ func (s *Service) SaveEvent(c *gin.Context) {
 		attribute.String("event.date", e.Date),
 	)
 	log.Printf("[EVENT] Saving event: ID=%d, Title=%s, Date=%s", e.ID, e.Title, e.Date)
-	action := "created"
-	if e.ID == 0 {
-		result, err := s.DB.Exec(`INSERT INTO timeline_events
-			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, is_favorite, person_id, latitude, longitude, recurring, weather_data, event_start_time, event_end_time, user_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
-		if err != nil {
-			httpx.ServerError(c, err)
-			return
-		}
-		id, _ := result.LastInsertId()
-		e.ID = int(id)
+
+	personIDs := EventPersonIDs(e)
+	if len(personIDs) > 0 {
+		first := personIDs[0]
+		e.PersonID = &first
 	} else {
+		e.PersonID = nil
+	}
+
+	action := "created"
+	if e.ID != 0 {
 		cu := auth.GetCurrentUser(c)
 		if !cu.IsAdmin {
 			var ownerID int
@@ -228,7 +229,29 @@ func (s *Service) SaveEvent(c *gin.Context) {
 				return
 			}
 		}
-		_, err := s.DB.Exec(`UPDATE timeline_events SET
+		action = "updated"
+	}
+
+	tx, err := s.DB.Begin()
+	if err != nil {
+		httpx.ServerError(c, err)
+		return
+	}
+	defer tx.Rollback()
+
+	if e.ID == 0 {
+		result, err := tx.Exec(`INSERT INTO timeline_events
+			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, is_favorite, person_id, latitude, longitude, recurring, weather_data, event_start_time, event_end_time, user_id)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
+		if err != nil {
+			httpx.ServerError(c, err)
+			return
+		}
+		id, _ := result.LastInsertId()
+		e.ID = int(id)
+	} else {
+		_, err := tx.Exec(`UPDATE timeline_events SET
 			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, is_favorite=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, event_start_time=?, event_end_time=?, user_id=?
 			WHERE id=?`,
 			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID, e.ID)
@@ -236,13 +259,55 @@ func (s *Service) SaveEvent(c *gin.Context) {
 			httpx.ServerError(c, err)
 			return
 		}
-		action = "updated"
 	}
+
+	if err := replaceEventPeople(tx, e.ID, personIDs); err != nil {
+		httpx.ServerError(c, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
+		httpx.ServerError(c, err)
+		return
+	}
+
 	span.SetAttributes(attribute.String("action", action))
 	if s.Integrations != nil {
 		s.Integrations.SendGotifyNotification(fmt.Sprintf("Event %s: %s (%s)", action, e.Title, e.Date), e.Description)
 	}
-	c.JSON(http.StatusOK, e)
+	evs := []models.TimelineEvent{e}
+	AttachPeople(s.DB, evs)
+	c.JSON(http.StatusOK, evs[0])
+}
+
+// replaceEventPeople atomically replaces the person associations for an event.
+func replaceEventPeople(tx *sql.Tx, eventID int, ids []int) error {
+	if _, err := tx.Exec("DELETE FROM event_people WHERE event_id = ?", eventID); err != nil {
+		if isMissingEventPeopleTable(err) {
+			return nil
+		}
+		return err
+	}
+	seen := make(map[int]bool, len(ids))
+	for _, id := range ids {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		if _, err := tx.Exec("INSERT OR IGNORE INTO event_people (event_id, person_id) VALUES (?, ?)", eventID, id); err != nil {
+			if isMissingEventPeopleTable(err) {
+				return nil
+			}
+			return err
+		}
+	}
+	return nil
+}
+
+// isMissingEventPeopleTable reports whether the error is the expected "no such
+// table" from databases created before event_people existed (for example bare
+// unit-test schemas). Production databases always have it via Migrate.
+func isMissingEventPeopleTable(err error) bool {
+	return err != nil && strings.Contains(err.Error(), "no such table: event_people")
 }
 
 func (s *Service) DeleteEvent(c *gin.Context) {
@@ -347,6 +412,7 @@ func (s *Service) GetTrashEvents(c *gin.Context) {
 		}
 		events = append(events, e)
 	}
+	AttachPeople(s.DB, events)
 	c.JSON(http.StatusOK, events)
 }
 
@@ -407,8 +473,23 @@ func (s *Service) RestoreEvents(c *gin.Context) {
 }
 
 func (s *Service) EmptyTrash(c *gin.Context) {
-	res, err := s.DB.Exec("DELETE FROM timeline_events WHERE deleted_at != '' AND deleted_at IS NOT NULL")
+	tx, err := s.DB.Begin()
 	if err != nil {
+		httpx.ServerError(c, err)
+		return
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.Exec("DELETE FROM event_people WHERE event_id IN (SELECT id FROM timeline_events WHERE deleted_at != '' AND deleted_at IS NOT NULL)"); err != nil && !isMissingEventPeopleTable(err) {
+		httpx.ServerError(c, err)
+		return
+	}
+	res, err := tx.Exec("DELETE FROM timeline_events WHERE deleted_at != '' AND deleted_at IS NOT NULL")
+	if err != nil {
+		httpx.ServerError(c, err)
+		return
+	}
+	if err := tx.Commit(); err != nil {
 		httpx.ServerError(c, err)
 		return
 	}
@@ -696,6 +777,7 @@ func (s *Service) ExportEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 	evs := ScanEventsWithPerson(rows)
+	AttachPeople(s.DB, evs)
 	if format == "csv" {
 		c.Header("Content-Type", "text/csv")
 		c.Header("Content-Disposition", "attachment; filename=events.csv")
@@ -821,11 +903,12 @@ func (s *Service) ToggleFavorite(c *gin.Context) {
 
 func (s *Service) BatchEvents(c *gin.Context) {
 	var input struct {
-		IDs      []int  `json:"ids"`
-		Action   string `json:"action"`
-		Tags     string `json:"tags,omitempty"`
-		PersonID *int   `json:"person_id,omitempty"`
-		UserID   *int   `json:"user_id,omitempty"`
+		IDs       []int  `json:"ids"`
+		Action    string `json:"action"`
+		Tags      string `json:"tags,omitempty"`
+		PersonID  *int   `json:"person_id,omitempty"`
+		PersonIDs []int  `json:"person_ids,omitempty"`
+		UserID    *int   `json:"user_id,omitempty"`
 	}
 	if err := c.ShouldBindJSON(&input); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
@@ -859,8 +942,21 @@ func (s *Service) BatchEvents(c *gin.Context) {
 			c.JSON(http.StatusForbidden, gin.H{"error": "Administrator access required"})
 			return
 		}
-		_, err := s.DB.Exec("DELETE FROM timeline_events WHERE id IN ("+inClause+")", args...)
+		tx, err := s.DB.Begin()
 		if err != nil {
+			httpx.ServerError(c, err)
+			return
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec("DELETE FROM event_people WHERE event_id IN ("+inClause+")", args...); err != nil && !isMissingEventPeopleTable(err) {
+			httpx.ServerError(c, err)
+			return
+		}
+		if _, err := tx.Exec("DELETE FROM timeline_events WHERE id IN ("+inClause+")", args...); err != nil {
+			httpx.ServerError(c, err)
+			return
+		}
+		if err := tx.Commit(); err != nil {
 			httpx.ServerError(c, err)
 			return
 		}
@@ -881,12 +977,44 @@ func (s *Service) BatchEvents(c *gin.Context) {
 		}
 		c.JSON(http.StatusOK, gin.H{"status": "ok", "updated": len(input.IDs)})
 	case "set_person":
-		if input.PersonID == nil {
-			c.JSON(http.StatusBadRequest, gin.H{"error": "person_id required"})
+		personIDs := make([]int, 0, len(input.PersonIDs)+1)
+		seen := map[int]bool{}
+		for _, id := range input.PersonIDs {
+			if id > 0 && !seen[id] {
+				seen[id] = true
+				personIDs = append(personIDs, id)
+			}
+		}
+		if len(personIDs) == 0 && input.PersonID != nil {
+			if *input.PersonID > 0 {
+				personIDs = append(personIDs, *input.PersonID)
+			}
+		}
+		if len(personIDs) == 0 {
+			c.JSON(http.StatusBadRequest, gin.H{"error": "person_id or person_ids required"})
 			return
 		}
-		_, err := s.DB.Exec("UPDATE timeline_events SET person_id=? WHERE id IN ("+inClause+")", append([]any{*input.PersonID}, args...)...)
+		var primary any
+		if len(personIDs) > 0 {
+			primary = personIDs[0]
+		}
+		tx, err := s.DB.Begin()
 		if err != nil {
+			httpx.ServerError(c, err)
+			return
+		}
+		defer tx.Rollback()
+		if _, err := tx.Exec("UPDATE timeline_events SET person_id=? WHERE id IN ("+inClause+")", append([]any{primary}, args...)...); err != nil {
+			httpx.ServerError(c, err)
+			return
+		}
+		for _, id := range input.IDs {
+			if err := replaceEventPeople(tx, id, personIDs); err != nil {
+				httpx.ServerError(c, err)
+				return
+			}
+		}
+		if err := tx.Commit(); err != nil {
 			httpx.ServerError(c, err)
 			return
 		}

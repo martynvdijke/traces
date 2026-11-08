@@ -18,8 +18,8 @@ import (
 
 // rate limiting: 5/min per IP
 var (
-	rlMu    sync.Mutex
-	rlHits  = map[string][]int64{}
+	rlMu   sync.Mutex
+	rlHits = map[string][]int64{}
 )
 
 func checkRateLimit(ip string) bool {
@@ -44,7 +44,9 @@ func checkRateLimit(ip string) bool {
 	return true
 }
 
-func (s *Service) SetSendEmail(fn func(models.EmailConfig, string, string, string) error) { s.sendEmail = fn }
+func (s *Service) SetSendEmail(fn func(models.EmailConfig, string, string, string) error) {
+	s.sendEmail = fn
+}
 
 func ResetRateLimitForTest() {
 	rlMu.Lock()

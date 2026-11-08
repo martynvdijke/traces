@@ -130,6 +130,17 @@ task prepush
 | `OIDC_CLIENT_SECRET` | Client secret inline (dev only; prefer `_FILE`) | — |
 | `OIDC_REDIRECT_URL` | Callback URL, e.g. `https://traces.vandijke.xyz/api/auth/oidc/callback` | — |
 | `OIDC_SCOPES` | Space-separated scopes | `openid email profile groups` |
+| `TRACES_PUBLIC_URL` | Public base URL of this instance, e.g. `https://traces.vandijke.xyz`; also decides whether the demo reviewer account is enabled by default | — |
+| `LEGAL_CONTROLLER_NAME` | Controller identity rendered on `/privacy`, `/terms` and `/account/delete` | `the operator of this TRACES instance` |
+| `LEGAL_CONTROLLER_EMAIL` | Contact address for privacy and deletion requests | `privacy@example.invalid` |
+| `LEGAL_CONTROLLER_ADDRESS` | Postal address of the controller | `Not configured by the instance operator` |
+| `LEGAL_HOSTING_REGION` | Region where instance data is hosted | `European Union` |
+| `DEMO_USER_ENABLED` | Provision a shared Play-review demo account; defaults to `true` only when `TRACES_PUBLIC_URL` host is `traces.vandijke.xyz` | host-dependent |
+| `DEMO_USER_USERNAME` | Demo account username | `demo` |
+| `DEMO_USER_PASSWORD` | Demo account password | `demo` |
+| `DEMO_USER_EMAIL` | Demo account email (not a mailbox) | `demo@traces.local` |
+| `DEMO_USER_DISPLAY_NAME` | Demo account display name | `Demo User` |
+| `DEMO_USER_SEED_CONTENT` | Seed sample memories when the demo account has none | `true` |
 
 > **Optional runtime dependency — `ffmpeg`:** When `ffmpeg` is on the server `PATH`,
 > TRACES generates a poster-frame thumbnail for every uploaded video (used in
@@ -161,6 +172,29 @@ the DB-backed `/api/otel/config` settings.
 **Not read (unsupported):** per-signal endpoints
 (`OTEL_EXPORTER_OTLP_{TRACES,METRICS,LOGS}_ENDPOINT`), OTLP headers, timeouts,
 compression, and TLS settings. Only the shared endpoint above is honored.
+
+## Privacy, data deletion and the Play Store
+
+The server exposes three public legal pages and the account deletion/export
+endpoints Google Play and the GDPR require:
+
+| Route | Purpose |
+|-------|---------|
+| `/privacy` | Privacy policy |
+| `/terms` | Terms of use |
+| `/account/delete` | Public data-deletion page for the Play listing |
+| `GET /api/me/export` | Download your own data as JSON |
+| `DELETE /api/me` | Delete your account and its media (`{"confirm":"DELETE"}`) |
+| `GET`/`PATCH /api/me/privacy` | Read or change the analytics opt-out |
+
+The Android app exposes these under **Settings → Data & privacy** and
+**Settings → Legal**, and offers a "Try the demo account" button when the
+connected server advertises a demo user.
+
+Before submitting to Google Play, set the `LEGAL_*` variables to the real
+controller identity and configure the demo account. The full runbook, data-safety
+answers and GDPR checklist live in
+[`docs/play-store.md`](docs/play-store.md) and [`docs/legal.md`](docs/legal.md).
 
 ## Project Structure
 

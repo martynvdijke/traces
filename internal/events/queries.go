@@ -92,12 +92,13 @@ func AppendEventFilters(query string, args []any, f EventFilters) (string, []any
 		args = append(args, "%"+f.Tag+"%")
 	}
 	if f.Person != "" {
-		query += " AND p.name LIKE ?"
-		args = append(args, "%"+f.Person+"%")
+		query += " AND (p.name LIKE ? OR EXISTS (SELECT 1 FROM event_people ep2 JOIN persons p2 ON p2.id=ep2.person_id WHERE ep2.event_id=e.id AND p2.name LIKE ?))"
+		like := "%" + f.Person + "%"
+		args = append(args, like, like)
 	}
 	if f.PersonID != "" {
-		query += " AND e.person_id = ?"
-		args = append(args, f.PersonID)
+		query += " AND (e.person_id = ? OR EXISTS (SELECT 1 FROM event_people ep WHERE ep.event_id = e.id AND ep.person_id = ?))"
+		args = append(args, f.PersonID, f.PersonID)
 	}
 	if f.MediaType != "" {
 		query += " AND e.media_type = ?"
@@ -193,6 +194,129 @@ func ScanEventsWithPerson(rows *sql.Rows) []models.TimelineEvent {
 	return ScanEvents(rows)
 }
 
+// AttachPeople populates the multi-person fields (People, PersonIDs) for a set
+// of events from the event_people join table. When the join table is missing
+// (for example in a minimal unit-test DB) it silently leaves the events
+// untouched and existing legacy person fields remain usable.
+func AttachPeople(db *sql.DB, evs []models.TimelineEvent) {
+	if len(evs) == 0 {
+		return
+	}
+
+	// SQLite has a bounded number of host parameters per statement (999 by
+	// default in older builds), so fetch associations in batches.
+	const batchSize = 400
+	byEvent := make(map[int][]models.Person)
+	for start := 0; start < len(evs); start += batchSize {
+		end := start + batchSize
+		if end > len(evs) {
+			end = len(evs)
+		}
+
+		ids := make([]any, 0, end-start)
+		placeholders := make([]string, 0, end-start)
+		seen := make(map[int]bool, end-start)
+		for _, e := range evs[start:end] {
+			if seen[e.ID] {
+				continue
+			}
+			seen[e.ID] = true
+			ids = append(ids, e.ID)
+			placeholders = append(placeholders, "?")
+		}
+		if len(ids) == 0 {
+			continue
+		}
+
+		query := `SELECT ep.event_id, p.id,p.name,p.avatar_url,p.bio,p.birth_date,p.color,p.created_at
+			FROM event_people ep JOIN persons p ON p.id=ep.person_id
+			WHERE ep.event_id IN (` + strings.Join(placeholders, ",") + `)
+			ORDER BY p.name COLLATE NOCASE`
+
+		rows, err := db.Query(query, ids...)
+		if err != nil {
+			// Missing table or transient error: keep the legacy person fields.
+			continue
+		}
+		for rows.Next() {
+			var eventID int
+			var p models.Person
+			var name, avatar, bio, birth, color, created sql.NullString
+			if err := rows.Scan(&eventID, &p.ID, &name, &avatar, &bio, &birth, &color, &created); err != nil {
+				continue
+			}
+			p.Name = name.String
+			p.AvatarURL = avatar.String
+			p.Bio = bio.String
+			p.BirthDate = birth.String
+			p.Color = color.String
+			p.CreatedAt = created.String
+			byEvent[eventID] = append(byEvent[eventID], p)
+		}
+		rows.Close()
+	}
+
+	for i := range evs {
+		people := byEvent[evs[i].ID]
+		if len(people) == 0 {
+			if evs[i].PersonID != nil && evs[i].Person != nil {
+				evs[i].PersonIDs = []int{*evs[i].PersonID}
+				evs[i].People = []models.Person{*evs[i].Person}
+			}
+			continue
+		}
+
+		// Put the current legacy primary person first, so Person/PersonID keep
+		// pointing at the same person the single-person API used to return.
+		if evs[i].PersonID != nil {
+			primary := *evs[i].PersonID
+			for j := range people {
+				if people[j].ID == primary && j != 0 {
+					people[0], people[j] = people[j], people[0]
+					break
+				}
+			}
+		}
+
+		personIDs := make([]int, len(people))
+		for j := range people {
+			personIDs[j] = people[j].ID
+		}
+		evs[i].People = people
+		evs[i].PersonIDs = personIDs
+		evs[i].Person = &evs[i].People[0]
+		evs[i].PersonID = &evs[i].People[0].ID
+	}
+}
+
+// EventPersonIDs resolves the set of person ids for an event, preferring the
+// multi-person field, then the legacy single field, then the expanded People
+// slice. Duplicate and non-positive ids are dropped.
+func EventPersonIDs(e models.TimelineEvent) []int {
+	var raw []int
+	switch {
+	case len(e.PersonIDs) > 0:
+		raw = e.PersonIDs
+	case e.PersonID != nil:
+		raw = []int{*e.PersonID}
+	case len(e.People) > 0:
+		for _, p := range e.People {
+			raw = append(raw, p.ID)
+		}
+	}
+
+	seen := make(map[int]bool, len(raw))
+	out := make([]int, 0, len(raw))
+	for _, id := range raw {
+		if id <= 0 || seen[id] {
+			continue
+		}
+		seen[id] = true
+		out = append(out, id)
+	}
+	return out
+}
+
 // ---- Stats query helpers ----
 
 // QueryYearStats returns aggregate statistics for a given year.
@@ -206,7 +330,11 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 
 	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&s.Total)
 	d.QueryRow("SELECT COUNT(DISTINCT location) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&s.Locations)
-	d.QueryRow("SELECT COUNT(DISTINCT person_id) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND person_id IS NOT NULL", year).Scan(&s.Persons)
+	if err := d.QueryRow(`SELECT COUNT(DISTINCT ep.person_id) FROM event_people ep
+		JOIN timeline_events e ON e.id = ep.event_id
+		WHERE strftime('%Y', e.event_date) = ?`, year).Scan(&s.Persons); err != nil {
+		d.QueryRow("SELECT COUNT(DISTINCT person_id) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND person_id IS NOT NULL", year).Scan(&s.Persons)
+	}
 	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND media_url != ''", year).Scan(&s.MediaTotal)
 	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&s.WithLocation)
 	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND latitude != 0 AND longitude != 0", year).Scan(&s.WithGeo)
@@ -323,8 +451,10 @@ func QueryTagFrequency(d *sql.DB, year string) []models.TagCount {
 // QueryPersonEventCounts returns person event counts for a year.
 func QueryPersonEventCounts(d *sql.DB, year string) []models.PersonCount {
 	result := make([]models.PersonCount, 0)
-	rows, err := d.Query(`SELECT p.id, p.name, COUNT(e.id) as cnt FROM persons p
-		LEFT JOIN timeline_events e ON e.person_id = p.id AND strftime('%Y', e.event_date) = ?
+	rows, err := d.Query(`SELECT p.id, p.name, COUNT(DISTINCT e.id) as cnt FROM persons p
+		JOIN event_people ep ON ep.person_id = p.id
+		JOIN timeline_events e ON e.id = ep.event_id
+		WHERE strftime('%Y', e.event_date) = ? AND (e.deleted_at IS NULL OR e.deleted_at = '')
 		GROUP BY p.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
 	if err != nil {
 		return result

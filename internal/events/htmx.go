@@ -241,8 +241,30 @@ func (s *Service) htmxSaveEvent(c *gin.Context) {
 
 	id := httpx.ParseIntOrZero(idStr)
 
-	var personID int
-	if personName != "" {
+	// Multi-person ids are authoritative when provided via the form.
+	personIDs := make([]int, 0, 4)
+	seenPerson := map[int]bool{}
+	addPerson := func(pid int) {
+		if pid > 0 && !seenPerson[pid] {
+			seenPerson[pid] = true
+			personIDs = append(personIDs, pid)
+		}
+	}
+	for _, v := range c.PostFormArray("person_ids") {
+		if pid, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+			addPerson(pid)
+		}
+	}
+	if len(personIDs) == 0 && data["person_ids"] != "" {
+		for _, v := range strings.Split(data["person_ids"], ",") {
+			if pid, err := strconv.Atoi(strings.TrimSpace(v)); err == nil {
+				addPerson(pid)
+			}
+		}
+	}
+
+	if len(personIDs) == 0 && personName != "" {
+		var personID int
 		s.DB.QueryRow("SELECT id FROM persons WHERE name = ?", personName).Scan(&personID)
 		if personID == 0 {
 			result, err := s.DB.Exec("INSERT INTO persons (name, color) VALUES (?, ?)", personName, models.DefaultColor)
@@ -251,37 +273,58 @@ func (s *Service) htmxSaveEvent(c *gin.Context) {
 				personID = int(lid)
 			}
 		}
+		addPerson(personID)
+	}
+	if len(personIDs) == 0 && data["person_id"] != "" {
+		if pid, err := strconv.Atoi(strings.TrimSpace(data["person_id"])); err == nil {
+			addPerson(pid)
+		}
 	}
 
+	var primaryPerson any
+	if len(personIDs) > 0 {
+		primaryPerson = personIDs[0]
+	}
+
+	eventID := id
 	if id == 0 {
-		_, err := s.DB.Exec(`INSERT INTO timeline_events 
+		result, err := s.DB.Exec(`INSERT INTO timeline_events 
 			(title, description, event_date, location, media_type, tags, recurring, event_start_time, event_end_time, person_id) 
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, personID)
+			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, primaryPerson)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to save event")
 			return
 		}
+		lid, _ := result.LastInsertId()
+		eventID = int(lid)
 	} else {
 		_, err := s.DB.Exec(`UPDATE timeline_events SET 
 			title=?, description=?, event_date=?, location=?, media_type=?, tags=?, recurring=?, event_start_time=?, event_end_time=?, person_id=?
 			WHERE id=?`,
-			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, personID, id)
+			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, primaryPerson, id)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to update event")
 			return
 		}
 	}
 
+	if eventID > 0 {
+		tx, err := s.DB.Begin()
+		if err == nil {
+			if err := replaceEventPeople(tx, eventID, personIDs); err != nil {
+				tx.Rollback()
+			} else if err := tx.Commit(); err != nil {
+				// best-effort: association write failed, event row still saved
+			}
+		}
+	}
+
 	if latStr != "" && lngStr != "" {
 		lat, err1 := strconv.ParseFloat(latStr, 64)
 		lng, err2 := strconv.ParseFloat(lngStr, 64)
-		if err1 == nil && err2 == nil {
-			if id == 0 {
-				s.DB.Exec("UPDATE timeline_events SET latitude=?, longitude=? WHERE id=(SELECT MAX(id) FROM timeline_events)", lat, lng)
-			} else {
-				s.DB.Exec("UPDATE timeline_events SET latitude=?, longitude=? WHERE id=?", lat, lng, id)
-			}
+		if err1 == nil && err2 == nil && eventID > 0 {
+			s.DB.Exec("UPDATE timeline_events SET latitude=?, longitude=? WHERE id=?", lat, lng, eventID)
 		}
 	}
 
@@ -369,7 +412,7 @@ func (s *Service) htmxEditEventForm(c *gin.Context) {
 func (s *Service) htmxListPersons(c *gin.Context) {
 	q := c.Query("q")
 	query := `SELECT p.id, p.name, COALESCE(p.avatar_url,''), COALESCE(p.bio,''), COALESCE(p.birth_date,''), COALESCE(p.color,'#B5452B'),
-		(SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count
+		(SELECT COUNT(DISTINCT ep.event_id) FROM event_people ep WHERE ep.person_id = p.id) as event_count
 		FROM persons p`
 	args := []any{}
 	if q != "" {
@@ -425,6 +468,7 @@ func (s *Service) htmxDeletePerson(c *gin.Context) {
 	}
 
 	s.DB.Exec("UPDATE timeline_events SET person_id = NULL WHERE person_id = ?", id)
+	s.DB.Exec("DELETE FROM event_people WHERE person_id=?", id)
 	s.DB.Exec("DELETE FROM persons WHERE id=?", id)
 
 	s.htmxListPersons(c)
@@ -762,6 +806,7 @@ func (s *Service) htmxPermanentDelete(c *gin.Context) {
 	var mediaURL string
 	s.DB.QueryRow("SELECT media_url FROM timeline_events WHERE id=?", id).Scan(&mediaURL)
 
+	s.DB.Exec("DELETE FROM event_people WHERE event_id=?", id)
 	s.DB.Exec("DELETE FROM timeline_events WHERE id=?", id)
 
 	if mediaURL != "" {
@@ -776,6 +821,7 @@ func (s *Service) htmxPermanentDelete(c *gin.Context) {
 }
 
 func (s *Service) htmxEmptyTrash(c *gin.Context) {
+	s.DB.Exec("DELETE FROM event_people WHERE event_id IN (SELECT id FROM timeline_events WHERE deleted_at IS NOT NULL AND deleted_at != '')")
 	s.DB.Exec("DELETE FROM timeline_events WHERE deleted_at IS NOT NULL AND deleted_at != ''")
 	s.htmxListTrash(c)
 }

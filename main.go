@@ -50,6 +50,7 @@ import (
 
 	"traces/internal/auth"
 	"traces/internal/database"
+	"traces/internal/demo"
 	"traces/internal/events"
 	"traces/internal/httpx"
 	"traces/internal/integrations"
@@ -154,6 +155,13 @@ func main() {
 		log.Printf("[LogService] Failed to initialize: %v", err)
 	}
 
+	// Seed/reconcile the optional demo reviewer account. A failure here is
+	// never fatal: production instances must still start without a demo user.
+	demoCfg := demo.LoadConfigFromEnv()
+	if err := demo.Ensure(db, demoCfg, log.Printf); err != nil {
+		log.Printf("[Demo] Warning: could not ensure demo account: %v", err)
+	}
+
 	integrationsSvc = integrations.New(db, logService, func(t, m, l bool) { otelTracesEnabled, otelMetricsEnabled, otelLogsEnabled = t, m, l })
 	integrationsSvc.SetGotify(envGotifyURL, envGotifyToken, envGotifyEnabled)
 	integrationsSvc.SetUmami(envUmamiURL, envUmamiSiteID, false)
@@ -209,7 +217,7 @@ func main() {
 
 	authSessions = auth.NewSessionStore()
 	authSessions.SetDB(db)
-	authSvc = auth.New(auth.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }})
+	authSvc = auth.New(auth.Deps{DB: db, Log: logService, Renderer: htmxRenderer, Sessions: authSessions, Integrations: integrationsSvc, PublicMode: func() bool { return publicMode }, MediaPath: func() string { return mediaPath }})
 	authSvc.InitOIDCFromEnv()
 
 	webSvc = web.New(web.Deps{
@@ -221,6 +229,12 @@ func main() {
 		BackupPath: backupPath,
 		Umami:      integrationsSvc.UmamiSettings,
 		OIDCReady:  authSvc.OIDCReady,
+		Legal:      web.LoadLegalConfigFromEnv(),
+		Demo: web.DemoInfo{
+			Enabled:  demoCfg.Enabled,
+			Username: demoCfg.Username,
+			Password: demoCfg.Password,
+		},
 	})
 
 	r := gin.Default()
@@ -291,7 +305,7 @@ func main() {
 			auth.GET("/events/full", eventsSvc.GetEventsFull)
 			auth.GET("/events/search", eventsSvc.SearchEvents)
 			auth.GET("/events/search/global", eventsSvc.GlobalSearchEvents)
-			auth.GET("/events/export", eventsSvc.ExportEvents)
+			auth.GET("/events/export", authSvc.RequireAdmin(), eventsSvc.ExportEvents)
 			auth.GET("/events/ics", eventsSvc.GetEventsICS)
 			auth.GET("/contributions", eventsSvc.GetContributions)
 			auth.GET("/stats", eventsSvc.GetEventStats)
@@ -332,6 +346,10 @@ func main() {
 			auth.POST("/users", authSvc.RequireAdmin(), authSvc.SaveUser)
 			auth.DELETE("/users", authSvc.RequireAdmin(), authSvc.DeleteUser)
 			auth.GET("/users/:id/events", authSvc.RequireAdmin(), authSvc.GetUserEvents)
+			auth.GET("/me/export", authSvc.ExportOwnAccount)
+			auth.GET("/me/privacy", authSvc.GetPrivacySettings)
+			auth.PATCH("/me/privacy", authSvc.CSRFMiddleware(), authSvc.UpdatePrivacySettings)
+			auth.DELETE("/me", authSvc.CSRFMiddleware(), authSvc.DeleteOwnAccount)
 			auth.POST("/events/recurring/generate", eventsSvc.GenerateRecurringEvents)
 			auth.GET("/ollama/config", authSvc.RequireAdmin(), integrationsSvc.GetOllamaConfig)
 			auth.POST("/ollama/config", authSvc.RequireAdmin(), integrationsSvc.SaveOllamaConfig)
@@ -397,6 +415,13 @@ func main() {
 
 	r.GET("/map.html", webSvc.MapPage)
 	r.GET("/", webSvc.IndexPage)
+
+	// Public legal / account pages. These never require authentication.
+	r.GET("/privacy", webSvc.PrivacyPage)
+	r.GET("/terms", webSvc.TermsPage)
+	r.GET("/account/delete", webSvc.AccountDeletePage)
+	// HTML-facing account deletion entry point used by /account/delete.
+	r.POST("/settings/account/delete", authSvc.AuthMiddlewareGin(), authSvc.CSRFMiddleware(), authSvc.DeleteOwnAccount)
 
 	// Session cleanup goroutine
 	go func() {

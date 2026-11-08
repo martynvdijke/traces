@@ -36,6 +36,7 @@ func (s *Service) GetPersonEvents(c *gin.Context) {
 	}
 	defer rows.Close()
 	evs := ScanEvents(rows)
+	AttachPeople(s.DB, evs)
 	milestones := make([]PersonMilestone, 0, len(evs))
 	for _, e := range evs {
 		m := PersonMilestone{TimelineEvent: e, Group: LifeGroup(person.BirthDate, e.Date)}
@@ -51,7 +52,7 @@ func (s *Service) GetPersonEvents(c *gin.Context) {
 func (s *Service) GetPersons(c *gin.Context) {
 	q := c.Query("q")
 	query := `SELECT p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at,
-		(SELECT COUNT(*) FROM timeline_events WHERE person_id = p.id) as event_count
+		(SELECT COUNT(DISTINCT ep.event_id) FROM event_people ep WHERE ep.person_id = p.id) as event_count
 		FROM persons p`
 	args := []any{}
 	if q != "" {
@@ -115,6 +116,7 @@ func (s *Service) DeletePerson(c *gin.Context) {
 	var name string
 	s.DB.QueryRow("SELECT name FROM persons WHERE id=?", id).Scan(&name)
 	s.DB.Exec("UPDATE timeline_events SET person_id = NULL WHERE person_id = ?", id)
+	s.DB.Exec("DELETE FROM event_people WHERE person_id=?", id)
 	_, err = s.DB.Exec("DELETE FROM persons WHERE id=?", id)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete person"})

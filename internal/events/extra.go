@@ -133,6 +133,7 @@ func (s *Service) SearchEvents(c *gin.Context) {
 	defer rows.Close()
 
 	evs := ScanEvents(rows)
+	AttachPeople(s.DB, evs)
 	c.JSON(http.StatusOK, evs)
 }
 
@@ -248,6 +249,7 @@ func (s *Service) GlobalSearchEvents(c *gin.Context) {
 	defer rows.Close()
 
 	evs := ScanEvents(rows)
+	AttachPeople(s.DB, evs)
 	c.JSON(http.StatusOK, evs)
 }
 
@@ -597,6 +599,7 @@ func (s *Service) GetCalendar(c *gin.Context) {
 	defer rows.Close()
 
 	evs := ScanEventsWithPerson(rows)
+	AttachPeople(s.DB, evs)
 
 	daysMap := make(map[string][]models.TimelineEvent)
 	for _, e := range evs {

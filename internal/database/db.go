@@ -68,6 +68,105 @@ func Migrate(db *sql.DB) error {
 	}
 
 	CreateFTS5Table(db)
+	if err := ensureSchemaDrift(db); err != nil {
+		return fmt.Errorf("repair schema drift: %w", err)
+	}
+	return nil
+}
+
+// requiredColumn describes a column that must exist on a table.
+type requiredColumn struct {
+	table      string
+	name       string
+	definition string
+}
+
+// ensureSchemaDrift repairs columns that may be missing on databases whose
+// schema_version was advanced without the corresponding ALTER TABLE having
+// been applied (for example a partially restored or externally modified DB).
+func ensureSchemaDrift(db *sql.DB) error {
+	required := []requiredColumn{
+		{"timeline_events", "is_favorite", "INTEGER DEFAULT 0"},
+		{"timeline_events", "event_start_time", "TEXT DEFAULT ''"},
+		{"timeline_events", "event_end_time", "TEXT DEFAULT ''"},
+		{"timeline_events", "deleted_at", "TEXT DEFAULT ''"},
+		{"timeline_events", "source", "TEXT DEFAULT ''"},
+		{"timeline_events", "source_ref", "TEXT DEFAULT ''"},
+		{"timeline_events", "person_id", "INTEGER"},
+		{"timeline_events", "latitude", "REAL"},
+		{"timeline_events", "longitude", "REAL"},
+		{"users", "analytics_opt_out", "INTEGER DEFAULT 0"},
+		{"users", "oidc_sub", "TEXT DEFAULT ''"},
+		{"users", "auth_method", "TEXT DEFAULT ''"},
+		{"users", "is_admin", "INTEGER DEFAULT 0"},
+	}
+
+	for _, col := range required {
+		cols, err := tableColumns(db, col.table)
+		if err != nil {
+			return err
+		}
+		if cols == nil {
+			// Table itself is missing; CreateTables/migrations own creating it.
+			continue
+		}
+		if cols[col.name] {
+			continue
+		}
+		if _, err := db.Exec(fmt.Sprintf("ALTER TABLE %s ADD COLUMN %s %s", col.table, col.name, col.definition)); err != nil {
+			return fmt.Errorf("add %s.%s: %w", col.table, col.name, err)
+		}
+		log.Printf("[DB] repaired missing column %s.%s", col.table, col.name)
+	}
+
+	return ensureEventPeople(db)
+}
+
+// tableColumns returns the set of column names for a table, or nil when the
+// table does not exist.
+func tableColumns(db *sql.DB, table string) (map[string]bool, error) {
+	rows, err := db.Query(fmt.Sprintf("PRAGMA table_info(%s)", table))
+	if err != nil {
+		return nil, fmt.Errorf("table_info(%s): %w", table, err)
+	}
+	defer rows.Close()
+
+	cols := map[string]bool{}
+	for rows.Next() {
+		var cid int
+		var name, ctype string
+		var notNull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &ctype, &notNull, &dflt, &pk); err != nil {
+			return nil, fmt.Errorf("scan table_info(%s): %w", table, err)
+		}
+		cols[name] = true
+	}
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	if len(cols) == 0 {
+		return nil, nil
+	}
+	return cols, nil
+}
+
+// ensureEventPeople idempotently creates the event_people table/index and
+// backfills it from the legacy timeline_events.person_id column.
+func ensureEventPeople(db *sql.DB) error {
+	if _, err := db.Exec(`CREATE TABLE IF NOT EXISTS event_people (
+		event_id INTEGER NOT NULL,
+		person_id INTEGER NOT NULL,
+		PRIMARY KEY (event_id, person_id)
+	)`); err != nil {
+		return fmt.Errorf("create event_people: %w", err)
+	}
+	if _, err := db.Exec(`CREATE INDEX IF NOT EXISTS idx_event_people_person ON event_people(person_id)`); err != nil {
+		return fmt.Errorf("create event_people index: %w", err)
+	}
+	if _, err := db.Exec(`INSERT OR IGNORE INTO event_people(event_id, person_id) SELECT id, person_id FROM timeline_events WHERE person_id IS NOT NULL AND person_id != 0`); err != nil {
+		return fmt.Errorf("backfill event_people: %w", err)
+	}
 	return nil
 }
 
@@ -223,6 +322,12 @@ func CreateTables(db *sql.DB) {
 			added_at TEXT DEFAULT CURRENT_TIMESTAMP,
 			PRIMARY KEY (collection_id, event_id)
 		)`,
+		`CREATE TABLE IF NOT EXISTS event_people (
+			event_id INTEGER NOT NULL,
+			person_id INTEGER NOT NULL,
+			PRIMARY KEY (event_id, person_id)
+		)`,
+		`CREATE INDEX IF NOT EXISTS idx_event_people_person ON event_people(person_id)`,
 		`CREATE TABLE IF NOT EXISTS app_logs (
 			id INTEGER PRIMARY KEY AUTOINCREMENT,
 			timestamp TEXT NOT NULL,
@@ -524,6 +629,20 @@ func RunMigration(db *sql.DB, fromVersion int) error {
 			csrf TEXT DEFAULT ''
 		)`)
 		migExec(`CREATE INDEX IF NOT EXISTS idx_sessions_expires_at ON sessions(expires_at)`)
+	case 24:
+		migExec(`ALTER TABLE users ADD COLUMN analytics_opt_out INTEGER DEFAULT 0`)
+	case 25:
+		migExec(`CREATE TABLE IF NOT EXISTS event_people (
+			event_id INTEGER NOT NULL,
+			person_id INTEGER NOT NULL,
+			PRIMARY KEY (event_id, person_id)
+		)`)
+		migExec(`CREATE INDEX IF NOT EXISTS idx_event_people_person ON event_people(person_id)`)
+		// Older databases may not yet have timeline_events.person_id at this
+		// point; ensureSchemaDrift/ensureEventPeople backfill after migrations.
+		if cols, err := tableColumns(db, "timeline_events"); err == nil && cols != nil && cols["person_id"] {
+			migExec(`INSERT OR IGNORE INTO event_people(event_id, person_id) SELECT id, person_id FROM timeline_events WHERE person_id IS NOT NULL AND person_id != 0`)
+		}
 	}
 	return migErr
 }

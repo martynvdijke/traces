@@ -29,6 +29,16 @@ type Deps struct {
 	BackupPath string
 	Umami      func() (url, site string, enabled bool)
 	OIDCReady  func() bool
+	Legal      LegalConfig
+	Demo       DemoInfo
+}
+
+// DemoInfo is the public description of the optional demo reviewer account.
+// Credentials are intentionally exposed so visitors can sign in with one click.
+type DemoInfo struct {
+	Enabled  bool
+	Username string
+	Password string
 }
 
 // Service owns residual infra HTTP endpoints.
@@ -41,6 +51,8 @@ type Service struct {
 	backupPath string
 	umami      func() (string, string, bool)
 	oidcReady  func() bool
+	legal      LegalConfig
+	demo       DemoInfo
 }
 
 func New(d Deps) *Service {
@@ -53,6 +65,8 @@ func New(d Deps) *Service {
 		backupPath: d.BackupPath,
 		umami:      d.Umami,
 		oidcReady:  d.OIDCReady,
+		legal:      d.Legal,
+		demo:       d.Demo,
 	}
 }
 
@@ -67,11 +81,35 @@ func (s *Service) PublicConfig(c *gin.Context) {
 	if s.oidcReady != nil {
 		oidcEnabled = s.oidcReady()
 	}
+	// Signed-in users can opt out of the instance's only tracker (Umami).
+	// Anonymous requests keep the instance-wide setting.
+	if uEnabled && s.sessions != nil && s.db != nil {
+		if cookie, err := c.Cookie("session"); err == nil && cookie != "" {
+			if sess, ok := s.sessions.Get(cookie); ok && sess.UserID > 0 {
+				var optOut int
+				if err := s.db.QueryRow("SELECT COALESCE(analytics_opt_out, 0) FROM users WHERE id = ?", sess.UserID).Scan(&optOut); err == nil && optOut == 1 {
+					uEnabled = false
+				}
+			}
+		}
+	}
+
+	demoEnabled := s.demo.Enabled
+	demoUsername := ""
+	demoPassword := ""
+	if demoEnabled {
+		demoUsername = s.demo.Username
+		demoPassword = s.demo.Password
+	}
+
 	c.JSON(http.StatusOK, gin.H{
 		"umami_url":     uURL,
 		"umami_site":    uSite,
 		"umami_enabled": uEnabled,
 		"oidc_enabled":  oidcEnabled,
+		"demo_enabled":  demoEnabled,
+		"demo_username": demoUsername,
+		"demo_password": demoPassword,
 	})
 }
 

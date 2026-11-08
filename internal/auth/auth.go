@@ -151,6 +151,7 @@ type Deps struct {
 	Sessions     *SessionStore
 	Integrations *integrations.Service
 	PublicMode   func() bool
+	MediaPath    func() string
 }
 
 type Service struct {
@@ -160,6 +161,7 @@ type Service struct {
 	sessions     *SessionStore
 	integrations *integrations.Service
 	publicMode   func() bool
+	mediaPath    func() string
 	sendEmail    func(cfg models.EmailConfig, to, subject, body string) error
 
 	oidcCfg      oidcConfig
@@ -191,6 +193,7 @@ func New(d Deps) *Service {
 		sessions:      d.Sessions,
 		integrations:  d.Integrations,
 		publicMode:    d.PublicMode,
+		mediaPath:     d.MediaPath,
 		loginAttempts: make(map[string]*loginAttempt),
 	}
 }
@@ -492,10 +495,8 @@ func (s *Service) DeleteUser(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid user ID"})
 		return
 	}
-	s.db.Exec("UPDATE timeline_events SET user_id = 0 WHERE user_id = ?", id)
-	_, err = s.db.Exec("DELETE FROM users WHERE id=?", id)
-	if err != nil {
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to delete user"})
+	if _, err := s.DeleteAccount(int64(id)); err != nil {
+		s.writeDeleteError(c, err)
 		return
 	}
 	c.JSON(http.StatusOK, gin.H{"status": "ok"})

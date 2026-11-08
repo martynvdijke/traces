@@ -32,6 +32,8 @@ type TimelineEvent struct {
 	Latitude     *float64 `json:"latitude"`
 	Longitude    *float64 `json:"longitude"`
 	Person       *Person  `json:"person,omitempty"`
+	People       []Person `json:"people,omitempty"`
+	PersonIDs    []int    `json:"person_ids,omitempty"`
 	Recurring    string   `json:"recurring"`
 	WeatherData  string   `json:"weather_data"`
 	StartTime    string   `json:"start_time"`
@@ -247,7 +249,7 @@ type LocationCount struct {
 // Constants
 const (
 	DefaultColor         = "#7c3aed"
-	CurrentSchemaVersion = 24
+	CurrentSchemaVersion = 26
 	CurrentVersion       = "2.4.0"
 )
 

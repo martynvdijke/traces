@@ -90,6 +90,23 @@ func (s *SessionStore) DeleteWithCSRF(sessionID string) {
 	s.Delete(sessionID)
 }
 
+// DeleteForUser revokes every session belonging to userID, both in the hot
+// cache and in persistent storage.
+func (s *SessionStore) DeleteForUser(userID int64) {
+	s.mu.Lock()
+	for id, info := range s.sessions {
+		if info.UserID == userID {
+			delete(s.sessions, id)
+			delete(s.csrf, id)
+		}
+	}
+	db := s.db
+	s.mu.Unlock()
+	if db != nil {
+		_, _ = db.Exec("DELETE FROM sessions WHERE user_id = ?", userID)
+	}
+}
+
 func (s *SessionStore) Count() int {
 	s.mu.RLock()
 	defer s.mu.RUnlock()

@@ -127,6 +127,9 @@ func (s *Service) ApplyTemplate(c *gin.Context) {
 	}
 	id, _ := result.LastInsertId()
 	event.ID = int(id)
+	if event.PersonID != nil && *event.PersonID > 0 {
+		s.DB.Exec("INSERT OR IGNORE INTO event_people (event_id, person_id) VALUES (?, ?)", event.ID, *event.PersonID)
+	}
 	s.Integrations.SendGotifyNotification(fmt.Sprintf("Event created from template: %s", event.Title), event.Description)
 	c.JSON(http.StatusOK, event)
 }
