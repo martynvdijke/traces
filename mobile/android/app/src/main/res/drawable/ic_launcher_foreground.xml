@@ -1,0 +1,42 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Adaptive launcher icon foreground: the white TRACES mark.
+
+     The geometry is the 100-unit canvas from static/logo.svg (hexagon outline
+     plus one centre dot and four satellite dots). It is scaled to 0.72 and
+     centred on the 108dp adaptive canvas, which parks it inside the 72dp safe
+     zone. At that scale the hexagon covers 50% of the visible icon, exactly
+     the proportion the web favicon uses, so both platforms match.
+
+     The gradient tile is omitted on purpose: the adaptive background layer
+     supplies it. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <group
+        android:scaleX="0.72"
+        android:scaleY="0.72"
+        android:translateX="18"
+        android:translateY="18">
+
+        <!-- Hexagon outline (25,35)-(50,25)-(75,35)-(75,65)-(50,75)-(25,65). -->
+        <path
+            android:fillColor="#00000000"
+            android:pathData="M25,35 L50,25 L75,35 L75,65 L50,75 L25,65 Z"
+            android:strokeColor="#FFFFFF"
+            android:strokeLineJoin="round"
+            android:strokeWidth="4" />
+
+        <!-- Centre dot, r=10 at (50,50). -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M40,50 a10,10 0 1,0 20,0 a10,10 0 1,0 -20,0 z" />
+
+        <!-- Satellite dots, r=4 at (50,35), (65,50), (50,65) and (35,50). -->
+        <path
+            android:fillColor="#FFFFFF"
+            android:pathData="M46,35 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z M61,50 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z M46,65 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z M31,50 a4,4 0 1,0 8,0 a4,4 0 1,0 -8,0 z" />
+    </group>
+</vector>

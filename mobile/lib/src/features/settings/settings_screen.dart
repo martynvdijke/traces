@@ -6,6 +6,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../data/api/api_exception.dart';
 import '../../state/providers.dart';
+import '../../widgets/traces_logo.dart';
 import 'legal_screen.dart';
 
 /// Account, privacy, and legal controls, including the data export and
@@ -249,7 +250,7 @@ class _SettingsScreenState extends ConsumerState<SettingsScreen> {
             children: [
               ListTile(
                 key: Key('settings-about'),
-                leading: Icon(Icons.camera_roll_outlined),
+                leading: TracesLogo(size: 32),
                 title: Text('TRACES'),
                 subtitle: Text('Self-hosted memory log'),
               ),

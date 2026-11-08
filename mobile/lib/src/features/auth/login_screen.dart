@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../../state/providers.dart';
+import '../../widgets/traces_logo.dart';
 import 'oidc_webview_screen.dart';
 
 /// Username/password sign-in, first-run admin creation, and SSO entry point.
@@ -86,6 +87,8 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
+                  const Center(child: TracesLogo(size: 80)),
+                  const SizedBox(height: 24),
                   if (isSetup)
                     Card(
                       child: Padding(

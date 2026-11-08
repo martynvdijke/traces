@@ -135,12 +135,13 @@ func (s *Service) Manifest(c *gin.Context) {
 		"short_name": "TRACES",
 		"description": "Personal timeline management system for capturing everyday moments",
 		"start_url": "/",
+		"scope": "/",
 		"display": "standalone",
-		"background_color": "#0f172a",
-		"theme_color": "`+models.DefaultColor+`",
+		"background_color": "#FDF6EC",
+		"theme_color": "#B5452B",
 		"icons": [
-			{"src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml"},
-			{"src": "/static/logo.svg", "sizes": "any", "type": "image/svg+xml"}
+			{"src": "/static/favicon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any"},
+			{"src": "/static/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable"}
 		]
 	}`)
 }

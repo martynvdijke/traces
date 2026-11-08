@@ -45,6 +45,7 @@ dependencies:
   intl: ^0.20.3
   http_parser: ^4.1.2
   file_picker: ^13.1.0
+  flutter_svg: ^2.3.2
 
 dev_dependencies:
   flutter_test:
@@ -69,6 +70,11 @@ flutter:
   # included with your application, so that you can use the icons in
   # the material Icons class.
   uses-material-design: true
+
+  # Brand artwork. `assets/branding/` holds the canonical icon shared with the
+  # web interface (static/logo.svg, same geometry).
+  assets:
+    - assets/branding/
 
   # To add assets to your application, add an assets section, like this:
   # assets:

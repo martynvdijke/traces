@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Background layer for the adaptive launcher icon. This is the light
+         end of the brand gradient (#B5452B -> #7A2F1B); as a flat colour it
+         reads closest to the original bitmap icon and keeps white artwork at
+         a 5.4:1 contrast ratio. -->
+    <color name="ic_launcher_background">#B5452B</color>
+</resources>
