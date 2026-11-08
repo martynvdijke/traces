@@ -51,6 +51,9 @@ class AuthController extends Notifier<AuthState> {
     final cookie = await _storage.readSessionCookie();
     final username = await _storage.readUsername() ?? '';
     final oidcEnabled = await _storage.readOidcEnabled();
+    final demoEnabled = await _storage.readDemoEnabled();
+    final demoUsername = await _storage.readDemoUsername() ?? '';
+    final demoPassword = await _storage.readDemoPassword() ?? '';
 
     if (cookie == null || cookie.isEmpty) {
       state = AuthState(
@@ -58,6 +61,9 @@ class AuthController extends Notifier<AuthState> {
         serverUrl: url,
         username: username,
         oidcEnabled: oidcEnabled,
+        demoEnabled: demoEnabled,
+        demoUsername: demoUsername,
+        demoPassword: demoPassword,
       );
       return;
     }
@@ -70,6 +76,9 @@ class AuthController extends Notifier<AuthState> {
         serverUrl: url,
         username: username,
         oidcEnabled: oidcEnabled,
+        demoEnabled: demoEnabled,
+        demoUsername: demoUsername,
+        demoPassword: demoPassword,
       );
     } on ApiException catch (error) {
       if (error.isUnauthorized) {
@@ -80,6 +89,9 @@ class AuthController extends Notifier<AuthState> {
         serverUrl: url,
         username: username,
         oidcEnabled: oidcEnabled,
+        demoEnabled: demoEnabled,
+        demoUsername: demoUsername,
+        demoPassword: demoPassword,
         error: error.isUnauthorized ? null : error.message,
       );
     }
@@ -109,10 +121,18 @@ class AuthController extends Notifier<AuthState> {
       final setupRequired = await client.checkSetup();
       await _storage.writeServerUrl(normalized);
       await _storage.writeOidcEnabled(config.oidcEnabled);
+      await _storage.writeDemoConfig(
+        enabled: config.demoEnabled,
+        username: config.demoUsername,
+        password: config.demoPassword,
+      );
       state = AuthState(
         status: AuthStatus.needsLogin,
         serverUrl: normalized,
         oidcEnabled: config.oidcEnabled,
+        demoEnabled: config.demoEnabled,
+        demoUsername: config.demoUsername,
+        demoPassword: config.demoPassword,
         setupRequired: setupRequired,
       );
     } on ApiException catch (error) {
@@ -184,6 +204,19 @@ class AuthController extends Notifier<AuthState> {
     state = state.copyWith(status: AuthStatus.authenticated, clearError: true);
   }
 
+  /// Signs in with the demo credentials advertised by the server for app
+  /// review. Kept separate from the form so the password never reaches the UI.
+  Future<bool> signInWithDemo() async {
+    if (!state.hasDemoCredentials) {
+      state = state.copyWith(
+        status: AuthStatus.needsLogin,
+        error: 'Demo sign-in is not available on this server.',
+      );
+      return false;
+    }
+    return signIn(username: state.demoUsername, password: state.demoPassword);
+  }
+
   Future<void> signOut() async {
     final previous = state;
     state = state.copyWith(status: AuthStatus.loading, clearError: true);
@@ -194,6 +227,28 @@ class AuthController extends Notifier<AuthState> {
       serverUrl: previous.serverUrl,
       username: previous.username,
       oidcEnabled: previous.oidcEnabled,
+      demoEnabled: previous.demoEnabled,
+      demoUsername: previous.demoUsername,
+      demoPassword: previous.demoPassword,
+    );
+  }
+
+  /// Leaves the authenticated UI after `DELETE /api/me` succeeded. The server
+  /// already destroyed the session, so calling `/api/logout` would just fail;
+  /// only the local cookie is dropped.
+  Future<void> signOutAfterDeletion() async {
+    final previous = state;
+    client.applySession(null);
+    await _storage.clearSessionCookie();
+    state = AuthState(
+      status: AuthStatus.needsLogin,
+      serverUrl: previous.serverUrl,
+      username: previous.username,
+      oidcEnabled: previous.oidcEnabled,
+      demoEnabled: previous.demoEnabled,
+      demoUsername: previous.demoUsername,
+      demoPassword: previous.demoPassword,
+      setupRequired: previous.setupRequired,
     );
   }
 }

@@ -162,6 +162,36 @@ class ApiClient {
     }
   }
 
+  // --- Account data & privacy ----------------------------------------------
+
+  /// `GET /api/me/privacy` → `{"analytics_opt_out": bool}`.
+  Future<Map<String, dynamic>> fetchPrivacySettings() async =>
+      _asJsonObject(await getJson('/api/me/privacy'));
+
+  /// `PATCH /api/me/privacy`. The CSRF header is attached by [_onRequest].
+  Future<void> updatePrivacySettings({required bool analyticsOptOut}) async {
+    await _send(
+      () => _dio.patch<dynamic>(
+        '/api/me/privacy',
+        data: {'analytics_opt_out': analyticsOptOut},
+      ),
+    );
+  }
+
+  /// `GET /api/me/export` → the account's full data export document.
+  Future<Map<String, dynamic>> exportAccount() async =>
+      _asJsonObject(await getJson('/api/me/export'));
+
+  /// `DELETE /api/me` with the server's required type-to-confirm body.
+  Future<void> deleteAccount() async {
+    await _send(
+      () => _dio.delete<dynamic>('/api/me', data: const {'confirm': 'DELETE'}),
+    );
+  }
+
+  Map<String, dynamic> _asJsonObject(dynamic data) =>
+      data is Map ? Map<String, dynamic>.from(data) : <String, dynamic>{};
+
   // --- JSON transport -------------------------------------------------------
 
   Future<dynamic> getJson(String path, {Map<String, dynamic>? query}) =>

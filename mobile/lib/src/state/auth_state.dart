@@ -21,6 +21,9 @@ class AuthState {
     this.username = '',
     this.error,
     this.oidcEnabled = false,
+    this.demoEnabled = false,
+    this.demoUsername = '',
+    this.demoPassword = '',
     this.setupRequired = false,
     this.connecting = false,
   });
@@ -30,6 +33,16 @@ class AuthState {
   final String username;
   final String? error;
   final bool oidcEnabled;
+
+  /// Whether the connected server offers a shared demo account.
+  final bool demoEnabled;
+
+  /// Credentials for the demo account, persisted in secure storage. They are
+  /// never rendered; the login screen only offers a single "Try the demo"
+  /// button.
+  final String demoUsername;
+  final String demoPassword;
+
   final bool setupRequired;
 
   /// True while the very first server handshake is in flight (shown as a
@@ -40,6 +53,9 @@ class AuthState {
 
   bool get hasError => error != null && error!.isNotEmpty;
 
+  bool get hasDemoCredentials =>
+      demoEnabled && demoUsername.isNotEmpty && demoPassword.isNotEmpty;
+
   AuthState copyWith({
     AuthStatus? status,
     String? serverUrl,
@@ -47,6 +63,9 @@ class AuthState {
     String? error,
     bool clearError = false,
     bool? oidcEnabled,
+    bool? demoEnabled,
+    String? demoUsername,
+    String? demoPassword,
     bool? setupRequired,
     bool? connecting,
   }) =>
@@ -56,6 +75,9 @@ class AuthState {
         username: username ?? this.username,
         error: clearError ? null : (error ?? this.error),
         oidcEnabled: oidcEnabled ?? this.oidcEnabled,
+        demoEnabled: demoEnabled ?? this.demoEnabled,
+        demoUsername: demoUsername ?? this.demoUsername,
+        demoPassword: demoPassword ?? this.demoPassword,
         setupRequired: setupRequired ?? this.setupRequired,
         connecting: connecting ?? this.connecting,
       );

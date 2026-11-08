@@ -7,6 +7,7 @@ import '../capture/capture_screen.dart';
 import '../compare/compare_screen.dart';
 import '../heatmap/heatmap_screen.dart';
 import '../map/map_screen.dart';
+import '../settings/settings_screen.dart';
 import '../timeline/timeline_screen.dart';
 
 /// Bottom-navigation shell hosting the five main tabs.
@@ -50,6 +51,14 @@ class _HomeShellState extends ConsumerState<HomeShell> {
             tooltip: 'Refresh',
             icon: const Icon(Icons.refresh),
             onPressed: _refreshAll,
+          ),
+          IconButton(
+            key: const Key('home-settings'),
+            tooltip: 'Settings',
+            icon: const Icon(Icons.settings_outlined),
+            onPressed: () => Navigator.of(context).push(
+              MaterialPageRoute<void>(builder: (_) => const SettingsScreen()),
+            ),
           ),
           IconButton(
             tooltip: 'Sign out',

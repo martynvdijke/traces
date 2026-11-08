@@ -15,6 +15,38 @@ void main() {
     expect(manifest, contains('android:usesCleartextTraffic="true"'));
   });
 
+  test('manifest keeps the session out of Android backups', () {
+    expect(manifest, contains('android:allowBackup="false"'));
+    expect(manifest, contains('android:fullBackupContent="false"'));
+    expect(
+      manifest,
+      contains('android:dataExtractionRules="@xml/data_extraction_rules"'),
+    );
+
+    final rules = File(
+      'android/app/src/main/res/xml/data_extraction_rules.xml',
+    );
+    expect(rules.existsSync(), isTrue);
+    final xml = rules.readAsStringSync();
+    expect(xml, contains('<cloud-backup>'));
+    expect(xml, contains('<device-transfer>'));
+    for (final domain in [
+      'root',
+      'file',
+      'database',
+      'sharedpref',
+      'external',
+    ]) {
+      expect(
+        RegExp('<exclude domain="$domain" path="\\." ?/>')
+            .allMatches(xml)
+            .length,
+        2,
+        reason: 'domain $domain must be excluded from both backup paths',
+      );
+    }
+  });
+
   test('release build wires key.properties signing with a debug fallback', () {
     expect(gradle, contains('key.properties'));
     expect(gradle, contains('releaseSigningConfig'));

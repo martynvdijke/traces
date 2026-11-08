@@ -3,12 +3,37 @@ import 'package:traces/src/data/models/event_stats.dart';
 import 'package:traces/src/data/models/map_data.dart';
 import 'package:traces/src/data/models/person.dart';
 import 'package:traces/src/data/models/person_events.dart';
+import 'package:traces/src/data/models/server_config.dart';
 import 'package:traces/src/data/models/tag_count.dart';
 import 'package:traces/src/data/models/timeline_event.dart';
 import 'package:traces/src/data/models/upload_result.dart';
 import 'package:traces/src/data/models/wrapped_summary.dart';
 
 void main() {
+  group('ServerConfig.fromJson', () {
+    test('decodes the demo account advertised for app review', () {
+      final config = ServerConfig.fromJson({
+        'oidc_enabled': true,
+        'demo_enabled': true,
+        'demo_username': 'reviewer',
+        'demo_password': 'sample-pass',
+      });
+
+      expect(config.oidcEnabled, isTrue);
+      expect(config.demoEnabled, isTrue);
+      expect(config.demoUsername, 'reviewer');
+      expect(config.demoPassword, 'sample-pass');
+    });
+
+    test('defaults demo fields when the server omits them', () {
+      final config = ServerConfig.fromJson({});
+
+      expect(config.demoEnabled, isFalse);
+      expect(config.demoUsername, isEmpty);
+      expect(config.demoPassword, isEmpty);
+    });
+  });
+
   group('TimelineEvent.fromJson', () {
     test('decodes a fully-populated server payload', () {
       final event = TimelineEvent.fromJson({
@@ -36,10 +61,60 @@ void main() {
       expect(event.personId, 3);
       expect(event.latitude, closeTo(52.1082, 1e-9));
       expect(event.person?.name, 'Ada');
+      // Legacy payloads are mirrored into the multi-person fields.
+      expect(event.personIds, [3]);
+      expect(event.people.single.name, 'Ada');
       expect(event.hasGeo, isTrue);
       expect(event.hasMedia, isTrue);
       expect(event.previewUrl, '/media/ab/hash.thumb.jpg');
       expect(event.tagList, ['sun', 'sea', 'beach']);
+    });
+
+    test(
+      'decodes multiple people and mirrors the first as the legacy person',
+      () {
+        final event = TimelineEvent.fromJson({
+          'id': 9,
+          'title': 'Picnic',
+          'person_id': 3,
+          'person': {'id': 3, 'name': 'Ada'},
+          'person_ids': ['3', 7],
+          'people': [
+            {'id': 3, 'name': 'Ada', 'avatar_url': '/media/ada.jpg'},
+            {'id': 7, 'name': 'Grace', 'color': '#336699'},
+          ],
+        });
+
+        expect(event.personIds, [3, 7]);
+        expect(event.people.map((person) => person.name), ['Ada', 'Grace']);
+        expect(event.people[1].color, '#336699');
+        expect(event.personId, 3);
+        expect(event.person?.name, 'Ada');
+      },
+    );
+
+    test('derives person ids from people when both id fields are absent', () {
+      final event = TimelineEvent.fromJson({
+        'people': [
+          {'id': 4, 'name': 'Katherine'},
+          {'id': 5, 'name': 'Dorothy'},
+        ],
+      });
+
+      expect(event.personIds, [4, 5]);
+      expect(event.person?.name, 'Katherine');
+    });
+
+    test('falls back to the legacy person when people is an empty list', () {
+      final event = TimelineEvent.fromJson({
+        'person_id': 8,
+        'person': {'id': 8, 'name': 'Mary'},
+        'person_ids': <int>[],
+        'people': <Object>[],
+      });
+
+      expect(event.personIds, [8]);
+      expect(event.people.map((person) => person.name), ['Mary']);
     });
 
     test('tolerates the nullable pointer fields the Go API emits', () {
@@ -57,6 +132,8 @@ void main() {
       expect(event.latitude, isNull);
       expect(event.longitude, isNull);
       expect(event.person, isNull);
+      expect(event.personIds, isEmpty);
+      expect(event.people, isEmpty);
       expect(event.hasGeo, isFalse);
       expect(event.hasMedia, isFalse);
       expect(event.tagList, isEmpty);
@@ -91,8 +168,40 @@ void main() {
     expect(json['id'], 0);
     expect(json['title'], 'Trip');
     expect(json['person_id'], 5);
+    expect(json['person_ids'], [5]);
     expect(json['latitude'], 1);
     expect(json['tags'], 'a, b');
+  });
+
+  test('TimelineEvent.toJson sends every tagged person id', () {
+    const event = TimelineEvent(
+      title: 'Picnic',
+      personId: 3,
+      personIds: [3, 7],
+      people: [
+        Person(id: 3, name: 'Ada'),
+        Person(id: 7, name: 'Grace'),
+      ],
+    );
+    final json = event.toJson();
+    expect(json['person_ids'], [3, 7]);
+    expect(json['person_id'], 3);
+    expect(json.containsKey('people'), isFalse);
+  });
+
+  test('TimelineEvent.copyWith replaces the person lists', () {
+    const event = TimelineEvent(personId: 1, personIds: [1]);
+    final updated = event.copyWith(
+      personIds: [2, 3],
+      people: [
+        Person(id: 2, name: 'B'),
+        Person(id: 3, name: 'C'),
+      ],
+    );
+
+    expect(updated.personIds, [2, 3]);
+    expect(updated.people.map((person) => person.name), ['B', 'C']);
+    expect(updated.personId, 1);
   });
 
   test('Person.fromJson exposes an avatar initial', () {

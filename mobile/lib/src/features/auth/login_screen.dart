@@ -51,6 +51,11 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
         .completeOidcSignIn(cookie);
   }
 
+  Future<void> _signInWithDemo() async {
+    FocusScope.of(context).unfocus();
+    await ref.read(authControllerProvider.notifier).signInWithDemo();
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = ref.watch(authControllerProvider);
@@ -143,6 +148,23 @@ class _LoginScreenState extends ConsumerState<LoginScreen> {
                           : (auth.isBusy ? 'Signing in…' : 'Sign in'),
                     ),
                   ),
+                  if (auth.demoEnabled) ...[
+                    const SizedBox(height: 8),
+                    TextButton.icon(
+                      key: const Key('login-demo'),
+                      onPressed: auth.isBusy ? null : _signInWithDemo,
+                      icon: const Icon(Icons.play_circle_outline),
+                      label: const Text('Try the demo account'),
+                    ),
+                    Text(
+                      'Explore the shared demo server with sample memories.',
+                      textAlign: TextAlign.center,
+                      style: Theme.of(context)
+                          .textTheme
+                          .bodySmall
+                          ?.copyWith(color: scheme.outline),
+                    ),
+                  ],
                   if (auth.oidcEnabled) ...[
                     const SizedBox(height: 12),
                     OutlinedButton.icon(

@@ -3,6 +3,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:traces/src/app.dart';
 import 'package:traces/src/config.dart';
+import 'package:traces/src/data/models/person.dart';
 import 'package:traces/src/data/models/timeline_event.dart';
 import 'package:traces/src/data/storage/app_storage.dart';
 import 'package:traces/src/data/storage/key_value_store.dart';
@@ -73,8 +74,9 @@ void main() {
     expect(find.textContaining('valid server address'), findsOneWidget);
   });
 
-  testWidgets('AsyncValueView renders data, loading and error states',
-      (tester) async {
+  testWidgets('AsyncValueView renders data, loading and error states', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: AsyncValueView<String>(
@@ -109,8 +111,9 @@ void main() {
     expect(find.text('Retry'), findsNothing);
   });
 
-  testWidgets('AsyncValueView shows the empty state for empty data',
-      (tester) async {
+  testWidgets('AsyncValueView shows the empty state for empty data', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       const MaterialApp(
         home: AsyncValueView<List<String>>(
@@ -128,9 +131,7 @@ void main() {
     await pumpWithStore(
       tester,
       MaterialApp(
-        home: Scaffold(
-          appBar: AppBar(actions: const [YearSelector()]),
-        ),
+        home: Scaffold(appBar: AppBar(actions: const [YearSelector()])),
       ),
     );
 
@@ -157,7 +158,9 @@ void main() {
 
     await pumpWithStore(
       tester,
-      const MaterialApp(home: Scaffold(body: EventCard(event: event))),
+      const MaterialApp(
+        home: Scaffold(body: EventCard(event: event)),
+      ),
     );
 
     expect(find.text('Beach day'), findsOneWidget);
@@ -167,6 +170,38 @@ void main() {
     expect(find.text('sun'), findsOneWidget);
     expect(find.text('sea'), findsOneWidget);
     expect(find.byIcon(Icons.more_vert), findsOneWidget);
+  });
+
+  testWidgets('EventCard renders and opens every tagged person', (
+    tester,
+  ) async {
+    const event = TimelineEvent(
+      id: 2,
+      title: 'Picnic',
+      personId: 1,
+      person: Person(id: 1, name: 'Ada'),
+      personIds: [1, 2],
+      people: [
+        Person(id: 1, name: 'Ada'),
+        Person(id: 2, name: 'Grace'),
+      ],
+    );
+    final tapped = <Person>[];
+
+    await pumpWithStore(
+      tester,
+      MaterialApp(
+        home: Scaffold(
+          body: EventCard(event: event, onPersonTap: tapped.add),
+        ),
+      ),
+    );
+
+    expect(find.text('Ada'), findsOneWidget);
+    expect(find.text('Grace'), findsOneWidget);
+
+    await tester.tap(find.text('Grace'));
+    expect(tapped.single.name, 'Grace');
   });
 
   testWidgets('EventCard can open the media lightbox', (tester) async {

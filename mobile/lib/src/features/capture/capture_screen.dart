@@ -8,6 +8,8 @@ import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
 import '../../data/api/api_exception.dart';
+import '../../data/api/server_url.dart';
+import '../../data/models/person.dart';
 import '../../data/models/timeline_event.dart';
 import '../../state/providers.dart';
 
@@ -33,7 +35,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
   double? _latitude;
   double? _longitude;
   bool _locating = false;
-  int? _personId;
+  List<int> _personIds = const [];
 
   bool _submitting = false;
   double _progress = 0;
@@ -51,8 +53,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
 
   bool get _isImage => _mediaType == 'image';
 
-  String get _fileName =>
-      _filePath == null ? '' : _filePath!.split('/').last;
+  String get _fileName => _filePath == null ? '' : _filePath!.split('/').last;
 
   Future<void> _pickImage(ImageSource source) async {
     try {
@@ -142,7 +143,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         _latitude = position.latitude;
         _longitude = position.longitude;
         _locating = false;
-        _notice = 'GPS attached '
+        _notice =
+            'GPS attached '
             '(${position.latitude.toStringAsFixed(5)}, '
             '${position.longitude.toStringAsFixed(5)})';
       });
@@ -169,6 +171,150 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     if (picked != null) setState(() => _date = picked);
   }
 
+  /// Opens a scrollable checklist of everyone on the server.
+  Future<void> _pickPeople() async {
+    final baseUrl = ref.read(authControllerProvider).serverUrl;
+    final selected = <int>{..._personIds};
+    final picked = await showModalBottomSheet<List<int>>(
+      context: context,
+      isScrollControlled: true,
+      showDragHandle: true,
+      useSafeArea: true,
+      builder: (sheetContext) {
+        return Consumer(
+          builder: (context, ref, _) {
+            final persons =
+                ref.watch(personsProvider).value ?? const <Person>[];
+            return StatefulBuilder(
+              builder: (context, setSheetState) {
+                final theme = Theme.of(context);
+                return SizedBox(
+                  height: MediaQuery.sizeOf(context).height * 0.7,
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(20, 0, 8, 8),
+                        child: Row(
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    'People',
+                                    style: theme.textTheme.titleLarge,
+                                  ),
+                                  Text(
+                                    selected.isEmpty
+                                        ? 'Tag everyone who was there'
+                                        : '${selected.length} selected',
+                                    style: theme.textTheme.bodySmall?.copyWith(
+                                      color: theme.colorScheme.onSurfaceVariant,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                            TextButton(
+                              key: const Key('people-sheet-clear'),
+                              onPressed: selected.isEmpty
+                                  ? null
+                                  : () => setSheetState(selected.clear),
+                              child: const Text('Clear'),
+                            ),
+                          ],
+                        ),
+                      ),
+                      const Divider(height: 1),
+                      Expanded(
+                        child: persons.isEmpty
+                            ? Center(
+                                child: Padding(
+                                  padding: const EdgeInsets.all(24),
+                                  child: Text(
+                                    'No people yet. Add people on the server '
+                                    'to tag them here.',
+                                    textAlign: TextAlign.center,
+                                    style: theme.textTheme.bodyMedium,
+                                  ),
+                                ),
+                              )
+                            : ListView.builder(
+                                padding: const EdgeInsets.symmetric(
+                                  vertical: 4,
+                                ),
+                                itemCount: persons.length,
+                                itemBuilder: (context, index) {
+                                  final person = persons[index];
+                                  final checked = selected.contains(person.id);
+                                  return CheckboxListTile(
+                                    key: Key('person-option-${person.id}'),
+                                    value: checked,
+                                    onChanged: (value) => setSheetState(() {
+                                      if (value ?? false) {
+                                        selected.add(person.id);
+                                      } else {
+                                        selected.remove(person.id);
+                                      }
+                                    }),
+                                    title: Text(person.name),
+                                    subtitle: person.eventCount == null
+                                        ? null
+                                        : Text(
+                                            '${person.eventCount} '
+                                            '${person.eventCount == 1 ? 'memory' : 'memories'}',
+                                          ),
+                                    secondary: _PersonAvatar(
+                                      person: person,
+                                      baseUrl: baseUrl,
+                                    ),
+                                    controlAffinity:
+                                        ListTileControlAffinity.trailing,
+                                    contentPadding: const EdgeInsets.fromLTRB(
+                                      20,
+                                      0,
+                                      12,
+                                      0,
+                                    ),
+                                  );
+                                },
+                              ),
+                      ),
+                      const Divider(height: 1),
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
+                        child: Row(
+                          children: [
+                            TextButton(
+                              onPressed: () => Navigator.of(context).pop(),
+                              child: const Text('Cancel'),
+                            ),
+                            const Spacer(),
+                            FilledButton(
+                              key: const Key('people-sheet-done'),
+                              onPressed: () =>
+                                  Navigator.of(context)
+                                      .pop(selected.toList(growable: false)),
+                              child: const Text('Done'),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                );
+              },
+            );
+          },
+        );
+      },
+    );
+    if (picked != null && mounted) {
+      setState(() => _personIds = picked);
+    }
+  }
+
   Future<void> _submit() async {
     FocusScope.of(context).unfocus();
     final title = _title.text.trim();
@@ -189,7 +335,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
     });
 
     try {
-      final upload = await ref.read(mediaRepositoryProvider).upload(
+      final upload = await ref
+          .read(mediaRepositoryProvider)
+          .upload(
             filePath: _filePath!,
             mediaType: _mediaType,
             onProgress: (sent, total) {
@@ -216,7 +364,8 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         tags: _tags.text.trim(),
         latitude: latitude,
         longitude: longitude,
-        personId: _personId,
+        personId: _personIds.isEmpty ? null : _personIds.first,
+        personIds: _personIds,
       );
       await ref.read(eventsRepositoryProvider).saveEvent(event);
       if (!mounted) return;
@@ -227,7 +376,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
       ref.invalidate(contributionsProvider);
       ref.invalidate(tagsProvider);
       ref.invalidate(yearStatsProvider);
-      ref.invalidate(personEventsProvider);
+      for (final personId in _personIds) {
+        ref.invalidate(personEventsProvider(personId));
+      }
 
       setState(() {
         _submitting = false;
@@ -238,7 +389,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
         _description.clear();
         _tags.clear();
         _location.clear();
-        _personId = null;
+        _personIds = const [];
         _date = DateTime.now();
         _latitude = null;
         _longitude = null;
@@ -334,7 +485,9 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
               )
             else
               Icon(
-                _latitude != null ? Icons.my_location : Icons.location_searching,
+                _latitude != null
+                    ? Icons.my_location
+                    : Icons.location_searching,
                 size: 18,
                 color: _latitude != null ? scheme.primary : scheme.outline,
               ),
@@ -343,7 +496,7 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
               child: Text(
                 _latitude != null
                     ? 'GPS ${_latitude!.toStringAsFixed(5)}, '
-                        '${_longitude!.toStringAsFixed(5)}'
+                          '${_longitude!.toStringAsFixed(5)}'
                     : 'No GPS coordinates attached',
                 style: theme.textTheme.labelSmall,
               ),
@@ -365,32 +518,19 @@ class _CaptureScreenState extends ConsumerState<CaptureScreen> {
           ),
         ),
         const SizedBox(height: 12),
-        InputDecorator(
-          decoration: const InputDecoration(
-            labelText: 'Person',
-            prefixIcon: Icon(Icons.person_outline),
-            border: OutlineInputBorder(),
+        _PeopleField(
+          persons: persons,
+          personIds: _personIds,
+          baseUrl: ref.watch(authControllerProvider).serverUrl,
+          enabled: !_submitting,
+          onAdd: _pickPeople,
+          onRemove: (personId) => setState(
+            () => _personIds = [
+              for (final id in _personIds)
+                if (id != personId) id,
+            ],
           ),
-          child: DropdownButtonHideUnderline(
-            child: DropdownButton<int?>(
-              isExpanded: true,
-              value: _personId,
-              items: [
-                const DropdownMenuItem<int?>(
-                  value: null,
-                  child: Text('No person'),
-                ),
-                for (final person in persons)
-                  DropdownMenuItem<int?>(
-                    value: person.id,
-                    child: Text(person.name),
-                  ),
-              ],
-              onChanged: _submitting
-                  ? null
-                  : (value) => setState(() => _personId = value),
-            ),
-          ),
+          onClear: () => setState(() => _personIds = const []),
         ),
         const SizedBox(height: 20),
         if (_submitting)
@@ -458,10 +598,7 @@ class _MediaPicker extends StatelessWidget {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text(
-                'Add media',
-                style: Theme.of(context).textTheme.titleSmall,
-              ),
+              Text('Add media', style: Theme.of(context).textTheme.titleSmall),
               const SizedBox(height: 12),
               Wrap(
                 spacing: 12,
@@ -542,4 +679,154 @@ class _MediaPicker extends StatelessWidget {
       ),
     );
   }
+}
+
+/// Multi-person selector: dismissible chips plus a sheet with a checklist.
+class _PeopleField extends StatelessWidget {
+  const _PeopleField({
+    required this.persons,
+    required this.personIds,
+    required this.baseUrl,
+    required this.enabled,
+    required this.onAdd,
+    required this.onRemove,
+    required this.onClear,
+  });
+
+  final List<Person> persons;
+  final List<int> personIds;
+  final String baseUrl;
+  final bool enabled;
+  final VoidCallback onAdd;
+  final ValueChanged<int> onRemove;
+  final VoidCallback onClear;
+
+  @override
+  Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final scheme = theme.colorScheme;
+    final byId = {for (final person in persons) person.id: person};
+    final selected = [
+      for (final id in personIds)
+        byId[id] ?? Person(id: id, name: 'Person $id'),
+    ];
+
+    return InputDecorator(
+      decoration: const InputDecoration(
+        labelText: 'People',
+        prefixIcon: Icon(Icons.group_outlined),
+        border: OutlineInputBorder(),
+      ),
+      child: selected.isEmpty
+          ? Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                key: const Key('capture-people-add'),
+                onPressed: enabled ? onAdd : null,
+                icon: const Icon(Icons.person_add_alt_1, size: 18),
+                label: const Text('Add people'),
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  minimumSize: const Size(0, 36),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+              ),
+            )
+          : Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 8,
+                  runSpacing: 8,
+                  crossAxisAlignment: WrapCrossAlignment.center,
+                  children: [
+                    for (final person in selected)
+                      InputChip(
+                        key: Key('capture-person-${person.id}'),
+                        avatar: _PersonAvatar(
+                          person: person,
+                          baseUrl: baseUrl,
+                          radius: 11,
+                        ),
+                        label: Text(person.name),
+                        onDeleted: enabled ? () => onRemove(person.id) : null,
+                        deleteButtonTooltipMessage: 'Remove ${person.name}',
+                        visualDensity: VisualDensity.compact,
+                      ),
+                    ActionChip(
+                      key: const Key('capture-people-add'),
+                      avatar: const Icon(Icons.add, size: 16),
+                      label: const Text('Add'),
+                      onPressed: enabled ? onAdd : null,
+                      visualDensity: VisualDensity.compact,
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 2),
+                TextButton.icon(
+                  key: const Key('capture-people-clear'),
+                  onPressed: enabled ? onClear : null,
+                  icon: const Icon(Icons.clear_all, size: 16),
+                  label: const Text('Clear all'),
+                  style: TextButton.styleFrom(
+                    padding: const EdgeInsets.symmetric(horizontal: 8),
+                    minimumSize: const Size(0, 32),
+                    tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                    foregroundColor: scheme.onSurfaceVariant,
+                  ),
+                ),
+              ],
+            ),
+    );
+  }
+}
+
+/// Avatar that uses the person's uploaded image, custom colour, or initial.
+class _PersonAvatar extends StatelessWidget {
+  const _PersonAvatar({
+    required this.person,
+    required this.baseUrl,
+    this.radius = 16,
+  });
+
+  final Person person;
+  final String baseUrl;
+  final double radius;
+
+  @override
+  Widget build(BuildContext context) {
+    final scheme = Theme.of(context).colorScheme;
+    final avatarUrl = person.avatarUrl.isEmpty
+        ? null
+        : absoluteUrl(baseUrl, person.avatarUrl);
+    final customColor = _parseHexColor(person.color);
+    final background = customColor ?? scheme.primaryContainer;
+    final foreground = customColor == null
+        ? scheme.onPrimaryContainer
+        : ThemeData.estimateBrightnessForColor(customColor) == Brightness.dark
+        ? Colors.white
+        : Colors.black87;
+
+    return CircleAvatar(
+      radius: radius,
+      backgroundColor: background,
+      foregroundImage: avatarUrl == null ? null : NetworkImage(avatarUrl),
+      child: Text(
+        person.initial,
+        style: TextStyle(fontSize: radius, color: foreground),
+      ),
+    );
+  }
+}
+
+Color? _parseHexColor(String value) {
+  var hex = value.trim();
+  if (hex.startsWith('#')) hex = hex.substring(1);
+  if (hex.length == 3) {
+    hex = hex.split('').map((char) => '$char$char').join();
+  }
+  if (hex.length != 6) return null;
+  final parsed = int.tryParse(hex, radix: 16);
+  if (parsed == null) return null;
+  return Color(0xFF000000 | parsed);
 }

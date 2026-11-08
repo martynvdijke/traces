@@ -24,13 +24,35 @@ class EventCard extends ConsumerWidget {
       event.mediaType == 'boardgame' ||
       event.mediaType.isEmpty;
 
+  /// Everyone tagged on the event, including people from legacy payloads.
+  List<Person> get _people {
+    final seen = <int>{};
+    return [
+      for (final person in [
+        ...event.people,
+        if (event.person != null) event.person!,
+      ])
+        if (person.id > 0 && seen.add(person.id)) person,
+    ];
+  }
+
+  /// Every tagged person id, de-duplicated across new and legacy fields.
+  Set<int> get _personIds => {
+    for (final id in event.personIds)
+      if (id > 0) id,
+    for (final person in _people) person.id,
+  };
+
+  void _invalidatePeople(WidgetRef ref) {
+    for (final personId in _personIds) {
+      ref.invalidate(personEventsProvider(personId));
+    }
+  }
+
   Future<void> _toggleFavorite(WidgetRef ref) async {
     await ref.read(eventsRepositoryProvider).toggleFavorite(event.id);
     ref.invalidate(timelineProvider);
-    final personId = event.personId;
-    if (personId != null) {
-      ref.invalidate(personEventsProvider(personId));
-    }
+    _invalidatePeople(ref);
   }
 
   Future<void> _delete(BuildContext context, WidgetRef ref) async {
@@ -56,10 +78,7 @@ class EventCard extends ConsumerWidget {
     ref.invalidate(timelineProvider);
     ref.invalidate(mapDataProvider);
     ref.invalidate(contributionsProvider);
-    final personId = event.personId;
-    if (personId != null) {
-      ref.invalidate(personEventsProvider(personId));
-    }
+    _invalidatePeople(ref);
   }
 
   @override
@@ -68,7 +87,7 @@ class EventCard extends ConsumerWidget {
     final scheme = theme.colorScheme;
     final baseUrl = ref.watch(authControllerProvider).serverUrl;
     final tags = event.tagList;
-    final person = event.person;
+    final people = _people;
 
     return Card(
       clipBehavior: Clip.antiAlias,
@@ -102,14 +121,14 @@ class EventCard extends ConsumerWidget {
                           const SizedBox(width: 4),
                           Text(
                             event.date,
-                            style: theme.textTheme.labelSmall
-                                ?.copyWith(color: scheme.outline),
+                            style: theme.textTheme.labelSmall?.copyWith(
+                              color: scheme.outline,
+                            ),
                           ),
                         ],
                         const Spacer(),
                         if (event.isFavorite)
-                          Icon(Icons.favorite,
-                              size: 16, color: scheme.error),
+                          Icon(Icons.favorite, size: 16, color: scheme.error),
                         _Menu(
                           onToggleFavorite: () => _toggleFavorite(ref),
                           onDelete: () => _delete(context, ref),
@@ -118,8 +137,9 @@ class EventCard extends ConsumerWidget {
                     ),
                     Text(
                       event.title,
-                      style: theme.textTheme.titleMedium
-                          ?.copyWith(fontWeight: FontWeight.w600),
+                      style: theme.textTheme.titleMedium?.copyWith(
+                        fontWeight: FontWeight.w600,
+                      ),
                     ),
                     if (event.description.isNotEmpty) ...[
                       const SizedBox(height: 2),
@@ -134,29 +154,33 @@ class EventCard extends ConsumerWidget {
                       const SizedBox(height: 4),
                       Row(
                         children: [
-                          Icon(Icons.place_outlined,
-                              size: 14, color: scheme.outline),
+                          Icon(
+                            Icons.place_outlined,
+                            size: 14,
+                            color: scheme.outline,
+                          ),
                           const SizedBox(width: 4),
                           Expanded(
                             child: Text(
                               event.location,
                               maxLines: 1,
                               overflow: TextOverflow.ellipsis,
-                              style: theme.textTheme.labelSmall
-                                  ?.copyWith(color: scheme.outline),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: scheme.outline,
+                              ),
                             ),
                           ),
                         ],
                       ),
                     ],
-                    if (person != null || tags.isNotEmpty) ...[
+                    if (people.isNotEmpty || tags.isNotEmpty) ...[
                       const SizedBox(height: 8),
                       Wrap(
                         spacing: 6,
                         runSpacing: 4,
                         crossAxisAlignment: WrapCrossAlignment.center,
                         children: [
-                          if (person != null)
+                          for (final person in people)
                             _PersonChip(
                               person: person,
                               baseUrl: baseUrl,
@@ -168,8 +192,9 @@ class EventCard extends ConsumerWidget {
                           if (tags.length > 4)
                             Text(
                               '+${tags.length - 4}',
-                              style: theme.textTheme.labelSmall
-                                  ?.copyWith(color: scheme.outline),
+                              style: theme.textTheme.labelSmall?.copyWith(
+                                color: scheme.outline,
+                              ),
                             ),
                         ],
                       ),
@@ -209,8 +234,10 @@ class _Thumbnail extends StatelessWidget {
                 fit: BoxFit.cover,
                 errorBuilder: (context, error, stack) => Container(
                   color: scheme.surfaceContainerHighest,
-                  child: Icon(Icons.image_not_supported_outlined,
-                      color: scheme.onSurfaceVariant),
+                  child: Icon(
+                    Icons.image_not_supported_outlined,
+                    color: scheme.onSurfaceVariant,
+                  ),
                 ),
               ),
       ),
@@ -274,19 +301,15 @@ class _PersonChip extends StatelessWidget {
               child: avatar == null
                   ? Text(
                       person.initial,
-                      style: TextStyle(
-                        fontSize: 9,
-                        color: scheme.onTertiary,
-                      ),
+                      style: TextStyle(fontSize: 9, color: scheme.onTertiary),
                     )
                   : null,
             ),
             const SizedBox(width: 5),
             Text(
               person.name,
-              style: Theme.of(context).textTheme.labelSmall?.copyWith(
-                    color: scheme.onTertiaryContainer,
-                  ),
+              style: Theme.of(context).textTheme.labelSmall
+                  ?.copyWith(color: scheme.onTertiaryContainer),
             ),
           ],
         ),
@@ -311,9 +334,8 @@ class _TagChip extends StatelessWidget {
       ),
       child: Text(
         label,
-        style: Theme.of(context).textTheme.labelSmall?.copyWith(
-              color: scheme.onSecondaryContainer,
-            ),
+        style: Theme.of(context).textTheme.labelSmall
+            ?.copyWith(color: scheme.onSecondaryContainer),
       ),
     );
   }
