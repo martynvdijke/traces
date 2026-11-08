@@ -8,16 +8,30 @@ import (
 	"traces/internal/models"
 )
 
-func (s *Service) GetOtelConfig(c *gin.Context) {
+// readOtelConfig loads the single OTel settings row. A missing row (or a
+// brand-new database) yields the zero value, i.e. telemetry disabled.
+func (s *Service) readOtelConfig() models.OtelConfig {
 	var cfg models.OtelConfig
 	var tEnabled, mEnabled, lEnabled int
 	err := s.db.QueryRow("SELECT endpoint, traces_enabled, metrics_enabled, logs_enabled FROM otel_settings WHERE id = 1").Scan(&cfg.Endpoint, &tEnabled, &mEnabled, &lEnabled)
-	if err == nil {
-		cfg.TracesEnabled = tEnabled == 1
-		cfg.MetricsEnabled = mEnabled == 1
-		cfg.LogsEnabled = lEnabled == 1
+	if err != nil {
+		return models.OtelConfig{}
 	}
-	c.JSON(http.StatusOK, cfg)
+	cfg.TracesEnabled = tEnabled == 1
+	cfg.MetricsEnabled = mEnabled == 1
+	cfg.LogsEnabled = lEnabled == 1
+	return cfg
+}
+
+func (s *Service) GetOtelConfig(c *gin.Context) {
+	c.JSON(http.StatusOK, s.readOtelConfig())
+}
+
+// GetOtelSettings is the public, unauthenticated variant used by the mobile
+// apps to discover the OTLP endpoint at runtime. It exposes exactly the same
+// fields as the admin-only /api/otel/config route.
+func (s *Service) GetOtelSettings(c *gin.Context) {
+	c.JSON(http.StatusOK, s.readOtelConfig())
 }
 
 func (s *Service) SaveOtelConfig(c *gin.Context) {

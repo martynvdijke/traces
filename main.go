@@ -275,6 +275,9 @@ func main() {
 		api.GET("/public", eventsSvc.GetPublicEvents)
 		api.GET("/share", eventsSvc.GetShareLink)
 		api.GET("/config", webSvc.PublicConfig)
+		// Public read-only OTLP settings for the mobile clients. The admin
+		// variant (/api/otel/config) stays authenticated and admin-only.
+		api.GET("/otel-settings", integrationsSvc.GetOtelSettings)
 		api.GET("/manifest.json", webSvc.Manifest)
 		api.GET("/health", webSvc.Health)
 		api.GET("/trmnl/summary", integrationsSvc.GetTRMNLSummary)

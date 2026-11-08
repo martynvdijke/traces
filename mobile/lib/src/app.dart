@@ -1,10 +1,14 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'config.dart';
 import 'features/auth/login_screen.dart';
 import 'features/home/home_shell.dart';
 import 'features/onboarding/server_url_screen.dart';
 import 'state/providers.dart';
+import 'telemetry/telemetry.dart';
 import 'theme.dart';
 
 void main() {
@@ -13,18 +17,44 @@ void main() {
 }
 
 /// Root application widget.
-class TracesApp extends StatelessWidget {
+class TracesApp extends ConsumerStatefulWidget {
   const TracesApp({super.key});
 
   @override
+  ConsumerState<TracesApp> createState() => _TracesAppState();
+}
+
+class _TracesAppState extends ConsumerState<TracesApp> {
+  @override
+  void initState() {
+    super.initState();
+    // Fire-and-forget: tracing must never delay the first frame or fail the
+    // app when the device is offline or the server has no OTLP endpoint.
+    unawaited(_startTelemetry());
+  }
+
+  Future<void> _startTelemetry() async {
+    var serverUrl = defaultServerUrl;
+    try {
+      final saved = await ref.read(appStorageProvider).readServerUrl();
+      if (saved != null && saved.trim().isNotEmpty) {
+        serverUrl = saved.trim();
+      }
+    } on Object {
+      // Secure storage can be unavailable on first launch; keep the default.
+    }
+    await Telemetry.instance.startFromServer(serverUrl);
+  }
+
+  @override
   Widget build(BuildContext context) => MaterialApp(
-        title: 'TRACES',
-        debugShowCheckedModeBanner: false,
-        theme: TracesTheme.light(),
-        darkTheme: TracesTheme.dark(),
-        themeMode: ThemeMode.system,
-        home: const AppRoot(),
-      );
+    title: 'TRACES',
+    debugShowCheckedModeBanner: false,
+    theme: TracesTheme.light(),
+    darkTheme: TracesTheme.dark(),
+    themeMode: ThemeMode.system,
+    home: const AppRoot(),
+  );
 }
 
 /// Chooses the top-level screen from the authentication state.
@@ -67,9 +97,7 @@ class SplashScreen extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               'TRACES',
-              style: Theme.of(context)
-                  .textTheme
-                  .headlineSmall
+              style: Theme.of(context).textTheme.headlineSmall
                   ?.copyWith(letterSpacing: 4),
             ),
             const SizedBox(height: 24),
