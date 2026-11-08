@@ -26,6 +26,22 @@ let mapInstance: any = null;
 let mapMarkers: any[] = [];
 let mapPathLine: any = null;
 let users: any[] = [];
+let peopleDirectory: Record<number, any> = {};
+
+/** Every person linked to an event, new multi-person fields first, legacy fallback last. */
+function linkedPeople(e: TimelineEvent): any[] {
+  if (Array.isArray(e.people) && e.people.length) return e.people;
+  const ids: number[] = Array.isArray(e.person_ids) && e.person_ids.length
+    ? e.person_ids
+    : (e.person_id ? [e.person_id] : []);
+  if (ids.length) {
+    return ids.map((id) => {
+      if (e.person && e.person.id === id) return e.person;
+      return peopleDirectory[id] || { id: id, name: '#' + id, color: '#B5452B' };
+    });
+  }
+  return e.person ? [e.person] : [];
+}
 
 const monthNames: string[] = [
   'January', 'February', 'March', 'April', 'May', 'June',
@@ -421,7 +437,7 @@ function applyAdvancedFilters(): void {
         (e.tags && e.tags.toLowerCase().includes(needle))
       );
     }
-    if (personId) result = result.filter(e => String(e.person_id || '') === personId);
+    if (personId) result = result.filter(e => linkedPeople(e).some(p => String(p.id) === personId));
     if (location) result = result.filter(e => e.location && e.location.toLowerCase().includes(location.toLowerCase()));
     if (selectedFilterTags.length > 0) {
       result = result.filter(e => {
@@ -575,10 +591,14 @@ async function loadStatsDist(): Promise<void> {
         const wd = String(new Date(e.date).getDay());
         byWeekday[wd] = (byWeekday[wd] || 0) + 1;
         if (e.tags) e.tags.split(',').map(t => t.trim()).filter(Boolean).forEach(t => { tagCounts[t] = (tagCounts[t] || 0) + 1; });
-        if (e.person_id) {
-          const pname = (e.person?.name) || String(e.person_id);
+        const countedPeople = new Set<string>();
+        linkedPeople(e).forEach(p => {
+          const key = p && p.id ? String(p.id) : (p && p.name ? 'name:' + p.name : '');
+          if (!key || countedPeople.has(key)) return;
+          countedPeople.add(key);
+          const pname = (p && p.name) || key;
           personCounts[pname] = (personCounts[pname] || 0) + 1;
-        }
+        });
         if (e.user_id) {
           const u = users.find(u => u.id === e.user_id);
           const uname = u ? (u.display_name || u.username) : String(e.user_id);
@@ -1069,6 +1089,14 @@ function storyCardHtml(e: TimelineEvent): string {
   const isVideo = e.media_type === 'video';
   const isAudio = e.media_type === 'audio';
   const tagList = e.tags ? e.tags.split(',').map(t => t.trim()).filter(t => t) : [];
+  const people = linkedPeople(e);
+  const peopleHtml = people.length
+    ? '<div class="story-people">' + people.map((p: any) =>
+      '<span class="story-person-chip" title="' + escapeHtml(p.name || '') + '">' +
+      '<span class="story-person-dot" style="background:' + escapeHtml(p.color || '#B5452B') + '" aria-hidden="true"></span>' +
+      '<span class="story-person-name">' + escapeHtml(p.name || '') + '</span></span>'
+    ).join('') + '</div>'
+    : '';
 
   let weatherHtml = '';
   if (e.weather_data) {
@@ -1143,6 +1171,7 @@ function storyCardHtml(e: TimelineEvent): string {
         </div>
         <div class="story-title">${escapeHtml(e.title)} ${weatherHtml}</div>
         ${e.location ? '<div class="story-location"><i class="fa-solid fa-location-dot me-1"></i>' + escapeHtml(e.location) + userHtml + '</div>' : userHtml ? '<div class="story-location">' + userHtml + '</div>' : ''}
+        ${peopleHtml}
         ${tagList.length > 0 ? '<div class="story-tags"><i class="fa-solid fa-tags me-1"></i>' + tagList.map(t => '<span class="badge bg-secondary me-1">' + escapeHtml(t) + '</span>').join('') + '</div>' : ''}
         ${e.description ? '<div class="story-desc md-content">' + renderMarkdown(e.description) + '</div>' : ''}
         ${mapHtml}
@@ -1883,6 +1912,7 @@ async function loadPersonsForFilter(): Promise<void> {
       opt.value = p.id;
       opt.textContent = p.name;
       select.appendChild(opt);
+      peopleDirectory[p.id] = p;
     });
   } catch (_) { }
 }

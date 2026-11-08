@@ -1,3 +1,14 @@
+export interface Person {
+  id: number;
+  name: string;
+  avatar_url: string;
+  bio: string;
+  birth_date: string;
+  color: string;
+  created_at: string;
+  event_count?: number;
+}
+
 export interface TimelineEvent {
   id: number;
   title: string;
@@ -13,7 +24,10 @@ export interface TimelineEvent {
   is_public: boolean;
   is_favorite: boolean;
   created_at: string;
+  /** Primary person (legacy). Always the first entry of person_ids. */
   person_id?: number;
+  /** Every person linked to the event; authoritative. */
+  person_ids?: number[];
   latitude?: number;
   longitude?: number;
   recurring: string;
@@ -21,15 +35,10 @@ export interface TimelineEvent {
   start_time: string;
   end_time: string;
   user_id: number;
-  person?: {
-    id: number;
-    name: string;
-    avatar_url: string;
-    bio: string;
-    birth_date: string;
-    color: string;
-    created_at: string;
-  };
+  /** Primary person object (legacy). */
+  person?: Person;
+  /** All linked people. */
+  people?: Person[];
   user?: {
     id: number;
     username: string;

@@ -47,6 +47,13 @@
         .dist-card h5 { font-size: var(--text-md); margin-bottom: 0.75rem; font-weight: 700; }
         .geo-spread { font-size: var(--text-sm); color: var(--text-muted); }
         .top-day-badge { display: inline-block; padding: 4px 10px; background: var(--primary-glow); border-radius: 8px; font-weight: 700; font-size: var(--text-sm); }
+        .footer-legal { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: .35rem 1.15rem; max-width: 34rem; margin: 1.35rem auto 0; padding-top: 1.2rem; border-top: 1px solid var(--border); }
+        .footer-legal a { font-family: var(--font-mono); font-size: .66rem; font-weight: 600; letter-spacing: .1em; text-transform: uppercase; color: var(--text-muted); text-decoration: none; white-space: nowrap; }
+        .footer-legal a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+        .story-people { display: flex; flex-wrap: wrap; align-items: center; gap: 0.3rem; margin-top: 0.45rem; }
+        .story-person-chip { display: inline-flex; align-items: center; gap: 0.32rem; max-width: 12rem; padding: 0.14rem 0.55rem; border-radius: 999px; background: var(--bg); border: 1px solid var(--border); font-size: var(--text-xs); font-weight: 650; color: var(--text); line-height: 1.4; }
+        .story-person-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; box-shadow: 0 0 0 1px rgba(0,0,0,0.06); }
+        .story-person-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     </style>
 </head>
 <body>
@@ -342,6 +349,11 @@
             <p class="mb-0 text-uppercase fw-bold"><i class="fa-solid fa-clock mx-2" aria-hidden="true"></i> TRACES <i class="fa-solid fa-clock mx-2" aria-hidden="true"></i></p>
             <span class="small opacity-50 text-uppercase letter-spacing-2 mt-2 d-block">Your memories, beautifully preserved.</span>
             <span class="small opacity-50 text-uppercase letter-spacing-2 mt-2 d-block" id="version-display">Version loading...</span>
+            <nav class="footer-legal" aria-label="Privacy and account">
+                <a href="/privacy">Privacy</a>
+                <a href="/terms">Terms</a>
+                <a href="/account/delete">Delete your account</a>
+            </nav>
         </div>
     </footer>
 

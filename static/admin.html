@@ -402,6 +402,131 @@
             border: 1px solid rgba(0,0,0,0.06);
         }
 
+        /* ---- multi-person picker ---- */
+        .person-picker {
+            border: 1px solid var(--border);
+            border-radius: var(--radius);
+            background: var(--bg);
+            overflow: hidden;
+        }
+        .person-picker-list {
+            max-height: 196px;
+            overflow-y: auto;
+            overscroll-behavior: contain;
+            padding: 0.3rem;
+            display: flex;
+            flex-direction: column;
+            gap: 0.1rem;
+            scrollbar-width: thin;
+        }
+        .person-picker-list::-webkit-scrollbar { width: 8px; }
+        .person-picker-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 999px; }
+        .person-picker-row {
+            display: flex;
+            align-items: center;
+            gap: 0.6rem;
+            padding: 0.45rem 0.55rem;
+            border-radius: 8px;
+            cursor: pointer;
+            font-size: 0.86rem;
+            line-height: 1.25;
+            transition: background 0.15s ease;
+            margin: 0;
+        }
+        .person-picker-row:hover { background: var(--bg-card); }
+        .person-picker-row.is-selected { background: var(--primary-glow); }
+        .person-picker-row:focus-within { outline: 2px solid var(--primary); outline-offset: -2px; }
+        .person-picker-row .form-check-input {
+            margin: 0;
+            flex-shrink: 0;
+            width: 1rem;
+            height: 1rem;
+            accent-color: var(--primary);
+            cursor: pointer;
+        }
+        .person-picker-avatar {
+            width: 22px;
+            height: 22px;
+            flex-shrink: 0;
+            border-radius: 50%;
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.62rem;
+            font-weight: 800;
+            color: #fff;
+            object-fit: cover;
+            border: 1px solid rgba(0,0,0,0.08);
+        }
+        .person-picker-name {
+            flex: 1 1 auto;
+            min-width: 0;
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+            font-weight: 550;
+        }
+        .person-picker-row .person-picker-check {
+            opacity: 0;
+            font-size: 0.7rem;
+            color: var(--primary);
+            transition: opacity 0.15s ease;
+        }
+        .person-picker-row.is-selected .person-picker-check { opacity: 1; }
+        .person-picker-empty {
+            padding: 1rem 0.75rem;
+            text-align: center;
+            font-size: 0.82rem;
+            color: var(--text-muted);
+        }
+        .person-picker-empty i { margin-right: 0.35rem; opacity: 0.7; }
+        .person-picker-count {
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: var(--text-muted);
+            letter-spacing: 0.02em;
+        }
+        .person-picker-clear {
+            font-size: 0.75rem;
+            font-weight: 600;
+            text-decoration: none;
+            padding: 0 0.15rem;
+        }
+        .person-picker-clear:hover { text-decoration: underline; }
+
+        /* compact person chips in the events table */
+        .event-person-chips {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.2rem;
+            max-width: 15rem;
+        }
+        .event-person-chip {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.28rem;
+            max-width: 100%;
+            padding: 0.1rem 0.45rem 0.1rem 0.4rem;
+            border-radius: 999px;
+            background: var(--bg);
+            border: 1px solid var(--border);
+            font-size: 0.7rem;
+            line-height: 1.4;
+            font-weight: 600;
+        }
+        .event-person-chip .color-dot { margin-right: 0; width: 7px; height: 7px; }
+        .event-person-chip .chip-name {
+            overflow: hidden;
+            text-overflow: ellipsis;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 575.98px) {
+            .person-picker-list { max-height: 168px; }
+            .person-picker-row { padding: 0.55rem; min-height: 44px; }
+            .event-person-chips { max-width: 9.5rem; }
+        }
+
         .empty-state {
             text-align: center;
             padding: 2.5rem 1.5rem;
@@ -1484,28 +1609,35 @@
                             <span id="weather-display" class="ms-2 small text-muted"></span>
                         </div>
                         <div class="mb-3">
-                            <label class="form-label">Person <span class="text-muted">(optional)</span></label>
-                            <div class="autocomplete-wrapper">
-                                <select class="form-select" name="person_id" id="event-person">
-                                    <option value="0">None</option>
-                                </select>
-                                <div class="d-flex gap-2 mt-1">
-                                    <input type="text" class="form-control" id="person-search-input" placeholder="Search person..." aria-label="Search person" oninput="filterPersonSelect()">
-                                    <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0" onclick="showInlinePersonForm()" title="Add new person" aria-label="Add new person"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                            <div class="d-flex align-items-center justify-content-between gap-2 mb-1">
+                                <label class="form-label mb-0" id="event-people-label">People <span class="text-muted">(optional)</span></label>
+                                <div class="d-flex align-items-center gap-2">
+                                    <span class="person-picker-count" id="event-people-count" aria-live="polite"></span>
+                                    <button type="button" class="btn btn-link btn-sm person-picker-clear" onclick="clearEventPeople()" aria-label="Clear selected people">Clear</button>
                                 </div>
-                                <div id="inline-person-form" class="mt-2 p-3 border rounded bg-light" style="display:none">
-                                    <div class="mb-2">
-                                        <input type="text" class="form-control form-control-sm" id="inline-person-name" placeholder="Person name">
-                                    </div>
-                                    <div class="mb-2">
-                                        <input type="color" class="form-control form-control-color" id="inline-person-color" value="#B5452B" style="width:60px;height:32px">
-                                    </div>
-                                    <div class="d-flex gap-2">
-                                        <button type="button" class="btn btn-sm btn-success" onclick="saveInlinePerson()" aria-label="Add inline person"><i class="fa-solid fa-check me-1" aria-hidden="true"></i> Add</button>
-                                        <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideInlinePersonForm()" aria-label="Cancel inline person form">Cancel</button>
-                                    </div>
-                                    <div id="inline-person-result" class="mt-1 small"></div>
+                            </div>
+                            <div class="person-picker">
+                                <div class="person-picker-list" id="event-person" role="group" aria-labelledby="event-people-label"></div>
+                                <div class="person-picker-empty" id="event-people-empty" hidden>
+                                    <i class="fa-solid fa-user-slash" aria-hidden="true"></i> No people yet — add one below.
                                 </div>
+                            </div>
+                            <div class="d-flex gap-2 mt-2">
+                                <input type="text" class="form-control" id="person-search-input" placeholder="Search people..." aria-label="Search people" oninput="filterPersonSelect()">
+                                <button type="button" class="btn btn-outline-success btn-sm flex-shrink-0" onclick="showInlinePersonForm()" title="Add new person" aria-label="Add new person"><i class="fa-solid fa-plus" aria-hidden="true"></i></button>
+                            </div>
+                            <div id="inline-person-form" class="mt-2 p-3 border rounded bg-light" style="display:none">
+                                <div class="mb-2">
+                                    <input type="text" class="form-control form-control-sm" id="inline-person-name" placeholder="Person name" aria-label="New person name">
+                                </div>
+                                <div class="mb-2">
+                                    <input type="color" class="form-control form-control-color" id="inline-person-color" value="#B5452B" aria-label="New person color" style="width:60px;height:32px">
+                                </div>
+                                <div class="d-flex gap-2">
+                                    <button type="button" class="btn btn-sm btn-success" onclick="saveInlinePerson()" aria-label="Add inline person"><i class="fa-solid fa-check me-1" aria-hidden="true"></i> Add</button>
+                                    <button type="button" class="btn btn-sm btn-outline-secondary" onclick="hideInlinePersonForm()" aria-label="Cancel inline person form">Cancel</button>
+                                </div>
+                                <div id="inline-person-result" class="mt-1 small"></div>
                             </div>
                         </div>
                         <div class="row g-3 mb-3">

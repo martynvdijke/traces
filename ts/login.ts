@@ -1,6 +1,13 @@
 export {};
 import { loadAnalytics } from "./shared/analytics.js";
 
+type SiteConfig = {
+  oidc_enabled?: boolean;
+  demo_enabled?: boolean;
+  demo_username?: string;
+  demo_password?: string;
+};
+
 function showLoginError(msg: string) {
   const el = document.getElementById('login-error');
   if (el) { el.textContent = msg; el.classList.remove('d-none'); }
@@ -32,7 +39,7 @@ document.getElementById('login-form')?.addEventListener('submit', async (e) => {
 });
 
 loadAnalytics();
-fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg) {
+fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg: SiteConfig) {
   if (cfg.oidc_enabled) {
     var form = document.getElementById('login-form');
     var btn = document.createElement('a');
@@ -42,5 +49,32 @@ fetch('/api/config').then(function (r) { return r.json(); }).then(function (cfg)
     if (form && form.parentElement) {
       form.parentElement.insertBefore(btn, form.nextSibling);
     }
+  }
+  if (cfg.demo_enabled) {
+    var demoBlock = document.getElementById('demo-login');
+    var demoButton = document.getElementById('demo-login-btn');
+    var demoUsernameEl = document.getElementById('demo-username');
+    var demoPasswordEl = document.getElementById('demo-password');
+
+    if (demoUsernameEl) demoUsernameEl.textContent = cfg.demo_username || '';
+    if (demoPasswordEl) demoPasswordEl.textContent = cfg.demo_password || '';
+    if (demoBlock) demoBlock.classList.remove('d-none');
+
+    demoButton?.addEventListener('click', function () {
+      var loginForm = document.getElementById('login-form') as HTMLFormElement | null;
+      if (!loginForm) return;
+
+      var usernameInput = loginForm.elements.namedItem('username') as HTMLInputElement | null;
+      var passwordInput = loginForm.elements.namedItem('password') as HTMLInputElement | null;
+      if (usernameInput) usernameInput.value = cfg.demo_username || '';
+      if (passwordInput) passwordInput.value = cfg.demo_password || '';
+
+      // Reuse the existing submit handler rather than posting a second time.
+      if (typeof loginForm.requestSubmit === 'function') {
+        loginForm.requestSubmit();
+      } else {
+        loginForm.submit();
+      }
+    });
   }
 }).catch(function () { });

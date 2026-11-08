@@ -35,9 +35,16 @@
             background: var(--gradient-hero);
             min-height: 100vh;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
+            gap: 1.15rem;
             padding: var(--space-xl) var(--space-md);
+        }
+        .login-main {
+            display: flex;
+            justify-content: center;
+            width: 100%;
         }
         .login-card {
             background: var(--card-bg);
@@ -211,6 +218,95 @@
             color: var(--bs-primary-text-emphasis);
         }
         .alert-danger:empty { display: none; }
+        /* — demo account — */
+        .demo-login {
+            margin-top: 1.1rem;
+            padding-top: 1.05rem;
+            border-top: 1px dashed var(--border);
+        }
+        .demo-login__kicker {
+            margin-bottom: 0.6rem;
+            text-align: center;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--primary);
+        }
+        [data-theme="dark"] .demo-login__kicker { color: var(--primary-light); }
+        .demo-login__hint {
+            display: flex;
+            flex-wrap: wrap;
+            justify-content: center;
+            gap: 0.25rem 0.95rem;
+            margin-top: 0.6rem;
+            font-size: 0.68rem;
+            color: var(--muted);
+        }
+        .demo-login__cred {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.3rem;
+            min-width: 0;
+        }
+        .demo-login code {
+            max-width: 12rem;
+            padding: 0.08rem 0.3rem;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        /* — compact legal footer on the gradient — */
+        .login-footer {
+            position: static;
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: center;
+            gap: 0.35rem 1.1rem;
+            width: 100%;
+            max-width: 430px;
+            margin: 0;
+            padding: 0;
+            background: transparent;
+            border-top: 0;
+        }
+        .login-footer::before { display: none; }
+        .login-footer a {
+            padding: 0.3rem 0.15rem;
+            border-radius: 4px;
+            color: rgba(253, 246, 236, 0.76);
+            font-family: var(--font-mono);
+            font-size: 0.66rem;
+            font-weight: 600;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            text-decoration: none;
+        }
+        .login-footer a:hover { color: #fff; text-decoration: underline; text-underline-offset: 3px; }
+        .login-footer a:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
+        .login-footer .login-footer__home { color: #fff; }
+        .skip-link {
+            position: fixed;
+            top: -4.5rem;
+            left: 1rem;
+            z-index: 1001;
+            padding: 0.65rem 1rem;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-decoration: none;
+            box-shadow: var(--elevation-md);
+            transition: top 0.16s ease;
+        }
+        .skip-link:focus { top: 0.85rem; }
         /* — theme toggle on gradient-hero — */
         .theme-toggle {
             position: fixed;
@@ -267,9 +363,11 @@
     </style>
 </head>
 <body>
+    <a class="skip-link" href="#main">Skip to sign-in form</a>
     <button class="theme-toggle" onclick="toggleTheme()" aria-label="Toggle dark mode">
         <i class="fa-solid fa-moon" id="theme-icon"></i>
     </button>
+    <main class="login-main" id="main" tabindex="-1">
     <div class="login-card">
         <div class="login-logo">
             <img src="/static/logo.svg" alt="TRACES">
@@ -279,12 +377,12 @@
         <form id="login-form">
             <div id="login-error" class="alert alert-danger d-none" role="alert"></div>
             <div class="mb-3">
-                <label class="form-label">Username</label>
-                <input type="text" class="form-control" name="username" required autofocus autocomplete="username">
+                <label class="form-label" for="login-username">Username</label>
+                <input type="text" class="form-control" id="login-username" name="username" required autofocus autocomplete="username">
             </div>
             <div class="mb-3">
-                <label class="form-label">Password</label>
-                <input type="password" class="form-control" name="password" required autocomplete="current-password">
+                <label class="form-label" for="login-password">Password</label>
+                <input type="password" class="form-control" id="login-password" name="password" required autocomplete="current-password">
             </div>
             <button type="submit" class="btn btn-primary w-100">
                 <i class="fa-solid fa-sign-in-alt me-2" aria-hidden="true"></i> Sign In
@@ -294,12 +392,29 @@
         <div id="forgot-section" class="d-none" style="margin-top:1rem">
             <div id="forgot-msg" class="alert d-none" role="alert"></div>
             <form id="forgot-form">
-                <label class="form-label">Email or username</label>
-                <input type="text" class="form-control mb-2" name="email" placeholder="you@example.com" required>
+                <label class="form-label" for="forgot-email">Email or username</label>
+                <input type="text" class="form-control mb-2" id="forgot-email" name="email" placeholder="you@example.com" required>
                 <button type="submit" class="btn btn-primary w-100">Send reset link</button>
             </form>
         </div>
+        <div id="demo-login" class="demo-login d-none">
+            <p class="demo-login__kicker"><i class="fa-solid fa-circle-play me-1" aria-hidden="true"></i> Try the demo</p>
+            <button type="button" class="btn btn-outline-primary w-100" id="demo-login-btn" aria-describedby="demo-credentials">
+                <i class="fa-solid fa-user-astronaut me-2" aria-hidden="true"></i> Use the demo account
+            </button>
+            <p class="demo-login__hint" id="demo-credentials">
+                <span class="demo-login__cred">Username <code id="demo-username"></code></span>
+                <span class="demo-login__cred">Password <code id="demo-password"></code></span>
+            </p>
+        </div>
     </div>
+    </main>
+    <footer class="login-footer">
+        <a class="login-footer__home" href="/">Back to TRACES</a>
+        <a href="/privacy">Privacy</a>
+        <a href="/terms">Terms</a>
+        <a href="/account/delete">Delete account</a>
+    </footer>
     <script src="https://unpkg.com/htmx.org@2.0.4"></script>
     <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
     <script>

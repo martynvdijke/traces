@@ -1,0 +1,657 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRACES - Privacy Policy</title>
+    <meta name="description" content="What this TRACES server stores, why it stores it, and the choices and rights you have.">
+    <meta name="theme-color" content="#B5452B">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script>
+      (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* ── Legal pages: standalone shell ── */
+        :root {
+            --legal-link: #B5452B;
+        }
+        [data-theme="dark"] {
+            --legal-link: #E8A87C;
+        }
+        html { scroll-padding-top: 6.5rem; }
+        body.legal-page {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(52rem 28rem at 92% -12%, rgba(181, 69, 43, 0.10), transparent 64%),
+                radial-gradient(38rem 22rem at -8% 0%, rgba(232, 168, 124, 0.16), transparent 60%);
+            background-repeat: no-repeat;
+        }
+        [data-theme="dark"] body.legal-page {
+            background-image:
+                radial-gradient(52rem 28rem at 92% -12%, rgba(181, 69, 43, 0.26), transparent 64%),
+                radial-gradient(38rem 22rem at -8% 0%, rgba(92, 42, 30, 0.34), transparent 60%);
+        }
+        ::selection { background: var(--primary); color: #fff; }
+
+        .skip-link {
+            position: fixed;
+            top: -5rem;
+            left: 1rem;
+            z-index: 1000;
+            padding: 0.65rem 1rem;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-decoration: none;
+            box-shadow: var(--elevation-md);
+            transition: top 0.16s ease;
+        }
+        .skip-link:focus { top: 0.85rem; }
+
+        .legal-shell {
+            width: min(1120px, calc(100% - 2.5rem));
+            margin-inline: auto;
+        }
+
+        .legal-header { padding-block: 0.8rem; }
+        .legal-header__inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.65rem 1rem;
+        }
+        .legal-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            min-width: 0;
+            color: var(--text);
+            text-decoration: none;
+        }
+        .legal-brand img {
+            flex: 0 0 auto;
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            box-shadow: 0 3px 10px var(--shadow-sm);
+        }
+        .legal-brand__name {
+            font-size: 1.02rem;
+            font-weight: 800;
+            letter-spacing: -0.035em;
+            line-height: 1;
+        }
+        .legal-brand__tag {
+            display: none;
+            padding-left: 0.65rem;
+            border-left: 1px solid var(--border);
+            font-family: var(--font-mono);
+            font-size: 0.58rem;
+            font-weight: 600;
+            line-height: 1.4;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        @media (min-width: 720px) { .legal-brand__tag { display: inline; } }
+
+        .legal-nav {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.15rem;
+        }
+        .legal-nav a {
+            display: inline-block;
+            padding: 0.38rem 0.62rem;
+            border-radius: 999px;
+            color: var(--text-muted);
+            font-size: 0.77rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: color 0.15s, background 0.15s;
+        }
+        .legal-nav a:hover { color: var(--text); background: var(--primary-glow); }
+        .legal-nav a[aria-current="page"] { color: var(--legal-link); background: var(--primary-glow); }
+
+        .legal-main {
+            flex: 1 0 auto;
+            padding-block: clamp(2.1rem, 5vw, 3.6rem) clamp(3rem, 7vw, 5rem);
+        }
+        .legal-hero { max-width: 48rem; margin-bottom: clamp(2rem, 4vw, 2.8rem); }
+        .legal-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+            margin-bottom: 0.9rem;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--legal-link);
+        }
+        .legal-eyebrow::before {
+            content: "";
+            width: 1.5rem;
+            height: 2px;
+            border-radius: 2px;
+            background: var(--gradient);
+        }
+        .legal-hero h1 {
+            font-size: clamp(2rem, 5.4vw, 3rem);
+            font-weight: 800;
+            letter-spacing: -0.045em;
+            line-height: 1.06;
+            color: var(--text);
+        }
+        .legal-lede {
+            max-width: 54ch;
+            margin-top: 0.9rem;
+            font-size: clamp(0.98rem, 2.2vw, 1.1rem);
+            line-height: 1.65;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        .legal-updated {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.3rem 0.45rem;
+            margin-top: 1.3rem;
+            padding: 0.38rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--bg-card);
+            font-family: var(--font-mono);
+            font-size: 0.66rem;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+        }
+        .legal-updated span {
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text);
+        }
+
+        .legal-layout { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2rem; }
+        .legal-toc {
+            padding: 0.95rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-card);
+            box-shadow: var(--elevation-sm);
+        }
+        .legal-toc__title {
+            margin-bottom: 0.55rem;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            font-weight: 700;
+            letter-spacing: 0.16em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .legal-toc ol {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 0.05rem 0.5rem;
+            list-style: none;
+        }
+        .legal-toc a {
+            display: flex;
+            gap: 0.45rem;
+            padding: 0.3rem 0.35rem;
+            border-radius: 6px;
+            font-size: 0.74rem;
+            line-height: 1.35;
+            color: var(--text-muted);
+            text-decoration: none;
+        }
+        .legal-toc a:hover { color: var(--text); background: var(--primary-glow); }
+        .legal-toc .toc-num {
+            flex: 0 0 auto;
+            padding-top: 0.05rem;
+            font-family: var(--font-mono);
+            font-size: 0.58rem;
+            font-weight: 700;
+            color: var(--legal-link);
+        }
+        @media (min-width: 900px) {
+            .legal-layout {
+                grid-template-columns: 13.5rem minmax(0, 1fr);
+                gap: clamp(2rem, 5vw, 4rem);
+                align-items: start;
+            }
+            .legal-toc { position: sticky; top: 5.4rem; }
+            .legal-toc ol { grid-template-columns: 1fr; }
+        }
+
+        .legal-body { max-width: 70ch; }
+        .legal-body > section { scroll-margin-top: 6rem; }
+        .legal-body > section + section {
+            margin-top: 2.2rem;
+            padding-top: 2.2rem;
+            border-top: 1px solid var(--border);
+        }
+        .legal-body h2 {
+            display: flex;
+            align-items: baseline;
+            gap: 0.6rem;
+            font-size: clamp(1.12rem, 2.4vw, 1.3rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.25;
+            color: var(--text);
+        }
+        .legal-num {
+            flex: 0 0 auto;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            color: var(--legal-link);
+        }
+        .legal-body h2 + * { margin-top: 0.9rem; }
+        .legal-body p,
+        .legal-body li,
+        .legal-body dd {
+            font-size: 0.955rem;
+            line-height: 1.72;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        .legal-body p + p { margin-top: 0.8rem; }
+        .legal-body a {
+            color: var(--legal-link);
+            text-decoration: underline;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 2.5px;
+        }
+        .legal-body a:hover { text-decoration-thickness: 2px; }
+        .legal-body strong { font-weight: 700; }
+        .legal-body ul,
+        .legal-body ol {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 0.9rem;
+            list-style: none;
+        }
+        .legal-body ul li { position: relative; padding-left: 1.1rem; }
+        .legal-body ul li::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0.66em;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--legal-link);
+        }
+        .legal-body code {
+            padding: 0.08em 0.35em;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 0.84em;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+
+        .legal-callout {
+            margin-top: 1.1rem;
+            padding: 0.95rem 1.1rem;
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--legal-link);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            background: var(--primary-glow);
+        }
+        .legal-callout p { font-size: 0.9rem; line-height: 1.62; }
+        .legal-callout p + p { margin-top: 0.5rem; }
+        .legal-hero + .legal-callout { margin-bottom: clamp(1.75rem, 3vw, 2.25rem); }
+
+        .legal-facts {
+            margin-top: 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            overflow: hidden;
+        }
+        .legal-facts > div {
+            display: grid;
+            grid-template-columns: minmax(7rem, 30%) minmax(0, 1fr);
+            gap: 0.35rem 1rem;
+            padding: 0.7rem 0.95rem;
+        }
+        .legal-facts > div + div { border-top: 1px solid var(--border); }
+        .legal-facts dt {
+            padding-top: 0.18rem;
+            font-family: var(--font-mono);
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .legal-facts dd {
+            margin: 0;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        @media (max-width: 480px) {
+            .legal-facts > div { grid-template-columns: 1fr; gap: 0.15rem; }
+        }
+
+        .legal-cards {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+            gap: 0.7rem;
+            margin-top: 1rem;
+        }
+        .legal-card {
+            padding: 0.9rem 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            box-shadow: 0 1px 3px var(--shadow-sm);
+        }
+        .legal-card h3 {
+            margin-bottom: 0.3rem;
+            font-size: 0.82rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .legal-card p { font-size: 0.84rem; line-height: 1.6; color: var(--text); }
+
+        .legal-footer {
+            flex-shrink: 0;
+            margin-top: 2rem;
+            padding-block: 2rem 2.5rem;
+        }
+        .legal-footer__inner {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.9rem 1.5rem;
+        }
+        .legal-footer__brand {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.45rem 0.6rem;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            font-weight: 600;
+            letter-spacing: 0.13em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .legal-footer__brand strong { color: var(--text); font-weight: 800; letter-spacing: 0.1em; }
+        .legal-footer nav {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem 1rem;
+        }
+        .legal-footer nav a {
+            color: var(--text-muted);
+            font-size: 0.74rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .legal-footer nav a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+        .legal-footer .legal-footer__home { color: var(--text); }
+
+        @media (max-width: 480px) {
+            .legal-shell { width: calc(100% - 2rem); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+        }
+        @media print {
+            body.legal-page { background: #fff; }
+            .skip-link, .legal-header nav, .legal-toc, .legal-footer nav { display: none; }
+            .legal-layout { display: block; }
+            .legal-body { max-width: none; }
+            .legal-body a { color: #000; }
+            .legal-updated { border-color: #ccc; }
+        }
+    </style>
+</head>
+<body class="legal-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="legal-header">
+        <div class="legal-shell legal-header__inner">
+            <a class="legal-brand" href="/">
+                <img src="/static/logo.svg" alt="" width="36" height="36">
+                <span class="legal-brand__name">TRACES</span>
+                <span class="legal-brand__tag">Your Year in Review</span>
+            </a>
+            <nav class="legal-nav" aria-label="Legal">
+                <a href="/privacy" aria-current="page">Privacy</a>
+                <a href="/terms">Terms</a>
+                <a href="/account/delete">Delete account</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="main" class="legal-shell legal-main" tabindex="-1">
+        <div class="legal-hero">
+            <p class="legal-eyebrow">Legal &middot; Privacy</p>
+            <h1>Privacy Policy</h1>
+            <p class="legal-lede">This policy explains what this TRACES server stores about you, why it stores it, and what you can do about it. It covers the web app and the Android app.</p>
+            <p class="legal-updated"><span>Last updated:</span> <time datetime="2026-11">November 2026</time></p>
+        </div>
+
+        <div class="legal-callout" role="note">
+            <p><strong>The short version.</strong> This is a self-hosted memory journal. Your memories are stored on the operator's server, not sold, and not used for advertising. You can download a copy of your data or delete your account from <strong>Settings &rarr; Data &amp; privacy</strong>.</p>
+        </div>
+
+        <div class="legal-layout">
+            <aside class="legal-toc" aria-labelledby="toc-title">
+                <h2 class="legal-toc__title" id="toc-title">On this page</h2>
+                <nav aria-labelledby="toc-title">
+                    <ol>
+                        <li><a href="#controller"><span class="toc-num" aria-hidden="true">01</span> Who is responsible</a></li>
+                        <li><a href="#what-we-store"><span class="toc-num" aria-hidden="true">02</span> What is stored</a></li>
+                        <li><a href="#legal-basis"><span class="toc-num" aria-hidden="true">03</span> Why and legal basis</a></li>
+                        <li><a href="#cookies"><span class="toc-num" aria-hidden="true">04</span> Cookies and storage</a></li>
+                        <li><a href="#processors"><span class="toc-num" aria-hidden="true">05</span> Other processors</a></li>
+                        <li><a href="#transfers"><span class="toc-num" aria-hidden="true">06</span> International transfers</a></li>
+                        <li><a href="#retention"><span class="toc-num" aria-hidden="true">07</span> Retention</a></li>
+                        <li><a href="#rights"><span class="toc-num" aria-hidden="true">08</span> Your rights</a></li>
+                        <li><a href="#security"><span class="toc-num" aria-hidden="true">09</span> Security</a></li>
+                        <li><a href="#children"><span class="toc-num" aria-hidden="true">10</span> Children</a></li>
+                        <li><a href="#changes"><span class="toc-num" aria-hidden="true">11</span> Changes</a></li>
+                    </ol>
+                </nav>
+            </aside>
+
+            <article class="legal-body">
+                <section id="controller" aria-labelledby="controller-title">
+                    <h2 id="controller-title"><span class="legal-num" aria-hidden="true">01</span> Who is responsible</h2>
+                    <p>This TRACES instance is operated by <strong>{{LEGAL_CONTROLLER_NAME}}</strong>. That person or organisation is the <strong>data controller</strong> for the information described in this policy. TRACES is self-hosted software: whoever runs this server decides how it is configured and is responsible for the data in it.</p>
+                    <dl class="legal-facts">
+                        <div>
+                            <dt>Controller</dt>
+                            <dd>{{LEGAL_CONTROLLER_NAME}}</dd>
+                        </div>
+                        <div>
+                            <dt>Contact</dt>
+                            <dd><a href="mailto:{{LEGAL_CONTROLLER_EMAIL}}">{{LEGAL_CONTROLLER_EMAIL}}</a></dd>
+                        </div>
+                        <div>
+                            <dt>Postal address</dt>
+                            <dd>{{LEGAL_CONTROLLER_ADDRESS}}</dd>
+                        </div>
+                        <div>
+                            <dt>Hosting region</dt>
+                            <dd>{{LEGAL_HOSTING_REGION}}</dd>
+                        </div>
+                    </dl>
+                    <p>If you are unsure which instance you are using, or who operates it, contact the email address above.</p>
+                </section>
+
+                <section id="what-we-store" aria-labelledby="store-title">
+                    <h2 id="store-title"><span class="legal-num" aria-hidden="true">02</span> What this server stores</h2>
+                    <p>TRACES only needs data that helps you record and revisit memories. The categories are:</p>
+                    <div class="legal-cards">
+                        <div class="legal-card">
+                            <h3>Account data</h3>
+                            <p>Your username, display name, optional email address, and either a bcrypt password hash or an OIDC subject identifier when sign-in is handled by an identity provider.</p>
+                        </div>
+                        <div class="legal-card">
+                            <h3>Memories</h3>
+                            <p>Titles, descriptions, dates, places, GPS coordinates, photos, video, audio, tags, and the people you record.</p>
+                        </div>
+                        <div class="legal-card">
+                            <h3>Preferences</h3>
+                            <p>Display and privacy settings, theme, default view, and notification choices.</p>
+                        </div>
+                        <div class="legal-card">
+                            <h3>Sign-in session</h3>
+                            <p>A record of your signed-in session so you do not have to log in on every page.</p>
+                        </div>
+                        <div class="legal-card">
+                            <h3>Technical logs</h3>
+                            <p>IP address, user agent, timestamps, and request paths, kept to secure the service and diagnose faults.</p>
+                        </div>
+                    </div>
+                    <p>Uploaded media is stored on storage attached to the server. It is served only to accounts that are allowed to see it.</p>
+                </section>
+
+                <section id="legal-basis" aria-labelledby="basis-title">
+                    <h2 id="basis-title"><span class="legal-num" aria-hidden="true">03</span> Why it is stored, and on what legal basis</h2>
+                    <p>Under the GDPR, processing needs a legal basis. This instance relies on the following:</p>
+                    <ul>
+                        <li><strong>Performance of a contract</strong> (Article 6(1)(b)) &mdash; to create your account, store your memories, and keep you signed in. Without this data the service cannot work.</li>
+                        <li><strong>Legitimate interests</strong> (Article 6(1)(f)) &mdash; to secure the server, prevent abuse and rate-limit requests, debug faults, and keep audit logs. These interests are balanced against your rights; you can object (see section 08).</li>
+                        <li><strong>Consent</strong> (Article 6(1)(a)) &mdash; for optional analytics, push notifications, and third-party integrations. You can withdraw consent at any time; that does not affect processing that already happened.</li>
+                    </ul>
+                    <div class="legal-callout">
+                        <p><strong>No advertising.</strong> This server does not run advertising, build advertising profiles, or sell your data. Your memories are not shared with advertisers or data brokers.</p>
+                    </div>
+                </section>
+
+                <section id="cookies" aria-labelledby="cookies-title">
+                    <h2 id="cookies-title"><span class="legal-num" aria-hidden="true">04</span> Cookies and local storage</h2>
+                    <p>TRACES uses the smallest set of cookies it can:</p>
+                    <ul>
+                        <li><strong><code>session</code></strong> &mdash; essential. It is HttpOnly, so page scripts cannot read it. It keeps you signed in and is removed when it expires or you sign out.</li>
+                        <li><strong>CSRF and OIDC state cookies</strong> &mdash; short-lived security cookies that protect forms against cross-site request forgery and complete sign-in through an identity provider. They expire quickly.</li>
+                    </ul>
+                    <p>There are no advertising or cross-site tracking cookies.</p>
+                    <p>If the operator has enabled Umami analytics, it is cookieless and records aggregate page views only. You can turn it off in the app under <strong>Settings &rarr; Privacy</strong>.</p>
+                    <p>Your browser's local storage is used to remember your theme choice and, where analytics is enabled, your analytics preference. It is not shared with third parties.</p>
+                </section>
+
+                <section id="processors" aria-labelledby="processors-title">
+                    <h2 id="processors-title"><span class="legal-num" aria-hidden="true">05</span> Who else processes data</h2>
+                    <p>Depending on how this instance is configured, the operator may use the services below. Optional services are only contacted when they are enabled and you use the related feature.</p>
+                    <ul>
+                        <li><strong>Hosting provider</strong> &mdash; runs the server and stores the database and media.</li>
+                        <li><strong>Self-hosted Umami</strong> &mdash; aggregate, cookieless usage statistics, if enabled.</li>
+                        <li><strong>OpenTelemetry collector</strong> &mdash; technical traces and metrics for monitoring, if enabled.</li>
+                        <li><strong>SMTP mail provider</strong> &mdash; sends password-reset and notification email, if enabled.</li>
+                        <li><strong>OIDC identity provider</strong> (for example Authelia) &mdash; handles sign-in, if enabled.</li>
+                        <li><strong>OpenStreetMap Nominatim</strong> &mdash; turns GPS coordinates into place names when you add or edit a memory with a location.</li>
+                        <li><strong>Gotify</strong> &mdash; delivers push notifications, if enabled.</li>
+                        <li><strong>Immich</strong> &mdash; imports photos from an Immich library, if enabled.</li>
+                        <li><strong>BoardGameGeek</strong> &mdash; looks up board game details, if enabled.</li>
+                    </ul>
+                    <p>Each service receives only what it needs for that task. Data is not sold, rented, or shared for advertising.</p>
+                </section>
+
+                <section id="transfers" aria-labelledby="transfers-title">
+                    <h2 id="transfers-title"><span class="legal-num" aria-hidden="true">06</span> International transfers</h2>
+                    <p>Data is normally stored in <strong>{{LEGAL_HOSTING_REGION}}</strong>. If the operator or one of the services above handles data outside the European Economic Area, they must rely on an adequacy decision or use Standard Contractual Clauses approved by the European Commission, together with any additional safeguards the law requires.</p>
+                    <p>To ask which safeguards apply to this instance, email <a href="mailto:{{LEGAL_CONTROLLER_EMAIL}}">{{LEGAL_CONTROLLER_EMAIL}}</a>.</p>
+                </section>
+
+                <section id="retention" aria-labelledby="retention-title">
+                    <h2 id="retention-title"><span class="legal-num" aria-hidden="true">07</span> How long data is kept</h2>
+                    <ul>
+                        <li><strong>Account and memories</strong> &mdash; kept while your account exists.</li>
+                        <li><strong>Sessions</strong> &mdash; expire automatically after a period set by the operator, or when you sign out.</li>
+                        <li><strong>Deleting your account</strong> &mdash; removes your profile, memories, and uploaded media. See <a href="/account/delete">Delete your account</a>.</li>
+                        <li><strong>Backups</strong> &mdash; rotated backups may keep copies for a limited period until they expire. They are used only to restore the service after a failure.</li>
+                        <li><strong>Logs</strong> &mdash; rotate on a schedule and are not kept indefinitely.</li>
+                    </ul>
+                    <p>The operator sets the exact session, backup, and log periods. You can ask for the current values using the contact address above.</p>
+                </section>
+
+                <section id="rights" aria-labelledby="rights-title">
+                    <h2 id="rights-title"><span class="legal-num" aria-hidden="true">08</span> Your rights</h2>
+                    <p>If you are in the EEA or the UK, you have the right to:</p>
+                    <ul>
+                        <li>access a copy of your data;</li>
+                        <li>correct inaccurate data;</li>
+                        <li>erase your data;</li>
+                        <li>restrict or object to processing;</li>
+                        <li>receive your data in a portable format;</li>
+                        <li>withdraw consent at any time, where processing is based on consent.</li>
+                    </ul>
+                    <p>You can exercise most of these directly:</p>
+                    <ul>
+                        <li><strong>Download or delete</strong> &mdash; in the app, open <strong>Settings &rarr; Data &amp; privacy</strong> and choose download or delete.</li>
+                        <li><strong>Delete without signing in</strong> &mdash; use the public <a href="/account/delete">account deletion page</a> for instructions, including an email fallback.</li>
+                        <li><strong>Anything else</strong> &mdash; email <a href="mailto:{{LEGAL_CONTROLLER_EMAIL}}">{{LEGAL_CONTROLLER_EMAIL}}</a>. The operator may ask you to confirm that you control the account before acting.</li>
+                    </ul>
+                    <p>Requests are handled within the time limits set by the GDPR. If you believe your data has been handled unlawfully, you can complain to the data protection authority in your country. In the EU, you can find yours through the <a href="https://www.edpb.europa.eu/about-edpb/about-edpb/members_en" rel="noopener">European Data Protection Board</a>.</p>
+                </section>
+
+                <section id="security" aria-labelledby="security-title">
+                    <h2 id="security-title"><span class="legal-num" aria-hidden="true">09</span> Security</h2>
+                    <ul>
+                        <li><strong>In transit</strong> &mdash; when this instance is served over HTTPS, traffic between your browser and the server is encrypted with TLS.</li>
+                        <li><strong>Passwords</strong> &mdash; stored as bcrypt hashes, never as plain text.</li>
+                        <li><strong>Sessions</strong> &mdash; carried in an HttpOnly cookie that page scripts cannot read.</li>
+                        <li><strong>Access control</strong> &mdash; every request checks that the signed-in account owns the memory or media it asks for.</li>
+                        <li><strong>Operator access</strong> &mdash; limited to the operator and anyone they authorise to administer the server. They can read the database, so use an account you are comfortable with on this instance.</li>
+                    </ul>
+                    <p>No system is perfectly secure. If you find a vulnerability, report it to <a href="mailto:{{LEGAL_CONTROLLER_EMAIL}}">{{LEGAL_CONTROLLER_EMAIL}}</a> rather than testing it against other people's data.</p>
+                </section>
+
+                <section id="children" aria-labelledby="children-title">
+                    <h2 id="children-title"><span class="legal-num" aria-hidden="true">10</span> Children</h2>
+                    <p>TRACES is not directed at children under 16, and the operator does not knowingly collect their data. If you believe a child under 16 has created an account on this server, contact <a href="mailto:{{LEGAL_CONTROLLER_EMAIL}}">{{LEGAL_CONTROLLER_EMAIL}}</a> so it can be reviewed and removed.</p>
+                </section>
+
+                <section id="changes" aria-labelledby="changes-title">
+                    <h2 id="changes-title"><span class="legal-num" aria-hidden="true">11</span> Changes to this policy</h2>
+                    <p>The &ldquo;Last updated&rdquo; date at the top shows when this policy last changed. If a change materially affects how your data is used, the operator will announce it in the app or on this page before it takes effect where practical. The current version always applies to this instance.</p>
+                    <p>If you do not agree with a change, you can delete your account at any time.</p>
+                </section>
+            </article>
+        </div>
+    </main>
+
+    <footer class="legal-footer">
+        <div class="legal-shell legal-footer__inner">
+            <p class="legal-footer__brand"><strong>TRACES</strong> <span aria-hidden="true">&middot;</span> Your memories, kept privately.</p>
+            <nav aria-label="Footer">
+                <a class="legal-footer__home" href="/">Back to TRACES</a>
+                <a href="/privacy">Privacy</a>
+                <a href="/terms">Terms</a>
+                <a href="/account/delete">Delete your account</a>
+            </nav>
+        </div>
+    </footer>
+</body>
+</html>

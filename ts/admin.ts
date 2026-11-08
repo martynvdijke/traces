@@ -9,6 +9,7 @@ let events: any[] = [];
 let persons: any[] = [];
 let allPersons: any[] = [];
 let filteredEvents: any[] = [];
+let selectedEventPersonIds: number[] = [];
 const eventModal = new bootstrap.Modal(document.getElementById('eventModal'));
 const personModal = new bootstrap.Modal(document.getElementById('personModal'));
 let locationMap: any = null;
@@ -129,8 +130,10 @@ function applyFilters(): void {
   const year = (document.getElementById('filter-year') as HTMLSelectElement).value;
 
   filteredEvents = events.filter((e: any) => {
-    if (q && !e.title.toLowerCase().includes(q) && !e.description.toLowerCase().includes(q) && !e.location.toLowerCase().includes(q) && !getPersonName(e.person_id).toLowerCase().includes(q)) return false;
-    if (personId && String(e.person_id) !== personId) return false;
+    const people = getEventPeople(e);
+    const personNames = people.map((p: any) => (p.name || '').toLowerCase());
+    if (q && !e.title.toLowerCase().includes(q) && !e.description.toLowerCase().includes(q) && !e.location.toLowerCase().includes(q) && !personNames.some(n => n.includes(q))) return false;
+    if (personId && !people.some((p: any) => String(p.id) === personId) && String(e.person_id || '') !== personId) return false;
     if (mediaType && e.media_type !== mediaType) return false;
     if (year && e.date.slice(0, 4) !== year) return false;
     return true;
@@ -169,6 +172,34 @@ function getPerson(id: number): any {
   return allPersons.find((p: any) => p.id === id);
 }
 
+/** Resolve every person linked to an event, newest contract first, legacy last. */
+function getEventPeople(event: any): any[] {
+  if (!event) return [];
+  if (Array.isArray(event.people) && event.people.length) return event.people;
+
+  const legacy: any = event.person && event.person.id ? event.person : null;
+  const ids: number[] = Array.isArray(event.person_ids) && event.person_ids.length
+    ? event.person_ids
+    : (event.person_id ? [event.person_id] : []);
+
+  if (ids.length) {
+    return ids.map((id: number) => {
+      if (legacy && legacy.id === id) return legacy;
+      return getPerson(id) || { id: id, name: getPersonName(id) || ('#' + id), color: '#B5452B' };
+    });
+  }
+  return legacy ? [legacy] : [];
+}
+
+function personAvatarHtml(person: any, size: number = 22): string {
+  const color = person.color || '#B5452B';
+  if (person.avatar_url) {
+    return '<img src="' + escapeHtml(person.avatar_url) + '" class="person-picker-avatar" style="width:' + size + 'px;height:' + size + 'px" alt="" loading="lazy">';
+  }
+  const initial = person.name ? escapeHtml(person.name.charAt(0).toUpperCase()) : '?';
+  return '<span class="person-picker-avatar" style="background:' + escapeHtml(color) + ';width:' + size + 'px;height:' + size + 'px" aria-hidden="true">' + initial + '</span>';
+}
+
 function getUserAttribution(userId: any): string {
   if (!userId) return '';
   const u = adminUsers.find((u: any) => u.id === userId);
@@ -186,7 +217,14 @@ function renderEventList(): void {
   }
   updateCollectionEventSelect();
   list.innerHTML = data.map((e: any) => {
-    const p = getPerson(e.person_id);
+    const people = getEventPeople(e);
+    const peopleHtml = people.length
+      ? '<div class="event-person-chips">' + people.map((person: any) =>
+        '<span class="event-person-chip" title="' + escapeHtml(person.name) + '">' +
+        '<span class="color-dot" style="background:' + escapeHtml(person.color || '#B5452B') + '"></span>' +
+        '<span class="chip-name">' + escapeHtml(person.name) + '</span></span>'
+      ).join('') + '</div>'
+      : '<span class="text-muted">—</span>';
     const favIcon = e.is_favorite ? 'fa-solid fa-star text-warning' : 'fa-regular fa-star';
     const attribution = getUserAttribution(e.user_id);
     return `<tr class="animate-in ${e.is_favorite ? 'table-active' : ''}">
@@ -194,7 +232,7 @@ function renderEventList(): void {
       <td class="ps-1 fw-bold font-monospace" style="font-size:0.85rem">${e.date}</td>
       <td><span class="fw-medium">${escapeHtml(e.title)}</span>${attribution ? '<div class="text-muted small">' + attribution + '</div>' : ''}</td>
       <td>${e.location ? '<i class="fa-solid fa-location-dot me-1 text-muted" style="font-size:0.7rem"></i>' + escapeHtml(e.location) : '<span class="text-muted">—</span>'}</td>
-      <td>${p ? '<span class="d-inline-flex align-items-center gap-1"><span class="color-dot" style="background:' + (p.color || '#B5452B') + ';width:8px;height:8px"></span>' + escapeHtml(p.name) + '</span>' : '<span class="text-muted">—</span>'}</td>
+      <td>${peopleHtml}</td>
       <td>${e.media_url ? '<span class="media-type-badge ' + e.media_type + '"><i class="' + getMediaIcon(e.media_type) + ' me-1"></i>' + e.media_type + '</span>' : '<span class="text-muted">—</span>'}</td>
       <td class="text-center"><i class="${favIcon}" style="cursor:pointer" onclick="toggleFav(${e.id})" title="Toggle favorite"></i></td>
       <td class="text-end pe-3">
@@ -238,12 +276,82 @@ function renderPersonList(): void {
   }).join('');
 }
 
+function updateEventPeopleCount(): void {
+  const countEl = document.getElementById('event-people-count');
+  if (!countEl) return;
+  const n = selectedEventPersonIds.length;
+  countEl.textContent = n === 0 ? 'None' : n + ' selected';
+}
+
+function renderEventPeoplePicker(): void {
+  const list = document.getElementById('event-person');
+  if (!list) return;
+  const searchEl = document.getElementById('person-search-input') as HTMLInputElement | null;
+  const q = (searchEl?.value || '').trim().toLowerCase();
+  const selected = new Set(selectedEventPersonIds.map((id) => String(id)));
+  const people = allPersons
+    .filter((p: any) => !q || (p.name || '').toLowerCase().includes(q))
+    .slice()
+    .sort((a: any, b: any) => (a.name || '').localeCompare(b.name || ''));
+  const empty = document.getElementById('event-people-empty');
+
+  if (!people.length) {
+    list.innerHTML = '';
+    if (empty) {
+      empty.hidden = false;
+      empty.innerHTML = allPersons.length
+        ? '<i class="fa-solid fa-magnifying-glass" aria-hidden="true"></i> No people match &ldquo;' + escapeHtml(q) + '&rdquo;.'
+        : '<i class="fa-solid fa-user-slash" aria-hidden="true"></i> No people yet — add one below.';
+    }
+  } else {
+    if (empty) empty.hidden = true;
+    list.innerHTML = people.map((p: any) => {
+      const checked = selected.has(String(p.id));
+      const inputId = 'event-person-cb-' + p.id;
+      return '<label class="person-picker-row' + (checked ? ' is-selected' : '') + '" for="' + inputId + '">' +
+        '<input class="form-check-input" type="checkbox" id="' + inputId + '" value="' + p.id + '"' + (checked ? ' checked' : '') +
+        ' onchange="toggleEventPerson(' + p.id + ', this.checked)">' +
+        personAvatarHtml(p) +
+        '<span class="person-picker-name" title="' + escapeHtml(p.name) + '">' + escapeHtml(p.name) + '</span>' +
+        '<i class="fa-solid fa-check person-picker-check" aria-hidden="true"></i>' +
+        '</label>';
+    }).join('');
+  }
+  updateEventPeopleCount();
+}
+
 function updatePersonSelect(): void {
-  const select = document.getElementById('event-person') as HTMLSelectElement;
-  if (!select) return;
-  const val = select.value;
-  select.innerHTML = '<option value="0">None</option>' + allPersons.map((p: any) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-  select.value = val;
+  renderEventPeoplePicker();
+}
+
+function setEventPeople(ids: number[]): void {
+  const seen = new Set<number>();
+  selectedEventPersonIds = [];
+  ids.forEach((raw) => {
+    const id = Number(raw);
+    if (!id || seen.has(id)) return;
+    seen.add(id);
+    selectedEventPersonIds.push(id);
+  });
+  renderEventPeoplePicker();
+}
+
+function toggleEventPerson(id: number, checked: boolean): void {
+  const numericId = Number(id);
+  if (!numericId) return;
+  if (checked) {
+    if (!selectedEventPersonIds.includes(numericId)) selectedEventPersonIds.push(numericId);
+  } else {
+    selectedEventPersonIds = selectedEventPersonIds.filter((pid) => pid !== numericId);
+  }
+  const row = document.getElementById('event-person')?.querySelector('input[value="' + numericId + '"]')?.closest('.person-picker-row');
+  if (row) row.classList.toggle('is-selected', checked);
+  updateEventPeopleCount();
+}
+
+function clearEventPeople(): void {
+  selectedEventPersonIds = [];
+  renderEventPeoplePicker();
 }
 
 function updateFilterPerson(): void {
@@ -254,19 +362,10 @@ function updateFilterPerson(): void {
 
 let personSearchTimeout: any = null;
 async function filterPersonSelect(): Promise<void> {
-  const q = (document.getElementById('person-search-input') as HTMLInputElement).value.trim();
   clearTimeout(personSearchTimeout);
-  personSearchTimeout = setTimeout(async () => {
-    try {
-      const select = document.getElementById('event-person') as HTMLSelectElement;
-      const currentVal = select.value;
-      const url = q ? `/api/persons?q=${encodeURIComponent(q)}` : '/api/persons';
-      const res = await fetch(url);
-      const searchedPersons = await res.json();
-      select.innerHTML = '<option value="0">None</option>' + searchedPersons.map((p: any) => `<option value="${p.id}">${escapeHtml(p.name)}</option>`).join('');
-      select.value = currentVal;
-    } catch (e) { }
-  }, 200);
+  personSearchTimeout = setTimeout(() => {
+    renderEventPeoplePicker();
+  }, 120);
 }
 
 function initLocationMap(): void {
@@ -524,6 +623,7 @@ function openEventModal(event?: any): void {
   selectedTags = [];
   renderTags();
   clearEventMedia();
+  setEventPeople([]);
 
   if (event) {
     document.getElementById('eventModalLabel')!.textContent = 'Edit Event';
@@ -534,7 +634,16 @@ function openEventModal(event?: any): void {
     (document.getElementById('event-start-time') as HTMLInputElement).value = event.start_time || '';
     (document.getElementById('event-end-time') as HTMLInputElement).value = event.end_time || '';
     (document.getElementById('event-location') as HTMLInputElement).value = event.location || '';
-    (document.getElementById('event-person') as HTMLSelectElement).value = event.person_id || 0;
+    const eventPeople: any[] = Array.isArray(event.people) ? event.people.filter((p: any) => p && p.id) : [];
+    eventPeople.forEach((p: any) => {
+      if (!allPersons.some((ap: any) => ap.id === p.id)) allPersons.push(p);
+    });
+    const preselectedIds: number[] = eventPeople.length
+      ? eventPeople.map((p: any) => Number(p.id))
+      : (Array.isArray(event.person_ids) && event.person_ids.length
+        ? event.person_ids.map(Number)
+        : (event.person_id ? [Number(event.person_id)] : []));
+    setEventPeople(preselectedIds);
     (document.getElementById('event-media-type') as HTMLSelectElement).value = event.media_type || 'image';
     (document.getElementById('event-recurring') as HTMLSelectElement).value = event.recurring || '';
     (document.getElementById('event-user') as HTMLSelectElement).value = event.user_id || 0;
@@ -600,6 +709,7 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
   if (!title) { alert('Title is required'); return; }
   const weatherEl = document.getElementById('weather-display')!;
   const weatherData = (weatherEl as any).dataset.weather || '';
+  const personIds = selectedEventPersonIds.slice();
   const data = {
     id: parseInt((document.getElementById('event-id') as HTMLInputElement).value) || 0,
     title: title,
@@ -608,7 +718,8 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
     start_time: (document.getElementById('event-start-time') as HTMLInputElement).value,
     end_time: (document.getElementById('event-end-time') as HTMLInputElement).value,
     location: (document.getElementById('event-location') as HTMLInputElement).value,
-    person_id: parseInt((document.getElementById('event-person') as HTMLSelectElement).value) || 0,
+    person_ids: personIds,
+    person_id: personIds.length ? personIds[0] : 0,
     media_type: (document.getElementById('event-media-type') as HTMLSelectElement).value,
     media_url: eventPhotoUrl || '',
     tags: (document.getElementById('event-tags-hidden') as HTMLInputElement).value,
@@ -766,7 +877,12 @@ async function saveInlinePerson(): Promise<void> {
   if (res.ok) {
     const person = await res.json();
     await loadPersons();
-    (document.getElementById('event-person') as HTMLSelectElement).value = person.id;
+    if (person && person.id && !selectedEventPersonIds.includes(person.id)) {
+      selectedEventPersonIds.push(person.id);
+    }
+    const searchEl = document.getElementById('person-search-input') as HTMLInputElement | null;
+    if (searchEl) searchEl.value = '';
+    renderEventPeoplePicker();
     hideInlinePersonForm();
   } else {
     const err = await res.json();
@@ -2230,6 +2346,8 @@ init();
 (window as any).showInlinePersonForm = showInlinePersonForm;
 (window as any).saveInlinePerson = saveInlinePerson;
 (window as any).hideInlinePersonForm = hideInlinePersonForm;
+(window as any).toggleEventPerson = toggleEventPerson;
+(window as any).clearEventPeople = clearEventPeople;
 (window as any).clearEventMedia = clearEventMedia;
 (window as any).applyLocationSuggestion = applyLocationSuggestion;
 (window as any).dismissLocationSuggestion = dismissLocationSuggestion;

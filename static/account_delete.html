@@ -1,0 +1,661 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TRACES - Delete Your Account</title>
+    <meta name="description" content="How to delete your TRACES account and data in the Android app, on the web, or by email.">
+    <meta name="theme-color" content="#B5452B">
+    <link rel="icon" type="image/svg+xml" href="/static/favicon.svg">
+    <script>
+      (function(){var t=localStorage.getItem('theme');if(!t){t=window.matchMedia('(prefers-color-scheme:dark)').matches?'dark':'light'}document.documentElement.setAttribute('data-theme',t)})();
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="/static/style.css">
+    <style>
+        /* ── Legal pages: standalone shell ── */
+        :root {
+            --legal-link: #B5452B;
+        }
+        [data-theme="dark"] {
+            --legal-link: #E8A87C;
+        }
+        html { scroll-padding-top: 6.5rem; }
+        body.legal-page {
+            display: flex;
+            flex-direction: column;
+            min-height: 100vh;
+            background-color: var(--bg);
+            background-image:
+                radial-gradient(52rem 28rem at 92% -12%, rgba(181, 69, 43, 0.10), transparent 64%),
+                radial-gradient(38rem 22rem at -8% 0%, rgba(232, 168, 124, 0.16), transparent 60%);
+            background-repeat: no-repeat;
+        }
+        [data-theme="dark"] body.legal-page {
+            background-image:
+                radial-gradient(52rem 28rem at 92% -12%, rgba(181, 69, 43, 0.26), transparent 64%),
+                radial-gradient(38rem 22rem at -8% 0%, rgba(92, 42, 30, 0.34), transparent 60%);
+        }
+        ::selection { background: var(--primary); color: #fff; }
+
+        .skip-link {
+            position: fixed;
+            top: -5rem;
+            left: 1rem;
+            z-index: 1000;
+            padding: 0.65rem 1rem;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #fff;
+            font-size: 0.82rem;
+            font-weight: 700;
+            text-decoration: none;
+            box-shadow: var(--elevation-md);
+            transition: top 0.16s ease;
+        }
+        .skip-link:focus { top: 0.85rem; }
+
+        .legal-shell {
+            width: min(1120px, calc(100% - 2.5rem));
+            margin-inline: auto;
+        }
+
+        .legal-header { padding-block: 0.8rem; }
+        .legal-header__inner {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            flex-wrap: wrap;
+            gap: 0.65rem 1rem;
+        }
+        .legal-brand {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.6rem;
+            min-width: 0;
+            color: var(--text);
+            text-decoration: none;
+        }
+        .legal-brand img {
+            flex: 0 0 auto;
+            width: 36px;
+            height: 36px;
+            border-radius: 9px;
+            box-shadow: 0 3px 10px var(--shadow-sm);
+        }
+        .legal-brand__name {
+            font-size: 1.02rem;
+            font-weight: 800;
+            letter-spacing: -0.035em;
+            line-height: 1;
+        }
+        .legal-brand__tag {
+            display: none;
+            padding-left: 0.65rem;
+            border-left: 1px solid var(--border);
+            font-family: var(--font-mono);
+            font-size: 0.58rem;
+            font-weight: 600;
+            line-height: 1.4;
+            letter-spacing: 0.15em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        @media (min-width: 720px) { .legal-brand__tag { display: inline; } }
+
+        .legal-nav {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.15rem;
+        }
+        .legal-nav a {
+            display: inline-block;
+            padding: 0.38rem 0.62rem;
+            border-radius: 999px;
+            color: var(--text-muted);
+            font-size: 0.77rem;
+            font-weight: 600;
+            text-decoration: none;
+            transition: color 0.15s, background 0.15s;
+        }
+        .legal-nav a:hover { color: var(--text); background: var(--primary-glow); }
+        .legal-nav a[aria-current="page"] { color: var(--legal-link); background: var(--primary-glow); }
+
+        .legal-main {
+            flex: 1 0 auto;
+            padding-block: clamp(2.1rem, 5vw, 3.6rem) clamp(3rem, 7vw, 5rem);
+        }
+        .legal-hero { max-width: 48rem; margin-bottom: clamp(2rem, 4vw, 2.8rem); }
+        .legal-eyebrow {
+            display: inline-flex;
+            align-items: center;
+            gap: 0.55rem;
+            margin-bottom: 0.9rem;
+            font-family: var(--font-mono);
+            font-size: 0.65rem;
+            font-weight: 700;
+            letter-spacing: 0.18em;
+            text-transform: uppercase;
+            color: var(--legal-link);
+        }
+        .legal-eyebrow::before {
+            content: "";
+            width: 1.5rem;
+            height: 2px;
+            border-radius: 2px;
+            background: var(--gradient);
+        }
+        .legal-hero h1 {
+            font-size: clamp(2rem, 5.4vw, 3rem);
+            font-weight: 800;
+            letter-spacing: -0.045em;
+            line-height: 1.06;
+            color: var(--text);
+        }
+        .legal-lede {
+            max-width: 54ch;
+            margin-top: 0.9rem;
+            font-size: clamp(0.98rem, 2.2vw, 1.1rem);
+            line-height: 1.65;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        .legal-updated {
+            display: inline-flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.3rem 0.45rem;
+            margin-top: 1.3rem;
+            padding: 0.38rem 0.8rem;
+            border: 1px solid var(--border);
+            border-radius: 999px;
+            background: var(--bg-card);
+            font-family: var(--font-mono);
+            font-size: 0.66rem;
+            letter-spacing: 0.04em;
+            color: var(--text-muted);
+        }
+        .legal-updated span {
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+            color: var(--text);
+        }
+
+        .legal-body { max-width: 70ch; }
+        .legal-body > section { scroll-margin-top: 6rem; }
+        .legal-body > section + section {
+            margin-top: 2.2rem;
+            padding-top: 2.2rem;
+            border-top: 1px solid var(--border);
+        }
+        .legal-body h2 {
+            display: flex;
+            align-items: baseline;
+            gap: 0.6rem;
+            font-size: clamp(1.12rem, 2.4vw, 1.3rem);
+            font-weight: 700;
+            letter-spacing: -0.02em;
+            line-height: 1.25;
+            color: var(--text);
+        }
+        .legal-num {
+            flex: 0 0 auto;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            font-weight: 700;
+            letter-spacing: 0.04em;
+            color: var(--legal-link);
+        }
+        .legal-body h2 + * { margin-top: 0.9rem; }
+        .legal-body p,
+        .legal-body li,
+        .legal-body dd {
+            font-size: 0.955rem;
+            line-height: 1.72;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        .legal-body p + p { margin-top: 0.8rem; }
+        .legal-body a {
+            color: var(--legal-link);
+            text-decoration: underline;
+            text-decoration-thickness: 1px;
+            text-underline-offset: 2.5px;
+        }
+        .legal-body a:hover { text-decoration-thickness: 2px; }
+        .legal-body strong { font-weight: 700; }
+        .legal-body ul,
+        .legal-body ol {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin-top: 0.9rem;
+            list-style: none;
+        }
+        .legal-body ul li { position: relative; padding-left: 1.1rem; }
+        .legal-body ul li::before {
+            content: "";
+            position: absolute;
+            left: 0;
+            top: 0.66em;
+            width: 5px;
+            height: 5px;
+            border-radius: 50%;
+            background: var(--legal-link);
+        }
+        .legal-body code {
+            padding: 0.08em 0.35em;
+            border: 1px solid var(--border);
+            border-radius: 4px;
+            background: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 0.84em;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+
+        .legal-facts {
+            margin-top: 1rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-sm);
+            background: var(--bg-card);
+            overflow: hidden;
+        }
+        .legal-facts > div {
+            display: grid;
+            grid-template-columns: minmax(7rem, 30%) minmax(0, 1fr);
+            gap: 0.35rem 1rem;
+            padding: 0.7rem 0.95rem;
+        }
+        .legal-facts > div + div { border-top: 1px solid var(--border); }
+        .legal-facts dt {
+            padding-top: 0.18rem;
+            font-family: var(--font-mono);
+            font-size: 0.62rem;
+            font-weight: 700;
+            letter-spacing: 0.1em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .legal-facts dd {
+            margin: 0;
+            font-size: 0.9rem;
+            line-height: 1.5;
+            color: var(--text);
+            overflow-wrap: anywhere;
+        }
+        @media (max-width: 480px) {
+            .legal-facts > div { grid-template-columns: 1fr; gap: 0.15rem; }
+        }
+
+        /* ── Page-specific: deletion instructions ── */
+        .legal-body.delete-body { max-width: none; }
+        .delete-body > section > p,
+        .delete-body > section > ul { max-width: 70ch; }
+
+        .delete-alert {
+            display: flex;
+            align-items: flex-start;
+            gap: 0.85rem;
+            max-width: 70ch;
+            margin-bottom: clamp(2rem, 4vw, 2.75rem);
+            padding: 1rem 1.15rem;
+            border: 1px solid var(--primary);
+            border-radius: var(--radius-md);
+            background: var(--primary-glow);
+        }
+        .delete-alert__icon {
+            display: grid;
+            place-items: center;
+            flex: 0 0 auto;
+            width: 2.1rem;
+            height: 2.1rem;
+            border-radius: 50%;
+            background: var(--primary);
+            color: #fff;
+        }
+        .delete-alert p { font-size: 0.92rem; line-height: 1.6; color: var(--text); }
+        .delete-alert p + p { margin-top: 0.4rem; }
+
+        .delete-steps {
+            display: grid;
+            grid-template-columns: repeat(3, minmax(0, 1fr));
+            gap: 0.85rem;
+            margin-top: 1.1rem;
+        }
+        @media (max-width: 860px) { .delete-steps { grid-template-columns: 1fr; } }
+        .delete-step {
+            display: flex;
+            flex-direction: column;
+            padding: 1.1rem 1.15rem 1.2rem;
+            border: 1px solid var(--border);
+            border-radius: var(--radius-md);
+            background: var(--bg-card);
+            box-shadow: var(--elevation-sm);
+        }
+        .delete-step__label {
+            align-self: flex-start;
+            margin-bottom: 0.65rem;
+            padding: 0.22rem 0.55rem;
+            border-radius: 999px;
+            background: var(--primary-glow);
+            color: var(--legal-link);
+            font-family: var(--font-mono);
+            font-size: 0.58rem;
+            font-weight: 700;
+            letter-spacing: 0.12em;
+            text-transform: uppercase;
+        }
+        .delete-step h3 {
+            margin-bottom: 0.55rem;
+            font-size: 0.98rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .delete-step ol {
+            display: flex;
+            flex-direction: column;
+            gap: 0.5rem;
+            margin: 0 0 0.6rem;
+            list-style: none;
+            counter-reset: delete-step;
+        }
+        .delete-step ol li {
+            position: relative;
+            padding-left: 1.55rem;
+            font-size: 0.86rem;
+            line-height: 1.55;
+            color: var(--text);
+        }
+        .delete-step ol li::before {
+            counter-increment: delete-step;
+            content: counter(delete-step);
+            position: absolute;
+            left: 0;
+            top: 0.12em;
+            display: grid;
+            place-items: center;
+            width: 1.1rem;
+            height: 1.1rem;
+            border: 1px solid var(--border);
+            border-radius: 50%;
+            background: var(--bg);
+            font-family: var(--font-mono);
+            font-size: 0.56rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .delete-step__note {
+            margin-top: auto;
+            font-size: 0.78rem;
+            line-height: 1.5;
+            color: var(--text-muted);
+        }
+        .delete-step__note a { color: var(--legal-link); }
+        .delete-mail {
+            display: inline-flex;
+            align-items: center;
+            justify-content: center;
+            align-self: flex-start;
+            margin-top: 0.2rem;
+            padding: 0.55rem 0.9rem;
+            border-radius: 999px;
+            background: var(--primary);
+            color: #fff !important;
+            font-size: 0.8rem;
+            font-weight: 700;
+            line-height: 1.35;
+            text-decoration: none !important;
+            text-align: center;
+            overflow-wrap: anywhere;
+            transition: background 0.18s;
+        }
+        .delete-mail:hover { background: var(--primary-dark); }
+
+        .delete-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+            gap: 0.7rem;
+            margin-top: 1rem;
+        }
+        .delete-item {
+            padding: 0.9rem 1rem;
+            border: 1px solid var(--border);
+            border-left: 3px solid var(--primary);
+            border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+            background: var(--bg-card);
+        }
+        .delete-item--remain { border-left-color: var(--text-muted); }
+        .delete-item h3 {
+            margin-bottom: 0.3rem;
+            font-size: 0.84rem;
+            font-weight: 700;
+            color: var(--text);
+        }
+        .delete-item p { font-size: 0.85rem; line-height: 1.6; color: var(--text); }
+
+        .legal-footer {
+            flex-shrink: 0;
+            margin-top: 2rem;
+            padding-block: 2rem 2.5rem;
+        }
+        .legal-footer__inner {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 0.9rem 1.5rem;
+        }
+        .legal-footer__brand {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.45rem 0.6rem;
+            font-family: var(--font-mono);
+            font-size: 0.6rem;
+            font-weight: 600;
+            letter-spacing: 0.13em;
+            text-transform: uppercase;
+            color: var(--text-muted);
+        }
+        .legal-footer__brand strong { color: var(--text); font-weight: 800; letter-spacing: 0.1em; }
+        .legal-footer nav {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            gap: 0.35rem 1rem;
+        }
+        .legal-footer nav a {
+            color: var(--text-muted);
+            font-size: 0.74rem;
+            font-weight: 600;
+            text-decoration: none;
+        }
+        .legal-footer nav a:hover { color: var(--text); text-decoration: underline; text-underline-offset: 3px; }
+        .legal-footer .legal-footer__home { color: var(--text); }
+
+        @media (max-width: 480px) {
+            .legal-shell { width: calc(100% - 2rem); }
+        }
+        @media (prefers-reduced-motion: reduce) {
+            *, *::before, *::after { animation: none !important; transition: none !important; scroll-behavior: auto !important; }
+        }
+        @media print {
+            body.legal-page { background: #fff; }
+            .skip-link, .legal-header nav, .legal-footer nav { display: none; }
+            .legal-body { max-width: none; }
+            .delete-mail { background: #000; }
+            .legal-body a { color: #000; }
+            .legal-updated { border-color: #ccc; }
+        }
+    </style>
+</head>
+<body class="legal-page">
+    <a class="skip-link" href="#main">Skip to content</a>
+
+    <header class="legal-header">
+        <div class="legal-shell legal-header__inner">
+            <a class="legal-brand" href="/">
+                <img src="/static/logo.svg" alt="" width="36" height="36">
+                <span class="legal-brand__name">TRACES</span>
+                <span class="legal-brand__tag">Your Year in Review</span>
+            </a>
+            <nav class="legal-nav" aria-label="Legal">
+                <a href="/privacy">Privacy</a>
+                <a href="/terms">Terms</a>
+                <a href="/account/delete" aria-current="page">Delete account</a>
+            </nav>
+        </div>
+    </header>
+
+    <main id="main" class="legal-shell legal-main" tabindex="-1">
+        <div class="legal-hero">
+            <p class="legal-eyebrow">Account &middot; Data deletion</p>
+            <h1>Delete your TRACES account</h1>
+            <p class="legal-lede">You can delete your account and the memories stored with it at any time. This page explains how to do it, what is removed, and what may remain.</p>
+            <p class="legal-updated"><span>Last updated:</span> <time datetime="2026-11">November 2026</time></p>
+        </div>
+
+        <div class="delete-alert" role="note">
+            <span class="delete-alert__icon" aria-hidden="true">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round">
+                    <path d="M12 7v6"></path>
+                    <path d="M12 17h.01"></path>
+                </svg>
+            </span>
+            <div>
+                <p><strong>Deletion is permanent.</strong> Once your account is deleted, your memories and uploaded media cannot be recovered from the live service.</p>
+                <p>There is no form on this page. Use one of the three routes below.</p>
+            </div>
+        </div>
+
+        <article class="legal-body delete-body">
+            <section id="how-to-delete" aria-labelledby="how-title">
+                <h2 id="how-title"><span class="legal-num" aria-hidden="true">01</span> How to delete your account</h2>
+                <p>Choose the route that works for you. The Android app and the website use the same account, so deleting in either place deletes the same data.</p>
+
+                <div class="delete-steps">
+                    <div class="delete-step">
+                        <span class="delete-step__label">Android app</span>
+                        <h3>In the TRACES app</h3>
+                        <ol>
+                            <li>Open TRACES and sign in.</li>
+                            <li>Go to <strong>Settings &rarr; Account</strong>.</li>
+                            <li>Choose <strong>Delete account</strong>.</li>
+                            <li>Type <code>DELETE</code> to confirm.</li>
+                        </ol>
+                        <p class="delete-step__note">If you cannot find Settings, update the app to the latest version from Google Play.</p>
+                    </div>
+
+                    <div class="delete-step">
+                        <span class="delete-step__label">Web browser</span>
+                        <h3>On this website</h3>
+                        <ol>
+                            <li><a href="/login.html">Sign in</a> to your account.</li>
+                            <li>Open <strong>Settings &rarr; Account</strong>.</li>
+                            <li>Choose <strong>Delete account</strong>.</li>
+                            <li>Type <code>DELETE</code> to confirm.</li>
+                        </ol>
+                        <p class="delete-step__note">You must be signed in to delete from the web. If you cannot sign in, use email instead.</p>
+                    </div>
+
+                    <div class="delete-step">
+                        <span class="delete-step__label">Email fallback</span>
+                        <h3>If you cannot sign in</h3>
+                        <p>Email the operator with the subject <strong>&ldquo;Account deletion request&rdquo;</strong>. Write from the email address linked to your account if you have one, and include your username.</p>
+                        <p class="delete-step__note">The operator may ask for enough information to confirm that the account is yours before deleting it.</p>
+                        <a class="delete-mail" href="mailto:{{LEGAL_CONTROLLER_EMAIL}}?subject=Account%20deletion%20request">Email {{LEGAL_CONTROLLER_EMAIL}}</a>
+                    </div>
+                </div>
+            </section>
+
+            <section id="what-is-deleted" aria-labelledby="deleted-title">
+                <h2 id="deleted-title"><span class="legal-num" aria-hidden="true">02</span> What is deleted</h2>
+                <p>When an account is deleted, these are removed from the live service:</p>
+                <div class="delete-grid">
+                    <div class="delete-item">
+                        <h3>Profile</h3>
+                        <p>Your username, display name, email address, and password hash or OIDC sign-in link.</p>
+                    </div>
+                    <div class="delete-item">
+                        <h3>Memories</h3>
+                        <p>Titles, descriptions, dates, places, GPS coordinates, tags, and the people links attached to your events.</p>
+                    </div>
+                    <div class="delete-item">
+                        <h3>Uploaded media</h3>
+                        <p>Photos, video, and audio files you uploaded for your memories.</p>
+                    </div>
+                    <div class="delete-item">
+                        <h3>Sessions</h3>
+                        <p>All active sessions end, so anyone signed in as you loses access to the account.</p>
+                    </div>
+                </div>
+            </section>
+
+            <section id="what-remains" aria-labelledby="remains-title">
+                <h2 id="remains-title"><span class="legal-num" aria-hidden="true">03</span> What may remain</h2>
+                <p>Deletion is not always the same as instant erasure everywhere. These limited copies may remain:</p>
+                <div class="delete-grid">
+                    <div class="delete-item delete-item--remain">
+                        <h3>Shared people records</h3>
+                        <p>A person you added may also be referenced by another account. The basic record, such as a name, can stay so other accounts' memories remain intact. Your own memories and media about that person are deleted.</p>
+                    </div>
+                    <div class="delete-item delete-item--remain">
+                        <h3>Rotated backups</h3>
+                        <p>Backup copies may contain your data until they expire. They are used only to restore the service after a failure, not to recreate deleted accounts.</p>
+                    </div>
+                    <div class="delete-item delete-item--remain">
+                        <h3>Technical logs</h3>
+                        <p>Logs may still contain request metadata such as an IP address and timestamps. They rotate on a schedule and are not used to rebuild your account.</p>
+                    </div>
+                    <div class="delete-item delete-item--remain">
+                        <h3>Aggregate analytics</h3>
+                        <p>If Umami analytics is enabled, aggregate page-view counts remain. They do not identify you.</p>
+                    </div>
+                </div>
+                <p>For retention periods and your other rights, see the <a href="/privacy">Privacy Policy</a>.</p>
+            </section>
+
+            <section id="contact" aria-labelledby="contact-title">
+                <h2 id="contact-title"><span class="legal-num" aria-hidden="true">04</span> Questions and operator details</h2>
+                <p>If a deletion request has not completed, or you have a question about your data, email <a href="mailto:{{LEGAL_CONTROLLER_EMAIL}}">{{LEGAL_CONTROLLER_EMAIL}}</a>. Include your username and do not send your password.</p>
+                <dl class="legal-facts">
+                    <div>
+                        <dt>Operator</dt>
+                        <dd>{{LEGAL_CONTROLLER_NAME}}</dd>
+                    </div>
+                    <div>
+                        <dt>Address</dt>
+                        <dd>{{LEGAL_CONTROLLER_ADDRESS}}</dd>
+                    </div>
+                    <div>
+                        <dt>Hosting region</dt>
+                        <dd>{{LEGAL_HOSTING_REGION}}</dd>
+                    </div>
+                    <div>
+                        <dt>Contact</dt>
+                        <dd><a href="mailto:{{LEGAL_CONTROLLER_EMAIL}}">{{LEGAL_CONTROLLER_EMAIL}}</a></dd>
+                    </div>
+                </dl>
+                <p>For more about what this server stores and the rights you have, read the <a href="/privacy">Privacy Policy</a>. For the rules of the service, read the <a href="/terms">Terms of Service</a>.</p>
+            </section>
+        </article>
+    </main>
+
+    <footer class="legal-footer">
+        <div class="legal-shell legal-footer__inner">
+            <p class="legal-footer__brand"><strong>TRACES</strong> <span aria-hidden="true">&middot;</span> Your memories, kept privately.</p>
+            <nav aria-label="Footer">
+                <a class="legal-footer__home" href="/">Back to TRACES</a>
+                <a href="/privacy">Privacy</a>
+                <a href="/terms">Terms</a>
+                <a href="/account/delete">Delete your account</a>
+            </nav>
+        </div>
+    </footer>
+</body>
+</html>
