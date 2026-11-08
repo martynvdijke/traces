@@ -1,3 +1,10 @@
+# [2.6.0](https://github.com/martynvdijke/traces/compare/v2.5.0...v2.6.0) (2026-11-08)
+
+
+### Features
+
+* **branding:** use the TRACES icon SVG on web and Android ([fb25243](https://github.com/martynvdijke/traces/commit/fb25243d2b765cbc457940515e5dec4ff07babc9))
+
 # [2.5.0](https://github.com/martynvdijke/traces/compare/v2.4.0...v2.5.0) (2026-11-08)
 
 
