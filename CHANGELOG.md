@@ -1,3 +1,12 @@
+# [2.5.0](https://github.com/martynvdijke/traces/compare/v2.4.0...v2.5.0) (2026-11-08)
+
+
+### Features
+
+* add GDPR/Play Store compliance, multi-person events and schema repair ([cc48593](https://github.com/martynvdijke/traces/commit/cc48593cf1e5ae53406c9fd0a5b91f889120699a))
+* **mobile:** settings, account deletion and enhanced capture ([8610ba7](https://github.com/martynvdijke/traces/commit/8610ba7c148219a57c74b64a5526db8308e91a52))
+* **web:** legal pages, account deletion and privacy controls ([7fc9a88](https://github.com/martynvdijke/traces/commit/7fc9a88bafcb4ba06912b1f06aa566cca339048a))
+
 # [2.4.0](https://github.com/martynvdijke/traces/compare/v2.3.5...v2.4.0) (2026-11-08)
 
 
