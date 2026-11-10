@@ -250,7 +250,7 @@ type LocationCount struct {
 const (
 	DefaultColor         = "#7c3aed"
 	CurrentSchemaVersion = 26
-	CurrentVersion       = "2.6.2"
+	CurrentVersion       = "2.6.3"
 )
 
 // Helper functions
