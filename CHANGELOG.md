@@ -1,3 +1,10 @@
+# [2.7.0](https://github.com/martynvdijke/traces/compare/v2.6.4...v2.7.0) (2026-11-12)
+
+
+### Features
+
+* add time capsule events with scheduled reveal ([7a98ab8](https://github.com/martynvdijke/traces/commit/7a98ab87f88973b85636ac91a29d76bdaffca063))
+
 ## [2.6.4](https://github.com/martynvdijke/traces/compare/v2.6.3...v2.6.4) (2026-11-10)
 
 ## [2.6.3](https://github.com/martynvdijke/traces/compare/v2.6.2...v2.6.3) (2026-11-10)
