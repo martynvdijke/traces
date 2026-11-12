@@ -1,3 +1,10 @@
+## [2.7.1](https://github.com/martynvdijke/traces/compare/v2.7.0...v2.7.1) (2026-11-12)
+
+
+### Bug Fixes
+
+* **deps:** update all non-major dependencies ([#129](https://github.com/martynvdijke/traces/issues/129)) ([6b84343](https://github.com/martynvdijke/traces/commit/6b84343675be48c6e9a025b9138214e06da76081))
+
 # [2.7.0](https://github.com/martynvdijke/traces/compare/v2.6.4...v2.7.0) (2026-11-12)
 
 
