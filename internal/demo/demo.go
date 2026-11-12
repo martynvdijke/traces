@@ -17,6 +17,8 @@ import (
 	"strings"
 
 	"golang.org/x/crypto/bcrypt"
+
+	"traces/internal/models"
 )
 
 // Config describes the demo reviewer account.
@@ -152,7 +154,7 @@ func Ensure(db *sql.DB, cfg Config, logf func(string, ...any)) error {
 // accumulating across restarts.
 func seedDemoContent(db *sql.DB, userID int64, logf func(string, ...any)) error {
 	var count int
-	if err := db.QueryRow(`SELECT COUNT(*) FROM timeline_events WHERE user_id = ?`, userID).Scan(&count); err != nil {
+	if err := db.QueryRow(`SELECT COUNT(*) FROM timeline_events WHERE user_id = ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL(""), userID).Scan(&count); err != nil {
 		return fmt.Errorf("count demo events: %w", err)
 	}
 	if count > 0 {

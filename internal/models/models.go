@@ -41,6 +41,8 @@ type TimelineEvent struct {
 	UserID       int      `json:"user_id"`
 	User         *User    `json:"user,omitempty"`
 	DeletedAt    string   `json:"deleted_at"`
+	RevealAt     string   `json:"reveal_at"`
+	RevealedAt   string   `json:"revealed_at"`
 	Source       string   `json:"source"`
 	SourceRef    string   `json:"source_ref"`
 }
@@ -249,7 +251,7 @@ type LocationCount struct {
 // Constants
 const (
 	DefaultColor         = "#7c3aed"
-	CurrentSchemaVersion = 26
+	CurrentSchemaVersion = 27
 	CurrentVersion       = "2.6.4"
 )
 

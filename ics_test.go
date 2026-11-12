@@ -28,7 +28,9 @@ func TestICalendarExport(t *testing.T) {
 		weather_data TEXT DEFAULT '',
 		event_start_time TEXT DEFAULT '',
 		event_end_time TEXT DEFAULT '',
-		user_id INTEGER DEFAULT 0
+		user_id INTEGER DEFAULT 0,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	db.Exec("INSERT INTO timeline_events (title, description, event_date, location, media_type, latitude, longitude, recurring, event_start_time, event_end_time) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",

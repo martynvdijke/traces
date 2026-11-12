@@ -39,6 +39,8 @@ func TestEventCRUD(t *testing.T) {
 		is_public INTEGER DEFAULT 0,
 		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL
@@ -145,6 +147,8 @@ func TestCalendarQuery(t *testing.T) {
 		is_public INTEGER DEFAULT 0,
 		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
@@ -227,6 +231,8 @@ func TestRecurringEvents(t *testing.T) {
 		is_public INTEGER DEFAULT 0,
 		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
@@ -274,7 +280,9 @@ func TestMarkdownInDescription(t *testing.T) {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT,
 		description TEXT,
-		event_date TEXT
+		event_date TEXT,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	t.Run("render_markdown_go", func(t *testing.T) {
@@ -348,7 +356,9 @@ func TestEventCreationWithWeatherData(t *testing.T) {
 		recurring TEXT,
 		weather_data TEXT,
 		user_id INTEGER DEFAULT 0,
-		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	weatherJSON := `{"temperature":22.5,"condition":"Partly cloudy","icon":"cloud-sun","humidity":65,"wind_speed":12.3,"fetched_at":"2026-05-06T10:00:00Z"}`
@@ -435,7 +445,9 @@ func TestEventCreationWithoutThumbnail(t *testing.T) {
 		recurring TEXT,
 		weather_data TEXT,
 		user_id INTEGER DEFAULT 0,
-		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	t.Run("insert_without_thumbnail_column", func(t *testing.T) {
@@ -487,6 +499,8 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 		is_public INTEGER DEFAULT 0,
 		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,
@@ -511,7 +525,7 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			"Null Thumbnail Event", "Testing NULL thumbnail scan", "2026-03-15", "Test", "image", "/media/test.jpg", "", "test", 0, 1)
 
-		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
+		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time, e.reveal_at, e.revealed_at,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1 ORDER BY e.event_date ASC`)
 		if err != nil {
@@ -546,7 +560,7 @@ func TestScanEventsWithPersonNullThumbnail(t *testing.T) {
 			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			"Null Thumbnail", "Has NULL thumbnail", "2026-06-20", "Loc2", "image", "/media/b.jpg", "", "tag2", 1)
 
-		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
+		rows, err := db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time, e.reveal_at, e.revealed_at,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE 1=1 ORDER BY e.event_date ASC`)
 		if err != nil {
@@ -616,6 +630,8 @@ func TestSaveAndGetEventsRoundtrip(t *testing.T) {
 		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0,
 		deleted_at TEXT DEFAULT '',
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		source TEXT DEFAULT '',
 		source_ref TEXT DEFAULT ''
 	)`)
@@ -788,6 +804,8 @@ func TestGetPublicEvents(t *testing.T) {
 		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0,
 		deleted_at TEXT DEFAULT '',
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		source TEXT DEFAULT '',
 		source_ref TEXT DEFAULT ''
 	)`)
@@ -901,6 +919,8 @@ func TestEventDuration(t *testing.T) {
 		is_public INTEGER DEFAULT 0,
 		is_favorite INTEGER DEFAULT 0,
 		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		person_id INTEGER,
 		latitude REAL,
 		longitude REAL,

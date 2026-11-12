@@ -287,7 +287,7 @@ func (s *Service) BuildAccountExport(userID int64) (*AccountExport, error) {
 		COALESCE(is_favorite,0), COALESCE(created_at,''), person_id, latitude, longitude,
 		COALESCE(recurring,''), COALESCE(weather_data,''), COALESCE(user_id,0),
 		COALESCE(event_start_time,''), COALESCE(event_end_time,''), COALESCE(deleted_at,'')
-		FROM timeline_events WHERE user_id = ? ORDER BY event_date ASC, id ASC`, userID)
+		FROM timeline_events WHERE user_id = ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("")+` ORDER BY event_date ASC, id ASC`, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -326,7 +326,7 @@ func (s *Service) BuildAccountExport(userID int64) (*AccountExport, error) {
 	personRows, err := s.db.Query(`SELECT DISTINCT p.id, p.name, COALESCE(p.avatar_url,''), COALESCE(p.bio,''),
 		COALESCE(p.birth_date,''), COALESCE(p.color,''), COALESCE(p.created_at,'')
 		FROM persons p JOIN timeline_events e ON e.person_id = p.id
-		WHERE e.user_id = ? ORDER BY p.name ASC`, userID)
+		WHERE e.user_id = ? AND (COALESCE(e.deleted_at,'') = '')`+models.RevealVisibleSQL("e")+` ORDER BY p.name ASC`, userID)
 	if err != nil {
 		return nil, err
 	}

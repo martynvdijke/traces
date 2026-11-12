@@ -55,6 +55,8 @@ func TestRecycleBin(t *testing.T) {
 		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0,
 		deleted_at TEXT DEFAULT '',
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		source TEXT DEFAULT '',
 		source_ref TEXT DEFAULT ''
 	)`)

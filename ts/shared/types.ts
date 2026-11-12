@@ -35,6 +35,10 @@ export interface TimelineEvent {
   start_time: string;
   end_time: string;
   user_id: number;
+  /** UTC RFC3339 reveal moment for a sealed time capsule; empty when unsealed. */
+  reveal_at?: string;
+  /** When a capsule actually opened; empty while it is still sealed. */
+  revealed_at?: string;
   /** Primary person object (legacy). */
   person?: Person;
   /** All linked people. */

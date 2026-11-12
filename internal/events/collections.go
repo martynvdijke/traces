@@ -89,7 +89,7 @@ func (s *Service) GetCollectionEvents(c *gin.Context) {
 		FROM timeline_events e
 		LEFT JOIN persons p ON e.person_id = p.id
 		INNER JOIN collection_events ce ON ce.event_id = e.id
-		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND ce.collection_id = ?
+		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND ce.collection_id = ?` + models.RevealVisibleSQL("e") + `
 		ORDER BY e.event_date ASC`
 	rows, err := s.DB.Query(query, id)
 	if err != nil {

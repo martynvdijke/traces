@@ -150,6 +150,7 @@ async function loadEvents(): Promise<void> {
     filteredEvents = [...events];
     renderEventList();
     updateCollectionEventSelect();
+    loadCapsuleNote();
   } catch (e) { console.error('Failed to load events', e); }
 }
 
@@ -230,7 +231,7 @@ function renderEventList(): void {
     return `<tr class="animate-in ${e.is_favorite ? 'table-active' : ''}">
       <td class="ps-3 text-center"><input type="checkbox" class="event-select-cb" value="${e.id}" onchange="updateBatchButton()"></td>
       <td class="ps-1 fw-bold font-monospace" style="font-size:0.85rem">${e.date}</td>
-      <td><span class="fw-medium">${escapeHtml(e.title)}</span>${attribution ? '<div class="text-muted small">' + attribution + '</div>' : ''}</td>
+      <td><div class="event-title-wrap"><span class="fw-medium event-title-text">${escapeHtml(e.title)}</span>${capsuleBadgeHtml(e)}</div>${attribution ? '<div class="text-muted small">' + attribution + '</div>' : ''}</td>
       <td>${e.location ? '<i class="fa-solid fa-location-dot me-1 text-muted" style="font-size:0.7rem"></i>' + escapeHtml(e.location) : '<span class="text-muted">—</span>'}</td>
       <td>${peopleHtml}</td>
       <td>${e.media_url ? '<span class="media-type-badge ' + e.media_type + '"><i class="' + getMediaIcon(e.media_type) + ' me-1"></i>' + e.media_type + '</span>' : '<span class="text-muted">—</span>'}</td>
@@ -241,6 +242,35 @@ function renderEventList(): void {
       </td>
     </tr>`;
   }).join('');
+}
+
+/** Sealed capsules also say when they open; opened ones keep a quiet marker. */
+function capsuleBadgeHtml(event: any): string {
+  const revealAt = event && typeof event.reveal_at === 'string' ? event.reveal_at : '';
+  const revealedAt = event && typeof event.revealed_at === 'string' ? event.revealed_at : '';
+  const revealDate = revealAt ? new Date(revealAt) : null;
+
+  if (revealDate && !isNaN(revealDate.getTime()) && revealDate.getTime() > Date.now()) {
+    return '<span class="capsule-badge capsule-badge-sealed" title="Hidden until ' + escapeHtml(formatSealDateTime(revealDate)) + '">' +
+      '<i class="fa-solid fa-lock" aria-hidden="true"></i>sealed until ' + escapeHtml(formatSealDay(revealDate)) + '</span>';
+  }
+
+  if (revealedAt) {
+    const openedDate = new Date(revealedAt);
+    const title = isNaN(openedDate.getTime()) ? 'This capsule has opened' : 'Opened ' + formatSealDateTime(openedDate);
+    return '<span class="capsule-badge capsule-badge-opened" title="' + escapeHtml(title) + '">' +
+      '<i class="fa-regular fa-hourglass-half" aria-hidden="true"></i>time capsule</span>';
+  }
+
+  return '';
+}
+
+function formatSealDay(date: Date): string {
+  return date.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+}
+
+function formatSealDateTime(date: Date): string {
+  return date.toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 function renderPersonList(): void {
@@ -615,6 +645,104 @@ function renderMilestoneCard(ev: any): string {
   `;
 }
 
+// ── Time capsule sealing (admin form) ──
+
+const sealNoteDefault = 'Hidden until the reveal date. Sealed events are always private.';
+
+const saveErrorCopy: Record<string, string> = {
+  'reveal_at must be in the future': 'The reveal date must be in the future.',
+  'reveal_at must be an RFC3339 timestamp': 'That reveal date could not be read. Pick it again.'
+};
+
+/** Turn a stored UTC timestamp into the local value a datetime-local input wants. */
+function localDateTimeValue(isoValue: string): string {
+  const date = new Date(isoValue);
+  if (isNaN(date.getTime())) return '';
+  const pad = (n: number): string => String(n).padStart(2, '0');
+  return date.getFullYear() + '-' + pad(date.getMonth() + 1) + '-' + pad(date.getDate()) +
+    'T' + pad(date.getHours()) + ':' + pad(date.getMinutes());
+}
+
+/** Turn a local datetime-local value into the UTC RFC3339 string the API expects. */
+function revealAtFromLocal(value: string): string {
+  const date = new Date(value);
+  if (isNaN(date.getTime())) return '';
+  return date.toISOString().slice(0, 19) + 'Z';
+}
+
+function setSealFields(enabled: boolean): void {
+  const toggle = document.getElementById('event-seal') as HTMLInputElement | null;
+  const fields = document.getElementById('event-seal-fields');
+  if (toggle) toggle.checked = enabled;
+  if (fields) fields.style.display = enabled ? '' : 'none';
+}
+
+function toggleSealFields(): void {
+  const toggle = document.getElementById('event-seal') as HTMLInputElement | null;
+  const enabled = !!(toggle && toggle.checked);
+  setSealFields(enabled);
+  if (!enabled) return;
+  // A capsule usually looks a year ahead; start there and let it be changed.
+  const input = document.getElementById('event-seal-at') as HTMLInputElement | null;
+  if (input && !input.value) {
+    const next = new Date();
+    next.setFullYear(next.getFullYear() + 1);
+    next.setHours(9, 0, 0, 0);
+    input.value = localDateTimeValue(next.toISOString());
+  }
+}
+
+function resetSealFields(): void {
+  setSealFields(false);
+  const input = document.getElementById('event-seal-at') as HTMLInputElement | null;
+  if (input) input.value = '';
+  const note = document.getElementById('event-seal-note');
+  if (note) note.textContent = sealNoteDefault;
+}
+
+function showEventFormError(message: string): void {
+  const el = document.getElementById('event-form-error');
+  if (!el) return;
+  el.textContent = message;
+  el.style.display = '';
+  el.scrollIntoView({ block: 'nearest' });
+}
+
+function hideEventFormError(): void {
+  const el = document.getElementById('event-form-error');
+  if (el) {
+    el.textContent = '';
+    el.style.display = 'none';
+  }
+  markFieldInvalid(document.getElementById('event-title'), false);
+  markFieldInvalid(document.getElementById('event-seal-at'), false);
+}
+
+function markFieldInvalid(el: HTMLElement | null, invalid: boolean): void {
+  if (el) el.classList.toggle('is-invalid', invalid);
+}
+
+/** Tell the admin how many sealed capsules this list cannot show. */
+async function loadCapsuleNote(): Promise<void> {
+  const note = document.getElementById('admin-capsules-note');
+  if (!note) return;
+  try {
+    const res = await fetch('/api/capsules');
+    if (!res.ok) { note.style.display = 'none'; return; }
+    const data = await res.json() as { total?: number };
+    const total = typeof data.total === 'number' ? data.total : 0;
+    if (total <= 0) { note.style.display = 'none'; note.innerHTML = ''; return; }
+    const plural = total !== 1;
+    note.innerHTML = '<i class="fa-solid fa-lock" aria-hidden="true"></i>' +
+      '<span>' + total + ' sealed ' + (plural ? 'capsules are' : 'capsule is') +
+      ' hidden from this list until ' + (plural ? 'they open' : 'it opens') +
+      '. ' + (plural ? 'They show' : 'It shows') + ' up in the Capsules tab on the timeline page.</span>';
+    note.style.display = 'flex';
+  } catch (_) {
+    note.style.display = 'none';
+  }
+}
+
 function openEventModal(event?: any): void {
   if (!locationMap) initLocationMap();
   (document.getElementById('event-form') as HTMLFormElement).reset();
@@ -624,6 +752,8 @@ function openEventModal(event?: any): void {
   renderTags();
   clearEventMedia();
   setEventPeople([]);
+  resetSealFields();
+  hideEventFormError();
 
   if (event) {
     document.getElementById('eventModalLabel')!.textContent = 'Edit Event';
@@ -680,6 +810,26 @@ function openEventModal(event?: any): void {
     }
     if (event.latitude && event.longitude) setMapMarker(event.latitude, event.longitude);
     else { if (locationMarker) locationMap.removeLayer(locationMarker); locationMarker = null; locationMap.setView([40.7128, -74.0060], 5); }
+
+    const revealAt = typeof event.reveal_at === 'string' ? event.reveal_at : '';
+    const revealedAt = typeof event.revealed_at === 'string' ? event.revealed_at : '';
+    if (revealAt) {
+      const revealDate = new Date(revealAt);
+      if (!isNaN(revealDate.getTime()) && revealDate.getTime() > Date.now()) {
+        setSealFields(true);
+        const sealInput = document.getElementById('event-seal-at') as HTMLInputElement | null;
+        if (sealInput) sealInput.value = localDateTimeValue(revealAt);
+      } else if (!isNaN(revealDate.getTime())) {
+        const note = document.getElementById('event-seal-note');
+        if (note) note.textContent = 'This capsule opened on ' + formatSealDateTime(revealDate) + '. Saving keeps the event visible.';
+      }
+    } else if (revealedAt) {
+      const openedDate = new Date(revealedAt);
+      if (!isNaN(openedDate.getTime())) {
+        const note = document.getElementById('event-seal-note');
+        if (note) note.textContent = 'This capsule opened on ' + formatSealDateTime(openedDate) + '. Saving keeps the event visible.';
+      }
+    }
   } else {
     if (locationMarker && locationMap) locationMap.removeLayer(locationMarker);
     locationMarker = null;
@@ -705,8 +855,41 @@ async function deleteEvent(id: number): Promise<void> {
 document.getElementById('event-form')!.addEventListener('submit', async (e) => {
   e.preventDefault();
   await ensureCSRF();
-  const title = (document.getElementById('event-title') as HTMLInputElement).value.trim();
-  if (!title) { alert('Title is required'); return; }
+  hideEventFormError();
+  const titleInput = document.getElementById('event-title') as HTMLInputElement | null;
+  const title = (titleInput?.value || '').trim();
+  if (!title) {
+    markFieldInvalid(titleInput, true);
+    showEventFormError('Title is required.');
+    if (titleInput) titleInput.focus();
+    return;
+  }
+
+  const sealToggle = document.getElementById('event-seal') as HTMLInputElement | null;
+  const sealInput = document.getElementById('event-seal-at') as HTMLInputElement | null;
+  const revealError = (message: string): void => {
+    markFieldInvalid(sealInput, true);
+    showEventFormError(message);
+    if (sealInput) sealInput.focus();
+  };
+  let revealAt = '';
+  if (sealToggle && sealToggle.checked) {
+    const localValue = sealInput ? sealInput.value : '';
+    if (!localValue) {
+      revealError('Pick the date and time when this capsule should open.');
+      return;
+    }
+    revealAt = revealAtFromLocal(localValue);
+    if (!revealAt) {
+      revealError('That reveal date could not be read. Pick it again.');
+      return;
+    }
+    if (new Date(revealAt).getTime() <= Date.now()) {
+      revealError('The reveal date must be in the future.');
+      return;
+    }
+  }
+
   const weatherEl = document.getElementById('weather-display')!;
   const weatherData = (weatherEl as any).dataset.weather || '';
   const personIds = selectedEventPersonIds.slice();
@@ -727,7 +910,8 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
     longitude: parseFloat((document.getElementById('event-longitude') as HTMLInputElement).value) || null,
     recurring: (document.getElementById('event-recurring') as HTMLSelectElement).value,
     user_id: parseInt((document.getElementById('event-user') as HTMLSelectElement).value) || 0,
-    weather_data: weatherData
+    weather_data: weatherData,
+    reveal_at: revealAt
   };
   const res = await fetch('/api/events', {
     method: 'POST',
@@ -735,14 +919,23 @@ document.getElementById('event-form')!.addEventListener('submit', async (e) => {
     body: JSON.stringify(data)
   });
   if (res.ok) {
+    hideEventFormError();
     eventModal.hide();
     if (viewingPersonId) clearPersonFilter();
     await loadEvents();
   } else {
-    const err = await res.json();
-    alert('Failed to save event: ' + (err.error || ''));
+    let message = 'Could not save the event.';
+    try {
+      const err = await res.json();
+      const raw = err && err.error ? String(err.error) : '';
+      if (raw) message = saveErrorCopy[raw] || raw;
+    } catch (_) { }
+    showEventFormError(message);
   }
 });
+
+document.getElementById('event-title')?.addEventListener('input', () => markFieldInvalid(document.getElementById('event-title'), false));
+document.getElementById('event-seal-at')?.addEventListener('input', () => markFieldInvalid(document.getElementById('event-seal-at'), false));
 
 function openPersonModal(person?: any): void {
   (document.getElementById('person-form') as HTMLFormElement).reset();
@@ -2410,6 +2603,7 @@ function emptyTrash(): void {
 }
 
 (window as any).loadTrash = loadTrash;
+(window as any).toggleSealFields = toggleSealFields;
 (window as any).restoreEvent = restoreEvent;
 (window as any).permanentDelete = permanentDelete;
 (window as any).emptyTrash = emptyTrash;

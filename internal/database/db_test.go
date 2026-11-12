@@ -86,7 +86,9 @@ func TestMigrateUpgradedDBAddsPasswordHash(t *testing.T) {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT,
 		event_date TEXT,
-		media_type TEXT
+		media_type TEXT,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`); err != nil {
 		t.Fatal(err)
 	}

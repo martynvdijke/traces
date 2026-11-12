@@ -302,6 +302,8 @@ func main() {
 		auth.Use(authSvc.AuthMiddlewareGin(), authSvc.CSRFMiddleware())
 		{
 			auth.GET("/events", eventsSvc.GetEvents)
+			auth.GET("/capsules", eventsSvc.GetCapsules)
+			auth.POST("/capsules/unseal", eventsSvc.UnsealCapsule)
 			auth.GET("/events/full", eventsSvc.GetEventsFull)
 			auth.GET("/events/search", eventsSvc.SearchEvents)
 			auth.GET("/events/search/global", eventsSvc.GlobalSearchEvents)
@@ -469,6 +471,9 @@ func main() {
 	// Run until interrupted, then flush telemetry before exiting.
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
+
+	// Reveal due time capsules once a minute, catching up after downtime.
+	go eventsSvc.StartCapsuleRevealWorker(ctx)
 
 	srvErr := make(chan error, 1)
 	go func() { srvErr <- srv.ListenAndServe() }()

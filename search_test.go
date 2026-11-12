@@ -21,7 +21,9 @@ func TestFTSSearch(t *testing.T) {
 		description TEXT,
 		event_date TEXT,
 		location TEXT,
-		tags TEXT
+		tags TEXT,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	database.CreateFTS5Table(db)
@@ -210,7 +212,9 @@ func TestGlobalSearch(t *testing.T) {
 		description TEXT,
 		event_date TEXT,
 		location TEXT,
-		tags TEXT
+		tags TEXT,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -319,7 +323,9 @@ func TestSearchEventsCombinedFilters(t *testing.T) {
 		tags TEXT,
 		person_id INTEGER,
 		latitude REAL,
-		longitude REAL
+		longitude REAL,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -8,11 +8,12 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"traces/internal/httpx"
+	"traces/internal/models"
 )
 
 func (s *Service) GetTags(c *gin.Context) {
 	year := c.Query("year")
-	query := "SELECT tags FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND tags != ''"
+	query := "SELECT tags FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND tags != ''" + models.RevealVisibleSQL("")
 	args := []any{}
 	if year != "" {
 		query += " AND strftime('%Y', event_date) = ?"
@@ -62,7 +63,7 @@ func (s *Service) RenameTag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Both old_name and new_name are required"})
 		return
 	}
-	rows, err := s.DB.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.OldName+"%")
+	rows, err := s.DB.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), "%"+input.OldName+"%")
 	if err != nil {
 		httpx.ServerError(c, err)
 		return
@@ -89,7 +90,7 @@ func (s *Service) RenameTag(c *gin.Context) {
 		}
 		if changed {
 			newTags := strings.Join(newParts, ", ")
-			s.DB.Exec("UPDATE timeline_events SET tags=? WHERE id=?", newTags, id)
+			s.DB.Exec("UPDATE timeline_events SET tags=? WHERE id=?"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), newTags, id)
 			updated++
 		}
 	}
@@ -108,7 +109,7 @@ func (s *Service) DeleteTag(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Tag name is required"})
 		return
 	}
-	rows, err := s.DB.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.Name+"%")
+	rows, err := s.DB.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), "%"+input.Name+"%")
 	if err != nil {
 		httpx.ServerError(c, err)
 		return
@@ -134,7 +135,7 @@ func (s *Service) DeleteTag(c *gin.Context) {
 		}
 		if changed {
 			newTags := strings.Join(newParts, ", ")
-			s.DB.Exec("UPDATE timeline_events SET tags=? WHERE id=?", newTags, id)
+			s.DB.Exec("UPDATE timeline_events SET tags=? WHERE id=?"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), newTags, id)
 			updated++
 		}
 	}
@@ -154,7 +155,7 @@ func (s *Service) MergeTags(c *gin.Context) {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "Both source and target are required"})
 		return
 	}
-	rows, err := s.DB.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?", "%"+input.Source+"%")
+	rows, err := s.DB.Query("SELECT id, tags FROM timeline_events WHERE tags LIKE ?"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), "%"+input.Source+"%")
 	if err != nil {
 		httpx.ServerError(c, err)
 		return
@@ -183,7 +184,7 @@ func (s *Service) MergeTags(c *gin.Context) {
 		}
 		if changed {
 			newTags := strings.Join(newParts, ", ")
-			s.DB.Exec("UPDATE timeline_events SET tags=? WHERE id=?", newTags, id)
+			s.DB.Exec("UPDATE timeline_events SET tags=? WHERE id=?"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), newTags, id)
 			updated++
 		}
 	}

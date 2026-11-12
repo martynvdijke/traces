@@ -27,7 +27,9 @@ func TestMigrationFromV8ToCurrent(t *testing.T) {
 		media_type TEXT,
 		media_url TEXT,
 		thumbnail TEXT,
-		created_at TEXT DEFAULT CURRENT_TIMESTAMP
+		created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN media_caption TEXT`)
 	_, _ = db.Exec(`ALTER TABLE timeline_events ADD COLUMN tags TEXT`)

@@ -35,9 +35,9 @@ type EventFilters struct {
 
 // eventSelectColumns returns the static SELECT / JOIN portion for events.
 func eventSelectColumns() string {
-	return `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
+	return `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time, e.reveal_at, e.revealed_at,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')` + models.RevealVisibleSQL("e")
 }
 
 // BuildEventQuery builds a complete event SELECT query + args from filters.
@@ -72,9 +72,9 @@ func BuildEventQuery(filters EventFilters) (string, []any) {
 
 // BuildEventQueryPrefix builds SELECT with 1=1 for use with dynamic WHERE from FTS.
 func BuildEventQueryPrefix() string {
-	return `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
+	return `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time, e.reveal_at, e.revealed_at,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND 1=1`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND 1=1` + models.RevealVisibleSQL("e")
 }
 
 // AppendEventFilters adds WHERE clauses for each non-empty filter.
@@ -142,9 +142,10 @@ func ScanEvents(rows *sql.Rows) []models.TimelineEvent {
 		var pID sql.NullInt64
 		var pName, pAvatar, pBio, pBirth, pColor, pCreated sql.NullString
 		var thumbnail, mediaCaption, mediaURL, tags, recurring, weatherData, startTime, endTime sql.NullString
+		var revealAt, revealedAt sql.NullString
 		var isFav sql.NullBool
 
-		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &e.SortOrder, &e.IsPublic, &isFav, &e.CreatedAt, &personID, &lat, &lng, &recurring, &weatherData, &e.UserID, &startTime, &endTime,
+		err := rows.Scan(&e.ID, &e.Title, &e.Description, &e.Date, &e.Location, &e.MediaType, &mediaURL, &thumbnail, &mediaCaption, &tags, &e.SortOrder, &e.IsPublic, &isFav, &e.CreatedAt, &personID, &lat, &lng, &recurring, &weatherData, &e.UserID, &startTime, &endTime, &revealAt, &revealedAt,
 			&pID, &pName, &pAvatar, &pBio, &pBirth, &pColor, &pCreated)
 		if err != nil {
 			continue
@@ -159,6 +160,8 @@ func ScanEvents(rows *sql.Rows) []models.TimelineEvent {
 		e.WeatherData = weatherData.String
 		e.StartTime = startTime.String
 		e.EndTime = endTime.String
+		e.RevealAt = revealAt.String
+		e.RevealedAt = revealedAt.String
 
 		if personID.Valid {
 			pid := int(personID.Int64)
@@ -328,20 +331,20 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 	s.YearOverYear = make(map[string]int)
 	s.ByYear = make(map[string]int)
 
-	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&s.Total)
-	d.QueryRow("SELECT COUNT(DISTINCT location) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&s.Locations)
+	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), year).Scan(&s.Total)
+	d.QueryRow("SELECT COUNT(DISTINCT location) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), year).Scan(&s.Locations)
 	if err := d.QueryRow(`SELECT COUNT(DISTINCT ep.person_id) FROM event_people ep
 		JOIN timeline_events e ON e.id = ep.event_id
-		WHERE strftime('%Y', e.event_date) = ?`, year).Scan(&s.Persons); err != nil {
-		d.QueryRow("SELECT COUNT(DISTINCT person_id) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND person_id IS NOT NULL", year).Scan(&s.Persons)
+		WHERE strftime('%Y', e.event_date) = ? AND (COALESCE(e.deleted_at,'') = '')`+models.RevealVisibleSQL("e"), year).Scan(&s.Persons); err != nil {
+		d.QueryRow("SELECT COUNT(DISTINCT person_id) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND person_id IS NOT NULL"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), year).Scan(&s.Persons)
 	}
-	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND media_url != ''", year).Scan(&s.MediaTotal)
-	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''", year).Scan(&s.WithLocation)
-	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND latitude != 0 AND longitude != 0", year).Scan(&s.WithGeo)
+	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND media_url != ''"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), year).Scan(&s.MediaTotal)
+	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND location != ''"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), year).Scan(&s.WithLocation)
+	d.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND latitude != 0 AND longitude != 0"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), year).Scan(&s.WithGeo)
 	d.QueryRow("SELECT COUNT(*) FROM persons").Scan(&s.PersonCount)
 	s.WithMedia = s.MediaTotal
 
-	if monthRows, err := d.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%m', event_date)`, year); err == nil {
+	if monthRows, err := d.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` GROUP BY strftime('%m', event_date)`, year); err == nil {
 		for monthRows.Next() {
 			var m string
 			var c int
@@ -351,7 +354,7 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 		monthRows.Close()
 	}
 
-	if tagRows, err := d.Query(`SELECT tags, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND tags != '' GROUP BY tags`, year); err == nil {
+	if tagRows, err := d.Query(`SELECT tags, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND tags != '' AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` GROUP BY tags`, year); err == nil {
 		for tagRows.Next() {
 			var t string
 			var c int
@@ -361,7 +364,7 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 		tagRows.Close()
 	}
 
-	if mediaRows, err := d.Query(`SELECT media_type, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? GROUP BY media_type`, year); err == nil {
+	if mediaRows, err := d.Query(`SELECT media_type, COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` GROUP BY media_type`, year); err == nil {
 		for mediaRows.Next() {
 			var m string
 			var c int
@@ -371,7 +374,7 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 		mediaRows.Close()
 	}
 
-	if yoyRows, err := d.Query(`SELECT strftime('%Y', event_date), COUNT(*) FROM timeline_events WHERE 1=1 GROUP BY strftime('%Y', event_date) ORDER BY strftime('%Y', event_date) DESC LIMIT 5`); err == nil {
+	if yoyRows, err := d.Query(`SELECT strftime('%Y', event_date), COUNT(*) FROM timeline_events WHERE 1=1 AND (COALESCE(deleted_at,'') = '')` + models.RevealVisibleSQL("timeline_events") + ` GROUP BY strftime('%Y', event_date) ORDER BY strftime('%Y', event_date) DESC LIMIT 5`); err == nil {
 		for yoyRows.Next() {
 			var y string
 			var c int
@@ -389,7 +392,7 @@ func QueryYearStats(d *sql.DB, year string) models.EventStats {
 func QueryMonthlyCounts(d *sql.DB, year string) map[string]int {
 	result := make(map[string]int)
 	rows, err := d.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%m', event_date)`, year)
+		WHERE strftime('%Y', event_date) = ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` GROUP BY strftime('%m', event_date)`, year)
 	if err != nil {
 		return result
 	}
@@ -407,7 +410,7 @@ func QueryMonthlyCounts(d *sql.DB, year string) map[string]int {
 func QueryWeekdayCounts(d *sql.DB, year string) map[string]int {
 	result := make(map[string]int)
 	rows, err := d.Query(`SELECT CAST(strftime('%w', event_date) AS INTEGER), COUNT(*) FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? GROUP BY strftime('%w', event_date)`, year)
+		WHERE strftime('%Y', event_date) = ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` GROUP BY strftime('%w', event_date)`, year)
 	if err != nil {
 		return result
 	}
@@ -425,7 +428,7 @@ func QueryWeekdayCounts(d *sql.DB, year string) map[string]int {
 func QueryTagFrequency(d *sql.DB, year string) []models.TagCount {
 	tagMap := make(map[string]int)
 	rows, err := d.Query(`SELECT tags FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? AND tags != ''`, year)
+		WHERE strftime('%Y', event_date) = ? AND tags != '' AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events"), year)
 	if err != nil {
 		return nil
 	}
@@ -454,7 +457,7 @@ func QueryPersonEventCounts(d *sql.DB, year string) []models.PersonCount {
 	rows, err := d.Query(`SELECT p.id, p.name, COUNT(DISTINCT e.id) as cnt FROM persons p
 		JOIN event_people ep ON ep.person_id = p.id
 		JOIN timeline_events e ON e.id = ep.event_id
-		WHERE strftime('%Y', e.event_date) = ? AND (e.deleted_at IS NULL OR e.deleted_at = '')
+		WHERE strftime('%Y', e.event_date) = ? AND (e.deleted_at IS NULL OR e.deleted_at = '')`+models.RevealVisibleSQL("e")+`
 		GROUP BY p.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
 	if err != nil {
 		return result
@@ -472,7 +475,7 @@ func QueryPersonEventCounts(d *sql.DB, year string) []models.PersonCount {
 func QueryUserEventCounts(d *sql.DB, year string) []models.UserCount {
 	result := make([]models.UserCount, 0)
 	rows, err := d.Query(`SELECT u.id, u.display_name, COUNT(e.id) as cnt FROM users u
-		LEFT JOIN timeline_events e ON e.user_id = u.id AND strftime('%Y', e.event_date) = ?
+		LEFT JOIN timeline_events e ON e.user_id = u.id AND strftime('%Y', e.event_date) = ? AND (COALESCE(e.deleted_at,'') = '')`+models.RevealVisibleSQL("e")+`
 		GROUP BY u.id HAVING cnt > 0 ORDER BY cnt DESC`, year)
 	if err != nil {
 		return result
@@ -490,7 +493,7 @@ func QueryUserEventCounts(d *sql.DB, year string) []models.UserCount {
 func QueryLocationCounts(d *sql.DB, year string, limit int) []models.LocationCount {
 	result := make([]models.LocationCount, 0)
 	rows, err := d.Query(`SELECT location, latitude, longitude, COUNT(*) as cnt FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? AND location != '' AND latitude != 0 AND longitude != 0
+		WHERE strftime('%Y', event_date) = ? AND location != '' AND latitude != 0 AND longitude != 0`+` AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+`
 		GROUP BY location ORDER BY cnt DESC LIMIT ?`, year, limit)
 	if err != nil {
 		return result
@@ -508,7 +511,7 @@ func QueryLocationCounts(d *sql.DB, year string, limit int) []models.LocationCou
 func QueryMediaBreakdown(d *sql.DB, year string) map[string]int {
 	result := make(map[string]int)
 	rows, err := d.Query(`SELECT media_type, COUNT(*) FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? AND media_type != '' GROUP BY media_type`, year)
+		WHERE strftime('%Y', event_date) = ? AND media_type != '' AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` GROUP BY media_type`, year)
 	if err != nil {
 		return result
 	}
@@ -527,7 +530,7 @@ func QueryTopDay(d *sql.DB, year string) string {
 	var topDay string
 	var topCount int
 	d.QueryRow(`SELECT event_date, COUNT(*) as cnt FROM timeline_events
-		WHERE strftime('%Y', event_date) = ? GROUP BY event_date ORDER BY cnt DESC LIMIT 1`, year).Scan(&topDay, &topCount)
+		WHERE strftime('%Y', event_date) = ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` GROUP BY event_date ORDER BY cnt DESC LIMIT 1`, year).Scan(&topDay, &topCount)
 	return topDay
 }
 

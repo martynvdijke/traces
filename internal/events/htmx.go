@@ -59,7 +59,7 @@ func (s *Service) RegisterHTMXRoutes(group *gin.RouterGroup) {
 func (s *Service) getEventsQuery(year, month, q, personID, mediaType, tag, limit, skip string) ([]httpx.EventRow, error) {
 	query := `SELECT e.id, e.title, e.event_date, e.location, e.media_type, COALESCE(e.media_url,''), e.is_favorite, e.person_id, COALESCE(e.tags,''), e.description, e.event_start_time, e.event_end_time, e.recurring, e.latitude, e.longitude,
 		p.name, p.color
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')` + models.RevealVisibleSQL("e")
 	args := []any{}
 
 	if year != "" {
@@ -224,6 +224,17 @@ func (s *Service) htmxSaveEvent(c *gin.Context) {
 	if date == "" {
 		date = time.Now().Format("2006-01-02")
 	}
+
+	// Time capsule sealing: an empty value means "not sealed".
+	revealAt, err := models.ParseRevealAt(data["reveal_at"])
+	if err != nil {
+		c.String(http.StatusBadRequest, "reveal_at must be an RFC3339 timestamp")
+		return
+	}
+	if revealAt != "" && !models.IsSealed(revealAt, time.Now()) {
+		c.String(http.StatusBadRequest, "reveal_at must be in the future")
+		return
+	}
 	location := data["location"]
 	tags := data["tags"]
 	mediaType := data["media_type"]
@@ -240,6 +251,22 @@ func (s *Service) htmxSaveEvent(c *gin.Context) {
 	desc := data["description"]
 
 	id := httpx.ParseIntOrZero(idStr)
+
+	// Re-sealing restarts the cycle; clearing reveal_at opens immediately.
+	revealedAt := ""
+	if id != 0 {
+		var oldRevealAt, oldRevealedAt string
+		if err := s.DB.QueryRow(`SELECT COALESCE(reveal_at, ''), COALESCE(revealed_at, '') FROM timeline_events WHERE id = ?`, id).Scan(&oldRevealAt, &oldRevealedAt); err == nil {
+			switch {
+			case revealAt != "":
+				revealedAt = ""
+			case oldRevealAt != "" && oldRevealedAt == "":
+				revealedAt = models.FormatRevealAt(time.Now())
+			default:
+				revealedAt = oldRevealedAt
+			}
+		}
+	}
 
 	// Multi-person ids are authoritative when provided via the form.
 	personIDs := make([]int, 0, 4)
@@ -289,9 +316,9 @@ func (s *Service) htmxSaveEvent(c *gin.Context) {
 	eventID := id
 	if id == 0 {
 		result, err := s.DB.Exec(`INSERT INTO timeline_events 
-			(title, description, event_date, location, media_type, tags, recurring, event_start_time, event_end_time, person_id) 
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, primaryPerson)
+			(title, description, event_date, location, media_type, tags, recurring, event_start_time, event_end_time, person_id, reveal_at, revealed_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, primaryPerson, revealAt, revealedAt)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to save event")
 			return
@@ -300,9 +327,10 @@ func (s *Service) htmxSaveEvent(c *gin.Context) {
 		eventID = int(lid)
 	} else {
 		_, err := s.DB.Exec(`UPDATE timeline_events SET 
-			title=?, description=?, event_date=?, location=?, media_type=?, tags=?, recurring=?, event_start_time=?, event_end_time=?, person_id=?
+			title=?, description=?, event_date=?, location=?, media_type=?, tags=?, recurring=?, event_start_time=?, event_end_time=?, person_id=?,
+			reveal_at=?, revealed_at=?, is_public=CASE WHEN ? != '' THEN 0 ELSE is_public END
 			WHERE id=?`,
-			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, primaryPerson, id)
+			title, desc, date, location, mediaType, tags, recurring, startTime, endTime, primaryPerson, revealAt, revealedAt, revealAt, id)
 		if err != nil {
 			c.String(http.StatusInternalServerError, "Failed to update event")
 			return

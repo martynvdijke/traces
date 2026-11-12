@@ -145,7 +145,7 @@ func (s *Service) GetAutocomplete(c *gin.Context) {
 
 	switch field {
 	case "location":
-		rows, err := s.DB.Query(`SELECT DISTINCT location FROM timeline_events WHERE location != '' AND location LIKE ? ORDER BY location LIMIT 10`, "%"+q+"%")
+		rows, err := s.DB.Query(`SELECT DISTINCT location FROM timeline_events WHERE location != '' AND location LIKE ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` ORDER BY location LIMIT 10`, "%"+q+"%")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -165,7 +165,7 @@ func (s *Service) GetAutocomplete(c *gin.Context) {
 			}
 		}
 	case "tag":
-		rows, err := s.DB.Query(`SELECT DISTINCT tags FROM timeline_events WHERE tags != '' AND tags LIKE ? ORDER BY tags LIMIT 10`, "%"+q+"%")
+		rows, err := s.DB.Query(`SELECT DISTINCT tags FROM timeline_events WHERE tags != '' AND tags LIKE ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` ORDER BY tags LIMIT 10`, "%"+q+"%")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -184,7 +184,7 @@ func (s *Service) GetAutocomplete(c *gin.Context) {
 			results = results[:10]
 		}
 	case "media":
-		rows, err := s.DB.Query(`SELECT DISTINCT media_url FROM timeline_events WHERE media_url != '' AND media_url LIKE ? ORDER BY media_url LIMIT 10`, "%"+q+"%")
+		rows, err := s.DB.Query(`SELECT DISTINCT media_url FROM timeline_events WHERE media_url != '' AND media_url LIKE ? AND (COALESCE(deleted_at,'') = '')`+models.RevealVisibleSQL("timeline_events")+` ORDER BY media_url LIMIT 10`, "%"+q+"%")
 		if err == nil {
 			defer rows.Close()
 			for rows.Next() {
@@ -269,7 +269,7 @@ func (s *Service) GetStatsDistribution(c *gin.Context) {
 		ByLocation:     make([]models.LocationCount, 0),
 	}
 
-	s.DB.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?", year).Scan(&dist.EventCount)
+	s.DB.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE strftime('%Y', event_date) = ?"+" AND (COALESCE(deleted_at,'') = '')"+models.RevealVisibleSQL("timeline_events"), year).Scan(&dist.EventCount)
 
 	daysInYear := 365
 	if IsLeapYear(year) {
@@ -321,16 +321,16 @@ func (s *Service) GetWrapped(c *gin.Context) {
 	}
 
 	var total int
-	s.DB.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?", year).Scan(&total)
+	s.DB.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?"+models.RevealVisibleSQL("timeline_events"), year).Scan(&total)
 
 	var topEventTitle string
 	var topEventDate string
 	s.DB.QueryRow(`SELECT title, event_date FROM timeline_events 
-		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? 
+		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?`+models.RevealVisibleSQL("timeline_events")+` 
 		ORDER BY (LENGTH(description) - LENGTH(REPLACE(description, ' ', '')) + 1) DESC LIMIT 1`, year).Scan(&topEventTitle, &topEventDate)
 
 	var longestStreak int
-	streakRows, _ := s.DB.Query("SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? GROUP BY event_date ORDER BY event_date ASC", year)
+	streakRows, _ := s.DB.Query("SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?"+models.RevealVisibleSQL("timeline_events")+" GROUP BY event_date ORDER BY event_date ASC", year)
 	var prevDate time.Time
 	currentStreak := 0
 	if streakRows != nil {
@@ -364,7 +364,7 @@ func (s *Service) GetWrapped(c *gin.Context) {
 
 	var mostTagsTitle, mostTags string
 	s.DB.QueryRow(`SELECT title, tags FROM timeline_events 
-		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND tags != '' 
+		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND tags != ''`+models.RevealVisibleSQL("timeline_events")+` 
 		ORDER BY (LENGTH(tags) - LENGTH(REPLACE(tags, ',', '')) + 1) DESC LIMIT 1`, year).Scan(&mostTagsTitle, &mostTags)
 
 	tagCount := 0
@@ -373,7 +373,7 @@ func (s *Service) GetWrapped(c *gin.Context) {
 	}
 
 	var favCount int
-	s.DB.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND is_favorite=1", year).Scan(&favCount)
+	s.DB.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND is_favorite=1"+models.RevealVisibleSQL("timeline_events"), year).Scan(&favCount)
 
 	var topMonth string
 	var topMonthCount int
@@ -383,14 +383,14 @@ func (s *Service) GetWrapped(c *gin.Context) {
 		WHEN 7 THEN 'July' WHEN 8 THEN 'August' WHEN 9 THEN 'September'
 		WHEN 10 THEN 'October' WHEN 11 THEN 'November' WHEN 12 THEN 'December' END,
 		COUNT(*) as cnt FROM timeline_events
-		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?
+		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?`+models.RevealVisibleSQL("timeline_events")+`
 		GROUP BY strftime('%m', event_date) ORDER BY cnt DESC LIMIT 1`, year).Scan(&topMonth, &topMonthCount)
 
 	var totalMedia int
-	s.DB.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND media_url != ''", year).Scan(&totalMedia)
+	s.DB.QueryRow("SELECT COUNT(*) FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? AND media_url != ''"+models.RevealVisibleSQL("timeline_events"), year).Scan(&totalMedia)
 
 	monthlyRows, _ := s.DB.Query(`SELECT strftime('%m', event_date), COUNT(*) FROM timeline_events
-		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=? GROUP BY strftime('%m', event_date)`, year)
+		WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date)=?`+models.RevealVisibleSQL("timeline_events")+` GROUP BY strftime('%m', event_date)`, year)
 	byMonth := make(map[string]int)
 	if monthlyRows != nil {
 		for monthlyRows.Next() {
@@ -505,7 +505,7 @@ func (s *Service) GetShareLink(c *gin.Context) {
 func (s *Service) GetMapData(c *gin.Context) {
 	year := c.Query("year")
 	query := `SELECT id, title, description, event_date, location, media_type, media_url, thumbnail, latitude, longitude 
-		FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0 AND longitude != 0`
+		FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND latitude IS NOT NULL AND longitude IS NOT NULL AND latitude != 0 AND longitude != 0` + models.RevealVisibleSQL("timeline_events")
 	args := []any{}
 
 	if year != "" {
@@ -590,7 +590,7 @@ func (s *Service) GetCalendar(c *gin.Context) {
 	rows, err := s.DB.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id
-		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.event_date BETWEEN ? AND ?
+		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.event_date BETWEEN ? AND ?`+models.RevealVisibleSQL("e")+`
 		ORDER BY e.event_date ASC, e.id ASC`, startDate, lastDay.Format("2006-01-02"))
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": "Internal server error"})

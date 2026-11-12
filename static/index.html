@@ -81,6 +81,7 @@
                         <button type="button" class="header-nav-btn" id="calendar-tab" onclick="openOverlay('calendar-overlay')" aria-haspopup="dialog"><i class="fa-regular fa-calendar-days me-1" aria-hidden="true"></i>Calendar</button>
                         <button type="button" class="header-nav-btn" id="map-tab" onclick="openOverlay('map-overlay')" aria-haspopup="dialog"><i class="fa-solid fa-map-location-dot me-1" aria-hidden="true"></i>Map</button>
                         <button type="button" class="header-nav-btn" id="stats-tab" onclick="openOverlay('stats-overlay')" aria-haspopup="dialog"><i class="fa-solid fa-chart-simple me-1" aria-hidden="true"></i>Stats</button>
+                        <button type="button" class="header-nav-btn" id="capsules-tab" onclick="openOverlay('capsules-overlay')" aria-haspopup="dialog"><i class="fa-solid fa-box-archive me-1" aria-hidden="true"></i>Capsules<span class="tab-count" id="capsules-count" hidden>0</span></button>
                         <button type="button" class="header-nav-btn" id="fav-filter-btn" title="Show favorites only" aria-pressed="false" onclick="toggleFavFilter()"><i class="fa-regular fa-star me-1" aria-hidden="true"></i>Favorites</button>
                         <button type="button" class="header-nav-btn" id="filters-toggle" title="Advanced Filters" aria-expanded="false" aria-controls="advanced-filters" onclick="toggleFilters()"><i class="fa-solid fa-sliders me-1" aria-hidden="true"></i>Filters</button>
                     </div>
@@ -323,6 +324,19 @@
                     <div id="stats-people-places-container"></div>
                 </section>
             </div>
+        </div>
+    </div>
+
+    <!-- ── Time capsules overlay ── -->
+    <div class="overlay" id="capsules-overlay" role="dialog" aria-modal="true" aria-labelledby="capsules-title">
+        <div class="overlay-backdrop" onclick="closeOverlay('capsules-overlay')"></div>
+        <div class="overlay-panel overlay-panel-wide" id="capsules-panel">
+            <div class="overlay-header">
+                <h2 id="capsules-title"><i class="fa-solid fa-box-archive me-2 text-primary" aria-hidden="true"></i>Capsules</h2>
+                <button class="overlay-close" onclick="closeOverlay('capsules-overlay')" aria-label="Close capsules"><i class="fa-solid fa-xmark"></i></button>
+            </div>
+            <p class="capsules-intro">Sealed events waiting for their reveal date. Contents stay hidden until then.</p>
+            <div class="capsules-list" id="capsules-list"></div>
         </div>
     </div>
 

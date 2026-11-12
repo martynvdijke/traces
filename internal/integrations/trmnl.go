@@ -8,6 +8,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"traces/internal/httpx"
+	"traces/internal/models"
 )
 
 type trmnlEvent struct {
@@ -65,7 +66,7 @@ func (s *Service) GetTRMNLSummary(c *gin.Context) {
 	if !isPublicMode {
 		visibility = " AND e.is_public = 1"
 	}
-	filter := "(e.deleted_at IS NULL OR e.deleted_at = '') AND e.event_date != '' AND strftime('%m', e.event_date) = strftime('%m', 'now')" + visibility
+	filter := "(e.deleted_at IS NULL OR e.deleted_at = '') AND e.event_date != '' AND strftime('%m', e.event_date) = strftime('%m', 'now')" + visibility + models.RevealVisibleSQL("e")
 
 	rows, err := s.db.Query(`SELECT e.id, e.title, e.event_date, CAST(strftime('%Y', e.event_date) AS INTEGER), COALESCE(e.location, ''), COALESCE(e.media_type, ''), COALESCE(e.media_url, ''), COALESCE(e.thumbnail, ''), COALESCE(e.tags, ''), COALESCE(e.is_favorite, 0), COALESCE(p.name, '')
 		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id

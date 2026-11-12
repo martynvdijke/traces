@@ -43,7 +43,7 @@ func (s *Service) GetMemories(c *gin.Context) {
 			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
 			AND e.event_date != ''
 			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
-			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
+			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?`+models.RevealVisibleSQL("e")+`
 			ORDER BY e.event_date DESC`, startMD, endMD)
 	} else {
 		rows, err = s.db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
@@ -52,7 +52,7 @@ func (s *Service) GetMemories(c *gin.Context) {
 			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
 			AND e.event_date != ''
 			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
-			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)
+			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)`+models.RevealVisibleSQL("e")+`
 			ORDER BY e.event_date DESC`, startMD, endMD)
 	}
 
@@ -209,7 +209,7 @@ func (s *Service) SendMemoriesEmailHandler(c *gin.Context) {
 			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
 			AND e.event_date != ''
 			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
-			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?
+			AND strftime('%m-%d', e.event_date) BETWEEN ? AND ?`+models.RevealVisibleSQL("e")+`
 			ORDER BY e.event_date DESC`, startMD, endMD)
 	} else {
 		rows, err = s.db.Query(`SELECT e.title, e.event_date,
@@ -218,7 +218,7 @@ func (s *Service) SendMemoriesEmailHandler(c *gin.Context) {
 			WHERE (e.deleted_at IS NULL OR e.deleted_at = '')
 			AND e.event_date != ''
 			AND CAST(strftime('%Y', e.event_date) AS INTEGER) < CAST(strftime('%Y','now') AS INTEGER)
-			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)
+			AND (strftime('%m-%d', e.event_date) >= ? OR strftime('%m-%d', e.event_date) <= ?)`+models.RevealVisibleSQL("e")+`
 			ORDER BY e.event_date DESC`, startMD, endMD)
 	}
 

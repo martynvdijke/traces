@@ -411,7 +411,7 @@ func (s *Service) HandleLogout(c *gin.Context) {
 
 func (s *Service) GetUsers(c *gin.Context) {
 	rows, err := s.db.Query(`SELECT id, username, display_name, email, color, avatar_url, created_at,
-		(SELECT COUNT(*) FROM timeline_events WHERE user_id = users.id) as event_count
+		(SELECT COUNT(*) FROM timeline_events WHERE user_id = users.id AND (COALESCE(deleted_at,'') = '')` + models.RevealVisibleSQL("") + `) as event_count
 		FROM users ORDER BY display_name ASC`)
 	if err != nil {
 		httpx.ServerError(c, err)
@@ -511,7 +511,7 @@ func (s *Service) GetUserEvents(c *gin.Context) {
 	}
 	rows, err := s.db.Query(`SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.user_id = ? ORDER BY e.event_date ASC`, id)
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`+models.RevealVisibleSQL("e")+` AND e.user_id = ? ORDER BY e.event_date ASC`, id)
 	if err != nil {
 		httpx.ServerError(c, err)
 		return

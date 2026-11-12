@@ -58,6 +58,8 @@ func setupBGGTestDB(t *testing.T) (*Service, *sql.DB) {
 		event_start_time TEXT DEFAULT '',
 		event_end_time TEXT DEFAULT '',
 		deleted_at TEXT DEFAULT '',
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		source TEXT DEFAULT '',
 		source_ref TEXT DEFAULT ''
 	)`); err != nil {
@@ -370,7 +372,7 @@ func TestSendMemoriesEmailHandler(t *testing.T) {
 	db.Exec("INSERT OR IGNORE INTO memories_settings (id, enabled, days_window, email_enabled) VALUES (1, 1, 3, 0)")
 	db.Exec(`CREATE TABLE IF NOT EXISTS email_settings (id INTEGER PRIMARY KEY CHECK (id = 1), smtp_host TEXT DEFAULT '', smtp_port INTEGER DEFAULT 587, smtp_user TEXT DEFAULT '', smtp_pass TEXT DEFAULT '', from_addr TEXT DEFAULT '', to_addr TEXT DEFAULT '')`)
 	db.Exec("INSERT OR IGNORE INTO email_settings (id, smtp_host, smtp_port) VALUES (1, 'smtp.example.com', 587)")
-	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, event_date TEXT, deleted_at TEXT DEFAULT '', source TEXT DEFAULT '', source_ref TEXT DEFAULT '')`)
+	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, event_date TEXT, deleted_at TEXT DEFAULT '', reveal_at TEXT DEFAULT '', revealed_at TEXT DEFAULT '', source TEXT DEFAULT '', source_ref TEXT DEFAULT '')`)
 	r := gin.New()
 	r.POST("/api/memories/send", svc.SendMemoriesEmailHandler)
 	w := httptest.NewRecorder()
@@ -409,6 +411,8 @@ func setupTRMNLTestSvc(t *testing.T) (*Service, *sql.DB, *gin.Engine) {
 		event_end_time TEXT DEFAULT '',
 		user_id INTEGER DEFAULT 0,
 		deleted_at TEXT DEFAULT '',
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT '',
 		source TEXT DEFAULT '',
 		source_ref TEXT DEFAULT ''
 	)`)
@@ -462,7 +466,7 @@ func TestTRMNLSummaryPublicOnly(t *testing.T) {
 
 func TestMemoriesQuery(t *testing.T) {
 	_, db := newTestService(t)
-	db.Exec(`CREATE TABLE timeline_events (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, event_date TEXT, location TEXT, media_type TEXT, media_url TEXT, thumbnail TEXT, media_caption TEXT, tags TEXT, sort_order INTEGER DEFAULT 0, is_public INTEGER DEFAULT 0, is_favorite INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, person_id INTEGER, latitude REAL, longitude REAL)`)
+	db.Exec(`CREATE TABLE timeline_events (id INTEGER PRIMARY KEY AUTOINCREMENT, title TEXT, description TEXT, event_date TEXT, location TEXT, media_type TEXT, media_url TEXT, thumbnail TEXT, media_caption TEXT, tags TEXT, sort_order INTEGER DEFAULT 0, is_public INTEGER DEFAULT 0, is_favorite INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, person_id INTEGER, latitude REAL, longitude REAL, reveal_at TEXT DEFAULT '', revealed_at TEXT DEFAULT '')`)
 	now := time.Now().UTC()
 	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Last year event', ?)`, now.AddDate(-1, 0, 0).Format("2006-01-02"))
 	db.Exec(`INSERT INTO timeline_events (title, event_date) VALUES ('Two years ago', ?)`, now.AddDate(-2, 0, 0).Format("2006-01-02"))

@@ -95,6 +95,8 @@ func ensureSchemaDrift(db *sql.DB) error {
 		{"timeline_events", "person_id", "INTEGER"},
 		{"timeline_events", "latitude", "REAL"},
 		{"timeline_events", "longitude", "REAL"},
+		{"timeline_events", "reveal_at", "TEXT DEFAULT ''"},
+		{"timeline_events", "revealed_at", "TEXT DEFAULT ''"},
 		{"users", "analytics_opt_out", "INTEGER DEFAULT 0"},
 		{"users", "oidc_sub", "TEXT DEFAULT ''"},
 		{"users", "auth_method", "TEXT DEFAULT ''"},
@@ -643,6 +645,11 @@ func RunMigration(db *sql.DB, fromVersion int) error {
 		if cols, err := tableColumns(db, "timeline_events"); err == nil && cols != nil && cols["person_id"] {
 			migExec(`INSERT OR IGNORE INTO event_people(event_id, person_id) SELECT id, person_id FROM timeline_events WHERE person_id IS NOT NULL AND person_id != 0`)
 		}
+	case 26:
+		// Time capsules: a future reveal_at hides the event until that moment.
+		migExec(`ALTER TABLE timeline_events ADD COLUMN reveal_at TEXT DEFAULT ''`)
+		migExec(`ALTER TABLE timeline_events ADD COLUMN revealed_at TEXT DEFAULT ''`)
+		migExec(`CREATE INDEX IF NOT EXISTS idx_timeline_events_reveal_at ON timeline_events(reveal_at) WHERE reveal_at <> ''`)
 	}
 	return migErr
 }

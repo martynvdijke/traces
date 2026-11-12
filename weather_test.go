@@ -23,7 +23,9 @@ func TestWeatherDataStructure(t *testing.T) {
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT,
 		event_date TEXT,
-		weather_data TEXT DEFAULT ''
+		weather_data TEXT DEFAULT '',
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	t.Run("store_and_retrieve_weather", func(t *testing.T) {

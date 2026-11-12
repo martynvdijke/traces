@@ -116,14 +116,14 @@ func (s *Service) GetPublicEvents(c *gin.Context) {
 			placeholders[i] = "?"
 			idArgs[i] = id
 		}
-		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time, e.reveal_at, e.revealed_at,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')` + models.RevealVisibleSQL("e") + ` AND e.id IN (` + strings.Join(placeholders, ",") + `) ORDER BY e.event_date ASC`
 		args = idArgs
 	} else if s.isPublicMode() {
-		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time, e.reveal_at, e.revealed_at,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')` + models.RevealVisibleSQL("e")
 		if year != "" {
 			query += " AND strftime('%Y', e.event_date) = ?"
 			args = append(args, year)
@@ -134,9 +134,9 @@ func (s *Service) GetPublicEvents(c *gin.Context) {
 		}
 		query += " ORDER BY e.event_date ASC"
 	} else {
-		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
+		query = `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time, e.reveal_at, e.revealed_at,
 			p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND e.is_public = 1`
+			FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')` + models.RevealVisibleSQL("e") + ` AND e.is_public = 1`
 		if year != "" {
 			query += " AND strftime('%Y', e.event_date) = ?"
 			args = append(args, year)
@@ -165,7 +165,7 @@ func (s *Service) GetContributions(c *gin.Context) {
 	if year == "" {
 		year = fmt.Sprintf("%d", time.Now().Year())
 	}
-	rows, err := s.DB.Query(`SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date) = ?`, year)
+	rows, err := s.DB.Query(`SELECT event_date FROM timeline_events WHERE (deleted_at IS NULL OR deleted_at = '') AND strftime('%Y', event_date) = ?`+models.RevealVisibleSQL(""), year)
 	if err != nil {
 		httpx.ServerError(c, err)
 		return
@@ -216,18 +216,43 @@ func (s *Service) SaveEvent(c *gin.Context) {
 	}
 
 	action := "created"
+	now := time.Now().UTC()
+	revealAt, err := models.ParseRevealAt(e.RevealAt)
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "reveal_at must be an RFC3339 timestamp"})
+		return
+	}
+	if revealAt != "" && !models.IsSealed(revealAt, now) {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "reveal_at must be in the future"})
+		return
+	}
+	e.RevealAt = revealAt
+	if revealAt != "" {
+		// A sealed capsule is never reachable from public surfaces.
+		e.IsPublic = false
+	}
+
 	if e.ID != 0 {
 		cu := auth.GetCurrentUser(c)
-		if !cu.IsAdmin {
-			var ownerID int
-			if err := s.DB.QueryRow("SELECT COALESCE(user_id, 0) FROM timeline_events WHERE id = ?", e.ID).Scan(&ownerID); err != nil {
-				c.JSON(http.StatusForbidden, gin.H{"error": "You may only edit your own events"})
-				return
-			}
-			if int64(ownerID) != cu.ID {
-				c.JSON(http.StatusForbidden, gin.H{"error": "You may only edit your own events"})
-				return
-			}
+		var ownerID int
+		var oldRevealAt, oldRevealedAt string
+		if err := s.DB.QueryRow("SELECT COALESCE(user_id, 0), COALESCE(reveal_at, ''), COALESCE(revealed_at, '') FROM timeline_events WHERE id = ?", e.ID).Scan(&ownerID, &oldRevealAt, &oldRevealedAt); err != nil {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You may only edit your own events"})
+			return
+		}
+		if !cu.IsAdmin && int64(ownerID) != cu.ID {
+			c.JSON(http.StatusForbidden, gin.H{"error": "You may only edit your own events"})
+			return
+		}
+		switch {
+		case revealAt != "":
+			// Re-sealing restarts the reveal cycle.
+			e.RevealedAt = ""
+		case oldRevealAt != "" && oldRevealedAt == "":
+			// Clearing reveal_at opens the capsule immediately.
+			e.RevealedAt = models.FormatRevealAt(now)
+		default:
+			e.RevealedAt = oldRevealedAt
 		}
 		action = "updated"
 	}
@@ -241,9 +266,9 @@ func (s *Service) SaveEvent(c *gin.Context) {
 
 	if e.ID == 0 {
 		result, err := tx.Exec(`INSERT INTO timeline_events
-			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, is_favorite, person_id, latitude, longitude, recurring, weather_data, event_start_time, event_end_time, user_id)
-			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID)
+			(title, description, event_date, location, media_type, media_url, thumbnail, media_caption, tags, sort_order, is_public, is_favorite, person_id, latitude, longitude, recurring, weather_data, event_start_time, event_end_time, user_id, reveal_at, revealed_at)
+			VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID, e.RevealAt, e.RevealedAt)
 		if err != nil {
 			httpx.ServerError(c, err)
 			return
@@ -252,9 +277,9 @@ func (s *Service) SaveEvent(c *gin.Context) {
 		e.ID = int(id)
 	} else {
 		_, err := tx.Exec(`UPDATE timeline_events SET
-			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, is_favorite=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, event_start_time=?, event_end_time=?, user_id=?
+			title=?, description=?, event_date=?, location=?, media_type=?, media_url=?, thumbnail=?, media_caption=?, tags=?, sort_order=?, is_public=?, is_favorite=?, person_id=?, latitude=?, longitude=?, recurring=?, weather_data=?, event_start_time=?, event_end_time=?, user_id=?, reveal_at=?, revealed_at=?
 			WHERE id=?`,
-			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID, e.ID)
+			e.Title, e.Description, e.Date, e.Location, e.MediaType, e.MediaURL, e.Thumbnail, e.MediaCaption, e.Tags, e.SortOrder, e.IsPublic, e.IsFavorite, e.PersonID, e.Latitude, e.Longitude, e.Recurring, e.WeatherData, e.StartTime, e.EndTime, e.UserID, e.RevealAt, e.RevealedAt, e.ID)
 		if err != nil {
 			httpx.ServerError(c, err)
 			return
@@ -763,7 +788,7 @@ func (s *Service) ExportEvents(c *gin.Context) {
 	}
 	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.media_url, e.thumbnail, e.media_caption, e.tags, e.sort_order, e.is_public, e.is_favorite, e.created_at, e.person_id, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time,
 		p.id, p.name, p.avatar_url, p.bio, p.birth_date, p.color, p.created_at
-		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')`
+		FROM timeline_events e LEFT JOIN persons p ON e.person_id = p.id WHERE (e.deleted_at IS NULL OR e.deleted_at = '')` + models.RevealVisibleSQL("e")
 	args := []any{}
 	if year != "" {
 		sqlStr += " AND strftime('%Y', e.event_date) = ?"
@@ -804,7 +829,7 @@ func (s *Service) GetEventsICS(c *gin.Context) {
 	}
 	sqlStr := `SELECT e.id, e.title, e.description, e.event_date, e.location, e.media_type, e.latitude, e.longitude, e.recurring, e.weather_data, e.user_id, e.event_start_time, e.event_end_time
 		FROM timeline_events e
-		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND strftime('%Y', e.event_date) = ?
+		WHERE (e.deleted_at IS NULL OR e.deleted_at = '') AND strftime('%Y', e.event_date) = ?` + models.RevealVisibleSQL("e") + `
 		ORDER BY e.event_date ASC`
 	rows, err := s.DB.Query(sqlStr, year)
 	if err != nil {

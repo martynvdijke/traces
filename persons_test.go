@@ -90,7 +90,9 @@ func TestTagAutocomplete(t *testing.T) {
 	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT,
-		tags TEXT
+		tags TEXT,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	db.Exec("INSERT INTO timeline_events (title, tags) VALUES ('Event 1', 'nature, photography')")
@@ -162,7 +164,9 @@ func TestPersonSearch(t *testing.T) {
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
-		person_id INTEGER
+		person_id INTEGER,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	db.Exec("INSERT INTO persons (name, color) VALUES ('Alice Johnson', '#ff0000')")
@@ -240,7 +244,9 @@ func TestTagManagement(t *testing.T) {
 	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT,
-		tags TEXT
+		tags TEXT,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	t.Run("rename_tag", func(t *testing.T) {

@@ -18,7 +18,9 @@ func TestContributions(t *testing.T) {
 	db.Exec(`CREATE TABLE IF NOT EXISTS timeline_events (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,
 		title TEXT,
-		event_date TEXT
+		event_date TEXT,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 
 	db.Exec("INSERT INTO timeline_events (title, event_date) VALUES ('Event 1', '2026-01-15')")
@@ -69,7 +71,9 @@ func TestStatsDistribution(t *testing.T) {
 		person_id INTEGER,
 		user_id INTEGER,
 		latitude REAL,
-		longitude REAL
+		longitude REAL,
+		reveal_at TEXT DEFAULT '',
+		revealed_at TEXT DEFAULT ''
 	)`)
 	db.Exec(`CREATE TABLE IF NOT EXISTS persons (
 		id INTEGER PRIMARY KEY AUTOINCREMENT,

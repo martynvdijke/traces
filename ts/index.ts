@@ -1490,6 +1490,8 @@ function openOverlay(id: string): void {
     loadContributions();
   } else if (id === 'calendar-overlay') {
     renderCalendarView();
+  } else if (id === 'capsules-overlay') {
+    loadCapsules();
   }
   // focus trap: move focus into overlay and trap Tab
   const panel = overlay.querySelector('.overlay-panel') as HTMLElement | null;
@@ -1509,6 +1511,7 @@ function closeOverlay(id: string): void {
   if (id === 'map-overlay' && window.location.hash === '#map') {
     try { history.replaceState(null, '', window.location.pathname + window.location.search); } catch (_) {}
   }
+  if (id === 'capsules-overlay') stopCapsuleCountdown();
 }
 
 function openMapAt(lat: number, lng: number, _eventId?: number): void {
@@ -1529,6 +1532,291 @@ function openMapAt(lat: number, lng: number, _eventId?: number): void {
   if (map && !(map as any)._pendingMapFocus) {
     map.setView([lat, lng], 14);
   }
+}
+
+// ── Time capsules (sealed events) ──
+// The API never sends a sealed capsule's body, media, place, people or tags, so
+// the cards below can only ever show what the contract allows.
+
+interface CapsuleSummary {
+  id: number;
+  title: string;
+  media_type: string;
+  reveal_at: string;
+  created_at: string;
+  seconds_until_reveal: number;
+}
+
+let capsules: CapsuleSummary[] = [];
+let capsulesLoading = false;
+let capsulesFailed = false;
+let capsulesReloading = false;
+let capsuleTicker: number | null = null;
+
+function capsuleSecondsLeft(capsule: CapsuleSummary): number {
+  const at = new Date(capsule.reveal_at).getTime();
+  if (!isNaN(at)) return Math.round((at - Date.now()) / 1000);
+  return Math.round(capsule.seconds_until_reveal || 0);
+}
+
+function formatCapsuleCountdown(seconds: number): string {
+  const s = Math.max(0, Math.floor(seconds));
+  if (s >= 86400) {
+    const days = Math.floor(s / 86400);
+    return 'opens in ' + days + (days === 1 ? ' day' : ' days');
+  }
+  if (s >= 3600) {
+    const hours = Math.floor(s / 3600);
+    return 'opens in ' + hours + (hours === 1 ? ' hour' : ' hours');
+  }
+  if (s >= 60) {
+    const minutes = Math.floor(s / 60);
+    return 'opens in ' + minutes + (minutes === 1 ? ' minute' : ' minutes');
+  }
+  if (s > 0) return 'opens in ' + s + (s === 1 ? ' second' : ' seconds');
+  return 'opening now';
+}
+
+function formatCapsuleReveal(date: Date): string {
+  return date.toLocaleString('en-US', {
+    weekday: 'short',
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric',
+    hour: 'numeric',
+    minute: '2-digit'
+  });
+}
+
+function capsuleMediaLabel(mediaType: string): string {
+  switch ((mediaType || '').toLowerCase()) {
+    case 'image': return 'Image';
+    case 'video': return 'Video';
+    case 'audio': return 'Audio';
+    case 'boardgame': return 'Board game';
+    case '': return '';
+    default: return mediaType;
+  }
+}
+
+function capsuleCardHtml(capsule: CapsuleSummary): string {
+  const media = capsuleMediaLabel(capsule.media_type);
+  const revealDate = new Date(capsule.reveal_at);
+  const revealText = isNaN(revealDate.getTime()) ? capsule.reveal_at : formatCapsuleReveal(revealDate);
+  return `
+    <article class="capsule-card" id="capsule-${capsule.id}">
+      <div class="capsule-seal" aria-hidden="true"><i class="fa-solid fa-lock"></i></div>
+      <div class="capsule-body">
+        <div class="capsule-eyebrow">
+          <span><i class="fa-solid fa-lock" aria-hidden="true"></i>Sealed</span>
+          ${media ? '<span class="capsule-media">' + escapeHtml(media) + '</span>' : ''}
+        </div>
+        <h3 class="capsule-title">${escapeHtml(capsule.title)}</h3>
+        <p class="capsule-reveal"><i class="fa-regular fa-calendar-days" aria-hidden="true"></i>Opens <time datetime="${escapeHtml(capsule.reveal_at)}">${escapeHtml(revealText)}</time></p>
+        <span class="capsule-countdown" data-capsule-countdown="${capsule.id}" aria-live="off">${formatCapsuleCountdown(capsuleSecondsLeft(capsule))}</span>
+        <div class="capsule-actions">
+          <button type="button" class="btn btn-sm btn-outline-danger capsule-open-btn" onclick="showCapsuleConfirm(${capsule.id})">Open now</button>
+        </div>
+        <div class="capsule-confirm" id="capsule-confirm-${capsule.id}" hidden>
+          <p>Opening this capsule cannot be undone. The event becomes visible right away.</p>
+          <div class="capsule-confirm-actions">
+            <button type="button" class="btn btn-sm btn-danger capsule-confirm-open" onclick="unsealCapsule(${capsule.id})">Open capsule</button>
+            <button type="button" class="btn btn-sm btn-outline-secondary capsule-confirm-cancel" onclick="cancelCapsuleConfirm(${capsule.id})">Cancel</button>
+          </div>
+          <p class="capsule-confirm-error" id="capsule-error-${capsule.id}" role="alert" hidden></p>
+        </div>
+      </div>
+    </article>
+  `;
+}
+
+function updateCapsulesBadge(): void {
+  const badge = document.getElementById('capsules-count');
+  if (!badge) return;
+  badge.textContent = String(capsules.length);
+  badge.hidden = capsules.length === 0;
+}
+
+function isCapsulesOverlayOpen(): boolean {
+  const overlay = document.getElementById('capsules-overlay');
+  return !!overlay && overlay.style.display === 'flex';
+}
+
+function renderCapsules(): void {
+  const list = document.getElementById('capsules-list');
+  if (!list) return;
+  updateCapsulesBadge();
+
+  if (capsulesFailed) {
+    stopCapsuleCountdown();
+    list.innerHTML = '<div class="error-state"><i class="fa-solid fa-triangle-exclamation" aria-hidden="true"></i><p>Could not load capsules.</p><button class="btn btn-sm btn-outline-primary" onclick="loadCapsules()">Retry</button></div>';
+    return;
+  }
+
+  if (!capsules.length) {
+    stopCapsuleCountdown();
+    list.innerHTML = '<div class="empty-state"><i class="fa-solid fa-box-archive" aria-hidden="true"></i><p class="empty-title">No capsules yet</p><p>Anything you seal with a future reveal date shows up here until it opens.</p></div>';
+    return;
+  }
+
+  list.innerHTML = capsules.map(capsuleCardHtml).join('');
+  if (isCapsulesOverlayOpen()) startCapsuleCountdown();
+}
+
+async function loadCapsules(): Promise<void> {
+  const list = document.getElementById('capsules-list');
+  if (!list || capsulesLoading) return;
+  capsulesLoading = true;
+  if (!capsules.length && !capsulesFailed) {
+    list.innerHTML = '<div class="capsules-loading"><span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Loading capsules...</div>';
+  }
+  try {
+    const res = await fetch('/api/capsules');
+    if (res.status === 401) {
+      // Capsules are per-account; guests never see the entry point.
+      capsules = [];
+      capsulesFailed = false;
+      const tab = document.getElementById('capsules-tab');
+      if (tab) tab.hidden = true;
+      closeOverlay('capsules-overlay');
+      return;
+    }
+    if (!res.ok) throw new Error('Failed to load capsules');
+    const data = await res.json() as { capsules?: CapsuleSummary[] };
+    capsules = Array.isArray(data.capsules) ? data.capsules : [];
+    capsulesFailed = false;
+  } catch (_err) {
+    if (!capsules.length) capsulesFailed = true;
+  } finally {
+    capsulesLoading = false;
+    capsulesReloading = false;
+    renderCapsules();
+  }
+}
+
+function stopCapsuleCountdown(): void {
+  if (capsuleTicker !== null) {
+    window.clearInterval(capsuleTicker);
+    capsuleTicker = null;
+  }
+}
+
+function startCapsuleCountdown(): void {
+  stopCapsuleCountdown();
+  if (!capsules.length) return;
+  tickCapsuleCountdowns();
+  capsuleTicker = window.setInterval(tickCapsuleCountdowns, 1000);
+}
+
+function tickCapsuleCountdowns(): void {
+  const nodes = document.querySelectorAll<HTMLElement>('[data-capsule-countdown]');
+  if (!nodes.length) { stopCapsuleCountdown(); return; }
+  let anyDue = false;
+  nodes.forEach(node => {
+    const id = parseInt(node.dataset.capsuleCountdown || '0', 10);
+    const capsule = capsules.find(c => c.id === id);
+    if (!capsule) return;
+    const seconds = capsuleSecondsLeft(capsule);
+    if (seconds <= 0) anyDue = true;
+    node.textContent = formatCapsuleCountdown(seconds);
+  });
+  // A capsule that reaches its reveal moment drops out of the sealed list on its own.
+  if (anyDue && !capsulesReloading) {
+    capsulesReloading = true;
+    loadCapsules();
+  }
+}
+
+function showCapsuleConfirm(id: number): void {
+  const card = document.getElementById('capsule-' + id);
+  if (!card) return;
+  const actions = card.querySelector('.capsule-actions') as HTMLElement | null;
+  const confirm = document.getElementById('capsule-confirm-' + id);
+  if (actions) actions.hidden = true;
+  if (confirm) {
+    confirm.hidden = false;
+    const openBtn = confirm.querySelector('.capsule-confirm-open') as HTMLButtonElement | null;
+    if (openBtn) openBtn.focus();
+  }
+}
+
+function cancelCapsuleConfirm(id: number): void {
+  const card = document.getElementById('capsule-' + id);
+  if (!card) return;
+  const actions = card.querySelector('.capsule-actions') as HTMLElement | null;
+  const confirm = document.getElementById('capsule-confirm-' + id);
+  if (confirm) confirm.hidden = true;
+  if (actions) {
+    actions.hidden = false;
+    const openBtn = actions.querySelector('.capsule-open-btn') as HTMLButtonElement | null;
+    if (openBtn) openBtn.focus();
+  }
+}
+
+async function unsealCapsule(id: number): Promise<void> {
+  const card = document.getElementById('capsule-' + id);
+  const confirm = document.getElementById('capsule-confirm-' + id);
+  const openBtn = confirm?.querySelector('.capsule-confirm-open') as HTMLButtonElement | null;
+  const cancelBtn = confirm?.querySelector('.capsule-confirm-cancel') as HTMLButtonElement | null;
+  const errorEl = document.getElementById('capsule-error-' + id);
+  if (errorEl) { errorEl.hidden = true; errorEl.textContent = ''; }
+  if (openBtn) { openBtn.disabled = true; openBtn.textContent = 'Opening...'; }
+  if (cancelBtn) cancelBtn.disabled = true;
+
+  try {
+    const csrf = await ensureCSRF();
+    const res = await fetch('/api/capsules/unseal', {
+      method: 'POST',
+      headers: { 'X-CSRF-Token': csrf, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: id })
+    });
+    if (!res.ok) {
+      let message = 'Could not open this capsule.';
+      try {
+        const err = await res.json();
+        if (err && err.error) message = String(err.error);
+      } catch (_) { }
+      throw new Error(message);
+    }
+
+    const wasLast = capsules.length <= 1;
+    capsules = capsules.filter(c => c.id !== id);
+    updateCapsulesBadge();
+
+    if (card) card.classList.add('is-leaving');
+    await new Promise<void>(resolve => window.setTimeout(resolve, card ? 300 : 0));
+
+    // The reveal happens on the timeline, so step out of the way when nothing is left.
+    if (wasLast) closeOverlay('capsules-overlay');
+    if (card) card.remove();
+    if (!capsules.length) renderCapsules();
+
+    await revealOnTimeline(id);
+  } catch (err) {
+    if (errorEl) {
+      errorEl.textContent = (err as Error).message || 'Could not open this capsule.';
+      errorEl.hidden = false;
+    }
+    if (openBtn) { openBtn.disabled = false; openBtn.textContent = 'Open capsule'; }
+    if (cancelBtn) cancelBtn.disabled = false;
+  }
+}
+
+/** Refetch the story so a freshly opened capsule is visible, then mark the new card. */
+async function revealOnTimeline(id: number): Promise<void> {
+  await loadEvents();
+  const index = allEvents.findIndex(e => e.id === id);
+  if (index >= 0) {
+    const neededChunks = Math.ceil((index + 1) / storyChunkSize);
+    if (neededChunks > storyChunk) {
+      storyChunk = neededChunks;
+      renderStory();
+    }
+  }
+  const card = document.getElementById('event-' + id);
+  if (!card) return;
+  card.classList.add('story-card-arrive');
+  window.setTimeout(() => card.classList.remove('story-card-arrive'), 1600);
 }
 
 // ── Lightbox State ──
@@ -1873,6 +2161,12 @@ function initApp(): void {
     }
   });
 
+  // Countdowns only tick while the cards are actually on screen.
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) stopCapsuleCountdown();
+    else if (isCapsulesOverlayOpen()) startCapsuleCountdown();
+  });
+
   fetch('/api/version').then(r => r.json()).then(d => {
     const versionEl = document.getElementById('version-display');
     if (versionEl) versionEl.textContent = 'v' + d.version;
@@ -1950,3 +2244,7 @@ document.addEventListener('DOMContentLoaded', initApp);
 (window as any).openOverlay = openOverlay;
 (window as any).closeOverlay = closeOverlay;
 (window as any).openMapAt = openMapAt;
+(window as any).loadCapsules = loadCapsules;
+(window as any).showCapsuleConfirm = showCapsuleConfirm;
+(window as any).cancelCapsuleConfirm = cancelCapsuleConfirm;
+(window as any).unsealCapsule = unsealCapsule;

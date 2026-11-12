@@ -60,6 +60,8 @@ func newAccountTestDB(t *testing.T) *sql.DB {
 			event_start_time TEXT DEFAULT '',
 			event_end_time TEXT DEFAULT '',
 			deleted_at TEXT DEFAULT '',
+			reveal_at TEXT DEFAULT '',
+			revealed_at TEXT DEFAULT '',
 			source TEXT DEFAULT '',
 			source_ref TEXT DEFAULT ''
 		)`,
